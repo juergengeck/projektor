@@ -1257,6 +1257,7 @@ function renderJournal() {
 }
 
 function renderTheme() {
+  document.documentElement.lang = state.language;
   document.body.dataset.theme = state.theme;
   settingsModel.ui.theme = state.theme;
   settingsModel.ui.language = state.language;
