@@ -1,0 +1,19 @@
+{
+  "name": "projektor-one",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Static browser prototype for projektor.one.",
+  "type": "module",
+  "scripts": {
+    "build": "./deploy.sh --build-only",
+    "deploy": "./deploy.sh"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/juergengeck/projektor.git"
+  },
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "wrangler": "^4.95.0"
+  }
+}
