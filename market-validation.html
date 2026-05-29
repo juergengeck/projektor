@@ -631,8 +631,142 @@
       const refinioFeedbackEndpoint = pageParams.get("feedbackEndpoint") || defaultRefinioEndpoint;
       const questionnaireId = "projektor-market-validation";
       const responseVersion = "2026-05";
+      const supportedLanguages = ["de", "en", "fr", "es"];
 
-      const sections = [
+      function normalizeLanguage(value) {
+        const code = String(value || "").slice(0, 2).toLowerCase();
+        return supportedLanguages.includes(code) ? code : "de";
+      }
+
+      const activeLanguage = normalizeLanguage(
+        pageParams.get("lang")
+          || localStorage.getItem("projektor-language")
+          || localStorage.getItem("steering-language")
+          || navigator.language
+      );
+
+      const pageCopy = {
+        de: {
+          documentTitle: "projektor.one - Marktvalidierung",
+          heroLabel: "Marktvalidierung 2025",
+          heroTitle: "Die Zukunft der Bauprojekt&shy;steuerung -<br /><em>projektor.one</em>",
+          heroText:
+            "Wir entwickeln eine föderierte Projektplattform für alle Beteiligten im Bauprozess. Dieser Fragebogen hilft uns zu verstehen, was wirklich gebraucht wird - und wo der Schmerz sitzt.",
+          heroMeta: ["ca. 15-18 Minuten", "Anonym & vertraulich", "projektor.one"],
+          submitTitle: "Vielen Dank.",
+          submitText: "Ihre Antworten helfen uns, projektor.one so zu bauen wie die Praxis es braucht.",
+          submitButton: "Antworten zusammenfassen & senden",
+          copyButton: "Antworten kopieren",
+          copiedButton: "Kopiert",
+          top3Hint: "Top 3 auswählen - in Reihenfolge klicken",
+          contactName: "Name",
+          contactCompany: "Firma",
+          contactEmail: "E-Mail",
+          contactPhone: "Telefon (optional)",
+          contactNamePlaceholder: "Ihr Name",
+          contactCompanyPlaceholder: "Ihr Unternehmen",
+          contactEmailPlaceholder: "ihre@email.de",
+          contactPhonePlaceholder: "+49...",
+          consentYes: "Ja",
+          summaryTitle: "projektor.one - Fragebogen Auswertung",
+          dateLocale: "de-DE",
+          source: "projektor.one Einstellungen > Feedback",
+          sending: "Sende Antworten an refinio.one...",
+          sent: (id) => `Gesendet an refinio.one. 42 sieht die Antwort unter projektor.one (${id}).`,
+          sendError: (message) => `Nicht gesendet: ${message}`
+        },
+        en: {
+          documentTitle: "projektor.one - Market validation",
+          heroLabel: "Market validation 2025",
+          heroTitle: "The future of construction project control -<br /><em>projektor.one</em>",
+          heroText:
+            "We are developing a federated project platform for everyone involved in construction. This questionnaire helps us understand what is truly needed - and where the pain is.",
+          heroMeta: ["approx. 15-18 minutes", "Anonymous & confidential", "projektor.one"],
+          submitTitle: "Thank you.",
+          submitText: "Your answers help us build projektor.one the way practice actually needs it.",
+          submitButton: "Summarize & send answers",
+          copyButton: "Copy answers",
+          copiedButton: "Copied",
+          top3Hint: "Select your top 3 - click in order",
+          contactName: "Name",
+          contactCompany: "Company",
+          contactEmail: "Email",
+          contactPhone: "Phone (optional)",
+          contactNamePlaceholder: "Your name",
+          contactCompanyPlaceholder: "Your company",
+          contactEmailPlaceholder: "your@email.com",
+          contactPhonePlaceholder: "+1...",
+          consentYes: "Yes",
+          summaryTitle: "projektor.one - Questionnaire evaluation",
+          dateLocale: "en-US",
+          source: "projektor.one Settings > Feedback",
+          sending: "Sending answers to refinio.one...",
+          sent: (id) => `Sent to refinio.one. 42 sees the response in projektor.one (${id}).`,
+          sendError: (message) => `Not sent: ${message}`
+        },
+        fr: {
+          documentTitle: "projektor.one - Validation du marché",
+          heroLabel: "Validation du marché 2025",
+          heroTitle: "L'avenir du pilotage des projets de construction -<br /><em>projektor.one</em>",
+          heroText:
+            "Nous développons une plateforme de projet fédérée pour tous les acteurs de la construction. Ce questionnaire nous aide à comprendre ce qui est vraiment nécessaire - et où se situe la douleur.",
+          heroMeta: ["env. 15-18 minutes", "Anonyme & confidentiel", "projektor.one"],
+          submitTitle: "Merci.",
+          submitText: "Vos réponses nous aident à construire projektor.one au plus près des besoins du terrain.",
+          submitButton: "Résumer et envoyer les réponses",
+          copyButton: "Copier les réponses",
+          copiedButton: "Copié",
+          top3Hint: "Sélectionner le top 3 - cliquer dans l'ordre",
+          contactName: "Nom",
+          contactCompany: "Entreprise",
+          contactEmail: "E-mail",
+          contactPhone: "Téléphone (facultatif)",
+          contactNamePlaceholder: "Votre nom",
+          contactCompanyPlaceholder: "Votre entreprise",
+          contactEmailPlaceholder: "votre@email.fr",
+          contactPhonePlaceholder: "+33...",
+          consentYes: "Oui",
+          summaryTitle: "projektor.one - Évaluation du questionnaire",
+          dateLocale: "fr-FR",
+          source: "projektor.one Paramètres > Feedback",
+          sending: "Envoi des réponses à refinio.one...",
+          sent: (id) => `Envoyé à refinio.one. 42 voit la réponse dans projektor.one (${id}).`,
+          sendError: (message) => `Non envoyé : ${message}`
+        },
+        es: {
+          documentTitle: "projektor.one - Validación de mercado",
+          heroLabel: "Validación de mercado 2025",
+          heroTitle: "El futuro de la gestión de proyectos de construcción -<br /><em>projektor.one</em>",
+          heroText:
+            "Estamos desarrollando una plataforma federada para todas las personas implicadas en el proceso de construcción. Este cuestionario nos ayuda a entender qué se necesita realmente y dónde está el dolor.",
+          heroMeta: ["aprox. 15-18 minutos", "Anónimo y confidencial", "projektor.one"],
+          submitTitle: "Muchas gracias.",
+          submitText: "Tus respuestas nos ayudan a construir projektor.one como la práctica lo necesita.",
+          submitButton: "Resumir y enviar respuestas",
+          copyButton: "Copiar respuestas",
+          copiedButton: "Copiado",
+          top3Hint: "Selecciona tu top 3 - haz clic en orden",
+          contactName: "Nombre",
+          contactCompany: "Empresa",
+          contactEmail: "Correo electrónico",
+          contactPhone: "Teléfono (opcional)",
+          contactNamePlaceholder: "Tu nombre",
+          contactCompanyPlaceholder: "Tu empresa",
+          contactEmailPlaceholder: "tu@email.es",
+          contactPhonePlaceholder: "+34...",
+          consentYes: "Sí",
+          summaryTitle: "projektor.one - Evaluación del cuestionario",
+          dateLocale: "es-ES",
+          source: "projektor.one Ajustes > Feedback",
+          sending: "Enviando respuestas a refinio.one...",
+          sent: (id) => `Enviado a refinio.one. 42 ve la respuesta en projektor.one (${id}).`,
+          sendError: (message) => `No enviado: ${message}`
+        }
+      };
+
+      const copy = pageCopy[activeLanguage] || pageCopy.de;
+
+      const baseSections = [
         {
           id: "A",
           title: "Ihre Rolle & Ihr Kontext",
@@ -751,6 +885,7 @@
           ]
         }
       ];
+      const sections = baseSections;
 
       const top3State = {};
       const labels = new Map();
@@ -763,6 +898,25 @@
           '"': "&quot;",
           "'": "&#39;"
         })[char]);
+      }
+
+      function applyPageCopy() {
+        document.documentElement.lang = activeLanguage;
+        document.title = copy.documentTitle;
+        document.querySelector(".hero-label").textContent = copy.heroLabel;
+        document.querySelector(".hero h1").innerHTML = copy.heroTitle;
+        document.querySelector(".hero p").textContent = copy.heroText;
+        document.querySelector(".hero-meta").replaceChildren(
+          ...copy.heroMeta.map((item) => {
+            const span = document.createElement("span");
+            span.textContent = item;
+            return span;
+          })
+        );
+        document.querySelector(".submit-section h3").textContent = copy.submitTitle;
+        document.querySelector(".submit-section p").textContent = copy.submitText;
+        document.getElementById("submitButton").textContent = copy.submitButton;
+        document.getElementById("copyButton").textContent = copy.copyButton;
       }
 
       function renderQuestion(question) {
@@ -805,7 +959,7 @@
             <div class="question">
               ${label}${hint}
               <div class="top3-wrap">
-                <div class="top3-hint">Top 3 auswählen - in Reihenfolge klicken</div>
+                <div class="top3-hint">${escapeHtml(copy.top3Hint)}</div>
                 ${question.options.map((option) => `
                   <div class="top3-option" role="button" tabindex="0" data-group="${question.id}" data-value="${escapeHtml(option)}">
                     <div class="rank-badge">-</div><span>${escapeHtml(option)}</span>
@@ -826,12 +980,12 @@
             <div class="question">
               ${label}
               <div class="input-row">
-                <div><label for="kontakt_name">Name</label><input id="kontakt_name" type="text" name="kontakt_name" placeholder="Ihr Name" /></div>
-                <div><label for="kontakt_firma">Firma</label><input id="kontakt_firma" type="text" name="kontakt_firma" placeholder="Ihr Unternehmen" /></div>
+                <div><label for="kontakt_name">${escapeHtml(copy.contactName)}</label><input id="kontakt_name" type="text" name="kontakt_name" placeholder="${escapeHtml(copy.contactNamePlaceholder)}" /></div>
+                <div><label for="kontakt_firma">${escapeHtml(copy.contactCompany)}</label><input id="kontakt_firma" type="text" name="kontakt_firma" placeholder="${escapeHtml(copy.contactCompanyPlaceholder)}" /></div>
               </div>
               <div class="input-row">
-                <div><label for="kontakt_email">E-Mail</label><input id="kontakt_email" type="email" name="kontakt_email" placeholder="ihre@email.de" /></div>
-                <div><label for="kontakt_tel">Telefon (optional)</label><input id="kontakt_tel" type="tel" name="kontakt_tel" placeholder="+49..." /></div>
+                <div><label for="kontakt_email">${escapeHtml(copy.contactEmail)}</label><input id="kontakt_email" type="email" name="kontakt_email" placeholder="${escapeHtml(copy.contactEmailPlaceholder)}" /></div>
+                <div><label for="kontakt_tel">${escapeHtml(copy.contactPhone)}</label><input id="kontakt_tel" type="tel" name="kontakt_tel" placeholder="${escapeHtml(copy.contactPhonePlaceholder)}" /></div>
               </div>
             </div>
           `;
@@ -842,7 +996,7 @@
             <div class="question">
               ${label}
               <label class="checkbox-consent">
-                <input type="checkbox" name="${question.id}" value="Ja" />
+                <input type="checkbox" name="${question.id}" value="${escapeHtml(copy.consentYes)}" />
                 <span>${escapeHtml(question.text)}</span>
               </label>
             </div>
@@ -955,8 +1109,8 @@
 
       function formatAnswers(data) {
         let out = "=======================================\n";
-        out += "  projektor.one - Fragebogen Auswertung\n";
-        out += `  ${new Date().toLocaleDateString("de-DE", { day: "2-digit", month: "long", year: "numeric" })}\n`;
+        out += `  ${copy.summaryTitle}\n`;
+        out += `  ${new Date().toLocaleDateString(copy.dateLocale, { day: "2-digit", month: "long", year: "numeric" })}\n`;
         out += "=======================================\n\n";
 
         labels.forEach((label, key) => {
@@ -982,7 +1136,7 @@
 
       function buildSubmissionPayload(data, summaryText) {
         const answers = mapToRecord(data);
-        const contactConsent = answers.q41_consent?.includes("Ja") === true;
+        const contactConsent = answers.q41_consent?.includes(copy.consentYes) === true;
 
         if (!contactConsent) {
           delete answers.kontakt_name;
@@ -995,9 +1149,9 @@
           schemaVersion: 1,
           questionnaireId,
           responseVersion,
-          source: "projektor.one Settings > Feedback",
+          source: copy.source,
           submittedAt: new Date().toISOString(),
-          language: document.documentElement.lang || "de",
+          language: activeLanguage,
           embedded: document.body.classList.contains("embedded"),
           origin: window.location.origin,
           answers,
@@ -1039,12 +1193,12 @@
 
         const submitButton = document.getElementById("submitButton");
         submitButton.disabled = true;
-        setSendStatus("Sende Antworten an refinio.one...", "");
+        setSendStatus(copy.sending, "");
         try {
           const receipt = await sendToRefinio(buildSubmissionPayload(data, summaryText));
-          setSendStatus(`Gesendet an refinio.one. 42 sieht die Antwort unter projektor.one (${receipt.id}).`, "success");
+          setSendStatus(copy.sent(receipt.id), "success");
         } catch (error) {
-          setSendStatus(`Nicht gesendet: ${error.message}`, "error");
+          setSendStatus(copy.sendError(error.message), "error");
         } finally {
           submitButton.disabled = false;
         }
@@ -1053,12 +1207,13 @@
       async function copyResult() {
         await navigator.clipboard.writeText(document.getElementById("result").textContent);
         const button = document.getElementById("copyButton");
-        button.textContent = "Kopiert";
+        button.textContent = copy.copiedButton;
         setTimeout(() => {
-          button.textContent = "Antworten kopieren";
+          button.textContent = copy.copyButton;
         }, 2000);
       }
 
+      applyPageCopy();
       renderSurvey();
       document.addEventListener("input", updateProgress);
       document.addEventListener("change", (event) => {
