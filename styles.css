@@ -794,6 +794,84 @@ h3 {
   background: #f5e7c6;
 }
 
+.runner-card {
+  grid-column: 1 / -1;
+}
+
+.runner-dashboard {
+  display: grid;
+  gap: 14px;
+}
+
+.runner-status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.runner-role {
+  min-height: 92px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--subtle);
+}
+
+.runner-role strong,
+.runner-role span {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.runner-role span {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.runner-log {
+  max-height: 190px;
+  overflow: auto;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  background: var(--subtle);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+  white-space: pre-wrap;
+}
+
+.runner-window {
+  min-height: 100vh;
+  padding: 18px;
+  background: var(--bg);
+}
+
+.runner-window-shell {
+  width: min(100%, 760px);
+  margin: 0 auto;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.runner-inbox {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.runner-message {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--subtle);
+}
+
 .phase-board {
   grid-template-columns: minmax(300px, 0.85fr) minmax(360px, 1.15fr);
 }
@@ -1020,6 +1098,7 @@ h3 {
   .ai-grid,
   .data-grid,
   .settings-grid,
+  .runner-status-grid,
   .onboarding-info-grid,
   .onboarding-password-grid {
     grid-template-columns: 1fr;

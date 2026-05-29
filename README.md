@@ -60,7 +60,11 @@ When a primitive already exists in `../one`, `projektor.one` should consume it r
 - `@refinio/calendar.core` and `@refinio/chat.core` for calendar/chat primitives
 - `@refinio/refinio.api` for ModuleRegistry demand/supply and public operation registration
 
-This is not a live ONE.core runtime yet. The current code intentionally keeps the object names, identity hints, channel boundaries, and AI lifecycle visible so the next step can turn the prototype vocabulary into recipes and registered runtime surfaces.
+This is not a live ONE.core runtime yet. The current code intentionally keeps the object names, identity hints, trie roots, sharing policy, and AI lifecycle visible so the next step can turn the prototype vocabulary into recipes and registered runtime surfaces.
+
+## projektor.cube Test Runner Home
+
+`projektor.cube` is represented in `Settings` as the integrated trie test runner home. It opens architecture roles in separate browser windows and lets them exchange project updates through shared trie-root events. The current static prototype uses browser storage events as a stand-in for real trie/CHUM propagation; the product model is trust/context filtered trie sharing.
 
 ## Product Docs
 

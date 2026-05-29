@@ -19,7 +19,19 @@ const state = {
   imapStatus: "idle",
   importStatus: "idle",
   importFileName: "",
+  runnerStatus: "idle",
+  runnerSessionId: localStorage.getItem("projektor-runner-session") || "",
+  runnerWindows: {},
+  runnerLog: [],
+  runnerMessages: [],
+  runnerProtocolStep: 0,
 };
+
+const runtimeWindowId = `projektor-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+const runnerWindowRefs = new Map();
+let activeRunnerAbort = false;
+const runnerRoleParam = new URLSearchParams(window.location.search).get("runnerRole");
+const isRunnerRoleWindow = ["architect", "owner", "authority", "trade"].includes(runnerRoleParam);
 
 const navItems = [
   ["cockpit", "CP", "navCockpit"],
@@ -1315,6 +1327,7 @@ function renderSettings() {
 
   renderSettingsSummary();
   renderMailPreview();
+  renderCubeRunner();
 }
 
 function setInputLabel(inputId, text) {
@@ -1378,6 +1391,298 @@ function renderMailPreview() {
       ]),
     )),
   );
+}
+
+function runnerSession() {
+  if (!state.runnerSessionId) {
+    state.runnerSessionId = `projektor-cube-${Date.now().toString(36)}`;
+    localStorage.setItem("projektor-runner-session", state.runnerSessionId);
+  }
+  return state.runnerSessionId;
+}
+
+function appendRunnerLog(text) {
+  const timestamp = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  state.runnerLog = [`${timestamp} ${text}`, ...state.runnerLog].slice(0, 80);
+}
+
+function publishRunnerEvent(event) {
+  const payload = {
+    ...event,
+    eventId: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    sessionId: event.sessionId || runnerSession(),
+    sourceWindowId: runtimeWindowId,
+    at: new Date().toISOString(),
+  };
+  localStorage.setItem("projektor-trie-runner-event", JSON.stringify(payload));
+  handleRunnerEvent(payload);
+}
+
+function handleRunnerEvent(event) {
+  if (!event || event.sourceWindowId === runtimeWindowId) return;
+  if (event.sessionId && state.runnerSessionId && event.sessionId !== state.runnerSessionId) return;
+
+  if (event.type === "role-ready") {
+    state.runnerWindows[event.role] = {
+      status: "bereit",
+      root: event.root,
+      updatedAt: event.at,
+    };
+    appendRunnerLog(`${roles[event.role]?.label || event.role} meldet Trie-Root bereit.`);
+    renderCubeRunner();
+  }
+
+  if (event.type === "role-ack") {
+    appendRunnerLog(`${roles[event.role]?.label || event.role}: ${event.text}`);
+    renderCubeRunner();
+  }
+
+  if (isRunnerRoleWindow && event.type === "runner-message" && event.to === runnerRoleParam) {
+    state.runnerMessages = [
+      {
+        from: event.from,
+        text: event.text,
+        root: event.root,
+        at: event.at,
+      },
+      ...state.runnerMessages,
+    ].slice(0, 30);
+    renderRunnerRoleWindow();
+    window.setTimeout(() => {
+      publishRunnerEvent({
+        type: "role-ack",
+        role: runnerRoleParam,
+        text: `Nachricht von ${roles[event.from]?.label || event.from} in ${event.root} verarbeitet.`,
+      });
+    }, 220);
+  }
+}
+
+function bindRunnerEvents() {
+  window.addEventListener("storage", (event) => {
+    if (event.key !== "projektor-trie-runner-event" || !event.newValue) return;
+    try {
+      handleRunnerEvent(JSON.parse(event.newValue));
+    } catch {
+      // Ignore malformed prototype events; real trie events will be typed objects.
+    }
+  });
+}
+
+function openRunnerRoleWindows() {
+  const sessionId = runnerSession();
+  state.runnerStatus = "windows";
+  state.runnerProtocolStep = 0;
+  activeRunnerAbort = false;
+  appendRunnerLog("projektor.cube öffnet Rollenfenster mit geteilten Trie-Wurzeln.");
+
+  runnerRoleKeys.forEach((roleKey) => {
+    const layout = runnerRoleWindowLayout[roleKey];
+    const url = new URL(window.location.href);
+    url.search = "";
+    url.hash = "";
+    url.searchParams.set("runnerRole", roleKey);
+    url.searchParams.set("runnerSession", sessionId);
+    const features = [
+      `left=${layout.left}`,
+      `top=${layout.top}`,
+      `width=${layout.width}`,
+      `height=${layout.height}`,
+      "popup=yes",
+    ].join(",");
+    const ref = window.open(url.toString(), `projektor-${sessionId}-${roleKey}`, features);
+    if (ref) {
+      runnerWindowRefs.set(roleKey, ref);
+      state.runnerWindows[roleKey] = {
+        status: "öffnet",
+        root: runnerRootForRole(roleKey),
+        updatedAt: new Date().toISOString(),
+      };
+    } else {
+      state.runnerWindows[roleKey] = {
+        status: "blockiert",
+        root: runnerRootForRole(roleKey),
+        updatedAt: new Date().toISOString(),
+      };
+    }
+  });
+
+  renderCubeRunner();
+}
+
+function runnerRootForRole(roleKey) {
+  return `/demo-kita-2028/roles/${roleKey}`;
+}
+
+function runnerStepRoot(step) {
+  if (step.to === "owner") return "/demo-kita-2028/costs/din276";
+  if (step.to === "authority") return "/demo-kita-2028/lp4/permit-documents";
+  if (step.to === "trade") return "/demo-kita-2028/lp8/site";
+  return "/demo-kita-2028/project-mail";
+}
+
+function wait(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function runIntegratedProtocol() {
+  const hasRunnerWindows = runnerRoleKeys.some((roleKey) => Boolean(state.runnerWindows[roleKey]));
+  if (!state.runnerSessionId || !hasRunnerWindows) {
+    openRunnerRoleWindows();
+    await wait(650);
+  }
+
+  state.runnerStatus = "running";
+  state.runnerProtocolStep = 0;
+  activeRunnerAbort = false;
+  appendRunnerLog("Trie-basierter Rollenlauf gestartet.");
+  renderCubeRunner();
+
+  for (const [index, step] of runnerProtocolSteps.entries()) {
+    if (activeRunnerAbort) {
+      state.runnerStatus = "stopped";
+      appendRunnerLog("Rollenlauf gestoppt.");
+      renderCubeRunner();
+      return;
+    }
+
+    state.runnerProtocolStep = index + 1;
+    const root = runnerStepRoot(step);
+    appendRunnerLog(`${roles[step.from].label} -> ${roles[step.to].label}: ${root}`);
+    publishRunnerEvent({
+      type: "runner-message",
+      from: step.from,
+      to: step.to,
+      text: step.text,
+      root,
+    });
+    await wait(820);
+  }
+
+  state.runnerStatus = "success";
+  state.journalExtra += 1;
+  appendRunnerLog("Rollenlauf abgeschlossen; Assembly-Spur im Journal vorgemerkt.");
+  renderCubeRunner();
+  renderJournal();
+}
+
+function stopIntegratedProtocol() {
+  activeRunnerAbort = true;
+  state.runnerStatus = state.runnerStatus === "running" ? "stopped" : state.runnerStatus;
+  appendRunnerLog("Stop angefordert.");
+  renderCubeRunner();
+}
+
+function clearRunnerInstances() {
+  state.runnerWindows = {};
+  state.runnerLog = [];
+  state.runnerProtocolStep = 0;
+  state.runnerStatus = "idle";
+  state.runnerSessionId = "";
+  localStorage.removeItem("projektor-runner-session");
+  runnerWindowRefs.forEach((ref) => {
+    try {
+      ref.close();
+    } catch {
+      // Ignore windows already closed by the user.
+    }
+  });
+  runnerWindowRefs.clear();
+  renderCubeRunner();
+}
+
+function renderCubeRunner() {
+  const root = document.querySelector("#cubeRunner");
+  if (!root) return;
+
+  const statusText = {
+    idle: "bereit",
+    windows: "Rollenfenster geöffnet",
+    running: "Protokoll läuft",
+    success: "abgeschlossen",
+    stopped: "gestoppt",
+  }[state.runnerStatus] || state.runnerStatus;
+
+  root.replaceChildren(
+    el("div", { className: "runner-dashboard", "data-testid": "settings-test-runner-dashboard" }, [
+      bookTop("projektor.cube", "integrated trie test runner"),
+      el("p", {
+        text:
+          "Der Runner öffnet Projektrollen als eigene Browserfenster. Nachrichten werden als geteilte Trie-Äste modelliert; Trust und Kontext bestimmen, was jedes Fenster sieht.",
+      }),
+      el("ul", { className: "object-list compact-list" }, [
+        el("li", {}, [el("span", { text: "Status" }), el("strong", { text: statusText })]),
+        el("li", {}, [el("span", { text: "Session" }), el("strong", { text: state.runnerSessionId || "-" })]),
+        el("li", {}, [el("span", { text: "Schritt" }), el("strong", { text: `${state.runnerProtocolStep}/${runnerProtocolSteps.length}` })]),
+      ]),
+      el("div", { className: "settings-actions" }, [
+        el("button", { className: "secondary-action", id: "runnerStartWindows", type: "button", text: "Rollenfenster" }),
+        el("button", { className: "primary-action", id: "runnerRunProtocol", type: "button", text: "Trie-Lauf starten" }),
+        el("button", { className: "secondary-action", id: "runnerStop", type: "button", text: "Stop" }),
+        el("button", { className: "secondary-action", id: "runnerClear", type: "button", text: "Instanzen leeren" }),
+      ]),
+      el("div", { className: "runner-status-grid" }, runnerRoleKeys.map((roleKey) => {
+        const info = state.runnerWindows[roleKey] || {};
+        return el("article", { className: "runner-role" }, [
+          el("strong", { text: roles[roleKey].label }),
+          el("span", { text: info.status || "nicht gestartet" }),
+          el("span", { text: info.root || runnerRootForRole(roleKey) }),
+        ]);
+      })),
+      el("pre", { className: "runner-log", text: state.runnerLog.join("\n") || "Noch kein Lauf." }),
+    ]),
+  );
+}
+
+function renderRunnerRoleWindow() {
+  renderTheme();
+  document.querySelector("#onboardingRoot")?.setAttribute("hidden", "");
+  document.querySelector("#appShell")?.classList.add("is-hidden");
+
+  let root = document.querySelector("#runnerWindowRoot");
+  if (!root) {
+    root = el("section", { id: "runnerWindowRoot", className: "runner-window" });
+    document.body.append(root);
+  }
+
+  const role = roles[runnerRoleParam];
+  const sessionId = new URLSearchParams(window.location.search).get("runnerSession") || runnerSession();
+  state.runnerSessionId = sessionId;
+  localStorage.setItem("projektor-runner-session", sessionId);
+
+  root.replaceChildren(
+    el("div", { className: "runner-window-shell" }, [
+      bookTop("Projektrolle", runnerRootForRole(runnerRoleParam)),
+      el("h1", { text: role.label }),
+      el("p", { text: role.summary }),
+      el("ul", { className: "object-list" }, [
+        el("li", {}, [el("span", { text: "Session" }), el("strong", { text: sessionId })]),
+        el("li", {}, [el("span", { text: "Sichtbarkeit" }), el("strong", { text: "Trust + Kontextfilter" })]),
+      ]),
+      el("h3", { text: "Eingehende Trie-Updates" }),
+      el("div", { className: "runner-inbox" }, state.runnerMessages.length
+        ? state.runnerMessages.map((message) =>
+          el("article", { className: "runner-message" }, [
+            el("strong", { text: `${roles[message.from]?.label || message.from} -> ${role.label}` }),
+            el("p", { text: message.text }),
+            el("code", { text: message.root }),
+          ]),
+        )
+        : [el("p", { text: "Wartet auf projektor.cube." })]),
+    ]),
+  );
+}
+
+function bootRunnerRoleWindow() {
+  bindRunnerEvents();
+  renderRunnerRoleWindow();
+  window.setTimeout(() => {
+    publishRunnerEvent({
+      type: "role-ready",
+      role: runnerRoleParam,
+      root: runnerRootForRole(runnerRoleParam),
+    });
+  }, 120);
 }
 
 function updateSettingsFromForm() {
@@ -1576,6 +1881,10 @@ function bindActions() {
 
   document.addEventListener("click", (event) => {
     if (event.target.closest("#resetOnboarding")) resetOnboarding();
+    if (event.target.closest("#runnerStartWindows")) openRunnerRoleWindows();
+    if (event.target.closest("#runnerRunProtocol")) void runIntegratedProtocol();
+    if (event.target.closest("#runnerStop")) stopIntegratedProtocol();
+    if (event.target.closest("#runnerClear")) clearRunnerInstances();
   });
 
   document.querySelector("#themeSwitch").addEventListener("click", () => {
@@ -1640,5 +1949,10 @@ function render() {
   renderSettings();
 }
 
-render();
-bindActions();
+if (isRunnerRoleWindow) {
+  bootRunnerRoleWindow();
+} else {
+  bindRunnerEvents();
+  render();
+  bindActions();
+}
