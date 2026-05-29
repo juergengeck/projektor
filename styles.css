@@ -397,6 +397,32 @@ h1 {
   font-weight: 730;
 }
 
+.breadcrumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.breadcrumbs a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.breadcrumbs a:hover,
+.breadcrumbs a[aria-current="page"] {
+  color: var(--ink);
+}
+
+.breadcrumbs a + a::before {
+  content: "/";
+  margin-right: 8px;
+  color: var(--muted);
+}
+
 h2 {
   margin-bottom: 0;
   font-size: clamp(1.3rem, 1.8vw, 1.8rem);
@@ -688,7 +714,8 @@ h3 {
 }
 
 .segmented,
-.phase-picker {
+.phase-picker,
+.settings-tabs {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -696,7 +723,8 @@ h3 {
 }
 
 .segmented button,
-.phase-picker button {
+.phase-picker button,
+.settings-tabs button {
   min-height: 36px;
   padding: 7px 10px;
   border: 1px solid var(--line);
@@ -707,7 +735,8 @@ h3 {
 }
 
 .segmented button.active,
-.phase-picker button.active {
+.phase-picker button.active,
+.settings-tabs button.active {
   color: #fff;
   border-color: var(--accent-2);
   background: var(--accent-2);
@@ -890,6 +919,55 @@ h3 {
 
 .settings-grid {
   grid-template-columns: minmax(300px, 0.9fr) minmax(300px, 1fr) minmax(300px, 1fr);
+}
+
+.settings-tabs {
+  justify-content: flex-start;
+  margin: -4px 0 16px;
+}
+
+.settings-pane[hidden] {
+  display: none;
+}
+
+.feedback-shell {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.feedback-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+  padding: 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.feedback-head h3 {
+  margin: 5px 0 6px;
+}
+
+.feedback-head p {
+  max-width: 780px;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.feedback-open {
+  flex: 0 0 auto;
+  text-decoration: none;
+}
+
+.feedback-frame {
+  display: block;
+  width: 100%;
+  min-height: 78vh;
+  border: 0;
+  background: var(--bg);
 }
 
 .data-grid {
@@ -1088,7 +1166,8 @@ h3 {
 
   .status-strip,
   .segmented,
-  .phase-picker {
+  .phase-picker,
+  .settings-tabs {
     justify-content: flex-start;
   }
 
@@ -1106,6 +1185,10 @@ h3 {
 
   .onboarding-progress {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .feedback-head {
+    flex-direction: column;
   }
 }
 

@@ -33,6 +33,7 @@
           <div>
             <p class="eyebrow" id="topEyebrow">Projektmanagement für Architekturbüros</p>
             <h1 id="mainTitle">Demo: Kita 2028 - Neubau einer kommunalen Kindertagesstätte</h1>
+            <nav class="breadcrumbs" id="breadcrumbs" aria-label="Breadcrumb"></nav>
           </div>
           <div class="status-strip" aria-label="Projektstatus">
             <span id="statusPhase"><strong>LP</strong> 3 Entwurf</span>
@@ -165,48 +166,73 @@
               <p class="eyebrow" id="settingsEyebrow">Einstellungen</p>
               <h2 id="settings-title">Settings, Theme und IMAP-Projektmail</h2>
             </div>
-            <button class="primary-action" id="testImap" type="button">IMAP prüfen</button>
           </div>
-          <div class="settings-grid">
-            <form class="settings-card" id="imapForm">
-              <div class="book-top">
-                <span class="card-kicker">Projektmail</span>
-                <code class="book-ref">Demo: Kita 2028</code>
-              </div>
-              <label>
-                Account ID
-                <input id="imapAccountId" name="accountId" autocomplete="off" />
-              </label>
-              <label>
-                IMAP Host
-                <input id="imapHost" name="host" autocomplete="off" />
-              </label>
-              <div class="form-row">
+
+          <div class="settings-tabs" id="settingsTabs" aria-label="Einstellungsbereich"></div>
+
+          <div class="settings-pane" id="settingsConfigPane">
+            <div class="settings-grid">
+              <form class="settings-card" id="imapForm">
+                <div class="book-top">
+                  <span class="card-kicker">Projektmail</span>
+                  <code class="book-ref">Demo: Kita 2028</code>
+                </div>
                 <label>
-                  Port
-                  <input id="imapPort" name="port" inputmode="numeric" />
+                  Account ID
+                  <input id="imapAccountId" name="accountId" autocomplete="off" />
                 </label>
-                <label class="check-label">
-                  <input id="imapSecure" name="secure" type="checkbox" />
-                  TLS
+                <label>
+                  IMAP Host
+                  <input id="imapHost" name="host" autocomplete="off" />
                 </label>
+                <div class="form-row">
+                  <label>
+                    Port
+                    <input id="imapPort" name="port" inputmode="numeric" />
+                  </label>
+                  <label class="check-label">
+                    <input id="imapSecure" name="secure" type="checkbox" />
+                    TLS
+                  </label>
+                </div>
+                <label>
+                  Benutzer
+                  <input id="imapUser" name="user" autocomplete="username" />
+                </label>
+                <label>
+                  Passwort / Token
+                  <input id="imapSecret" name="secret" type="password" autocomplete="current-password" />
+                </label>
+                <label>
+                  Mailbox
+                  <input id="imapMailbox" name="mailbox" autocomplete="off" />
+                </label>
+                <div class="settings-actions">
+                  <button class="primary-action" id="testImap" type="button">IMAP prüfen</button>
+                </div>
+              </form>
+              <div class="settings-card" id="settingsSummary"></div>
+              <div class="settings-card" id="mailPreview"></div>
+              <div class="settings-card runner-card" id="cubeRunner"></div>
+            </div>
+          </div>
+
+          <div class="settings-pane" id="settingsFeedbackPane" hidden>
+            <div class="feedback-shell">
+              <div class="feedback-head">
+                <div>
+                  <span class="card-kicker">Feedback</span>
+                  <h3>Marktvalidierung</h3>
+                  <p>Der Fragebogen sammelt priorisierte Rückmeldungen zu Schmerz, Kosten, Integrationen, Pilotbereitschaft und Datenschutz.</p>
+                </div>
+                <a class="secondary-action feedback-open" href="./market-validation.html" target="_blank" rel="noreferrer">Separat öffnen</a>
               </div>
-              <label>
-                Benutzer
-                <input id="imapUser" name="user" autocomplete="username" />
-              </label>
-              <label>
-                Passwort / Token
-                <input id="imapSecret" name="secret" type="password" autocomplete="current-password" />
-              </label>
-              <label>
-                Mailbox
-                <input id="imapMailbox" name="mailbox" autocomplete="off" />
-              </label>
-            </form>
-            <div class="settings-card" id="settingsSummary"></div>
-            <div class="settings-card" id="mailPreview"></div>
-            <div class="settings-card runner-card" id="cubeRunner"></div>
+              <iframe
+                class="feedback-frame"
+                title="projektor.one Marktvalidierung"
+                src="./market-validation.html?embedded=1"
+              ></iframe>
+            </div>
           </div>
         </section>
       </main>

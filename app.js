@@ -25,6 +25,7 @@ const state = {
   runnerLog: [],
   runnerMessages: [],
   runnerProtocolStep: 0,
+  settingsView: "configuration",
 };
 
 const runtimeWindowId = `projektor-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -42,6 +43,8 @@ const navItems = [
   ["journal", "JO", "navJournal"],
   ["settings", "SE", "navSettings"],
 ];
+
+const settingsViews = ["configuration", "feedback"];
 
 const languages = {
   de: "Deutsch",
@@ -322,6 +325,10 @@ const i18n = {
     demoEvent: "Demo-Ereignis",
     settingsEyebrow: "Einstellungen",
     settingsTitle: "Einstellungen, Darstellung und IMAP-Projektmail",
+    settingsConfigTitle: "Einstellungen, Darstellung und IMAP-Projektmail",
+    settingsFeedbackTitle: "Feedback und Marktvalidierung",
+    settingsConfig: "Konfiguration",
+    settingsFeedback: "Feedback",
     testImap: "IMAP prüfen",
     importPick: "Importdatei wählen",
     importHint: "XLSX/CSV aus Projektliste, Terminplan oder Kontaktliste",
@@ -372,6 +379,10 @@ const i18n = {
     demoEvent: "Demo event",
     settingsEyebrow: "Settings",
     settingsTitle: "Settings, theme and IMAP project mail",
+    settingsConfigTitle: "Settings, theme and IMAP project mail",
+    settingsFeedbackTitle: "Feedback and market validation",
+    settingsConfig: "Configuration",
+    settingsFeedback: "Feedback",
     testImap: "Check IMAP",
     importPick: "Choose import file",
     importHint: "XLSX/CSV from a project list, schedule or contact list",
@@ -422,6 +433,10 @@ const i18n = {
     demoEvent: "Événement démo",
     settingsEyebrow: "Réglages",
     settingsTitle: "Réglages, thème et mail projet IMAP",
+    settingsConfigTitle: "Réglages, thème et mail projet IMAP",
+    settingsFeedbackTitle: "Feedback et validation marché",
+    settingsConfig: "Configuration",
+    settingsFeedback: "Feedback",
     testImap: "Vérifier IMAP",
     importPick: "Choisir un fichier",
     importHint: "XLSX/CSV depuis une liste projet, un planning ou une liste de contacts",
@@ -472,6 +487,10 @@ const i18n = {
     demoEvent: "Evento demo",
     settingsEyebrow: "Ajustes",
     settingsTitle: "Ajustes, tema y correo IMAP del proyecto",
+    settingsConfigTitle: "Ajustes, tema y correo IMAP del proyecto",
+    settingsFeedbackTitle: "Feedback y validación de mercado",
+    settingsConfig: "Configuración",
+    settingsFeedback: "Feedback",
     testImap: "Comprobar IMAP",
     importPick: "Elegir archivo",
     importHint: "XLSX/CSV de lista de proyecto, cronograma o lista de contactos",
@@ -501,6 +520,41 @@ function onb(key) {
 
 function projectText(field) {
   return demoProject[field]?.[state.language] ?? demoProject[field]?.de ?? "";
+}
+
+function normalizeRouteHash(hash = window.location.hash) {
+  return hash.replace(/^#\/?/, "").split("/").filter(Boolean);
+}
+
+function applyRouteFromLocation() {
+  const [panel, settingsView] = normalizeRouteHash();
+  if (panel && navItems.some(([id]) => id === panel)) {
+    state.activePanel = panel;
+  }
+  if (state.activePanel === "settings" && settingsViews.includes(settingsView)) {
+    state.settingsView = settingsView;
+  }
+}
+
+function routeHash(panel = state.activePanel, settingsView = state.settingsView) {
+  return `#/${panel}${panel === "settings" ? `/${settingsView}` : ""}`;
+}
+
+function navigateTo(panel, settingsView = state.settingsView) {
+  state.activePanel = panel;
+  if (panel === "settings" && settingsViews.includes(settingsView)) {
+    state.settingsView = settingsView;
+  }
+  const nextHash = routeHash();
+  if (window.location.hash !== nextHash) {
+    window.location.hash = nextHash;
+  } else {
+    render();
+  }
+}
+
+function navigateSettings(view) {
+  navigateTo("settings", view);
 }
 
 const metrics = [
@@ -992,12 +1046,36 @@ function renderNav() {
       });
       button.append(el("span", { className: "nav-icon", text: icon }), el("span", { text: tr(labelKey) }));
       button.addEventListener("click", () => {
-        state.activePanel = id;
-        render();
+        navigateTo(id);
       });
       return button;
     }),
   );
+}
+
+function breadcrumbLink(label, hash, current = false) {
+  const link = el("a", {
+    href: hash,
+    text: label,
+    "aria-current": current ? "page" : "false",
+  });
+  return link;
+}
+
+function renderBreadcrumbs() {
+  const root = document.querySelector("#breadcrumbs");
+  if (!root) return;
+  const panelLabelKey = navItems.find(([id]) => id === state.activePanel)?.[2] || "navCockpit";
+  const crumbs = [
+    breadcrumbLink("projektor.one", "#/cockpit"),
+    breadcrumbLink(tr(panelLabelKey), routeHash(state.activePanel), state.activePanel !== "settings"),
+  ];
+
+  if (state.activePanel === "settings") {
+    crumbs.push(breadcrumbLink(tr(state.settingsView === "feedback" ? "settingsFeedback" : "settingsConfig"), routeHash("settings", state.settingsView), true));
+  }
+
+  root.replaceChildren(...crumbs);
 }
 
 function setText(id, text) {
@@ -1040,8 +1118,10 @@ function renderStaticText() {
   setText("addJournalEntry", tr("demoEvent"));
   setText("settingsEyebrow", tr("settingsEyebrow"));
   setText("settings-title", tr("settingsTitle"));
+  setText("settingsFeedbackButton", tr("settingsFeedback"));
   setText("testImap", tr("testImap"));
   setText("simulateImport", tr("simulateImport"));
+  renderBreadcrumbs();
 }
 
 function renderLanguageSelect() {
@@ -1311,6 +1391,8 @@ function renderTheme() {
 
 function renderSettings() {
   const imap = settingsModel.imap;
+  renderSettingsTabs();
+  renderSettingsPanes();
   setInputLabel("imapAccountId", "Account ID");
   setInputLabel("imapHost", state.language === "de" ? "IMAP Host" : state.language === "fr" ? "Hôte IMAP" : state.language === "es" ? "Host IMAP" : "IMAP host");
   setInputLabel("imapPort", state.language === "fr" ? "Port" : "Port");
@@ -1328,6 +1410,36 @@ function renderSettings() {
   renderSettingsSummary();
   renderMailPreview();
   renderCubeRunner();
+}
+
+function renderSettingsTabs() {
+  const tabs = document.querySelector("#settingsTabs");
+  if (!tabs) return;
+  const items = [
+    ["configuration", tr("settingsConfig")],
+    ["feedback", tr("settingsFeedback")],
+  ];
+  tabs.replaceChildren(
+    ...items.map(([view, label]) =>
+      el("button", {
+        type: "button",
+        className: state.settingsView === view ? "active" : "",
+        "aria-pressed": state.settingsView === view ? "true" : "false",
+        "data-settings-view": view,
+        text: label,
+      }),
+    ),
+  );
+}
+
+function renderSettingsPanes() {
+  const configPane = document.querySelector("#settingsConfigPane");
+  const feedbackPane = document.querySelector("#settingsFeedbackPane");
+  const testButton = document.querySelector("#testImap");
+  setText("settings-title", state.settingsView === "feedback" ? tr("settingsFeedbackTitle") : tr("settingsConfigTitle"));
+  configPane.hidden = state.settingsView !== "configuration";
+  feedbackPane.hidden = state.settingsView !== "feedback";
+  testButton.hidden = state.settingsView !== "configuration";
 }
 
 function setInputLabel(inputId, text) {
@@ -1859,6 +1971,11 @@ function resetOnboarding() {
 }
 
 function bindActions() {
+  window.addEventListener("hashchange", () => {
+    applyRouteFromLocation();
+    render();
+  });
+
   document.querySelector("#onboardingRoot").addEventListener("input", syncOnboardingInputs);
   document.querySelector("#onboardingRoot").addEventListener("change", (event) => {
     if (event.target.id === "onboardingLanguage") {
@@ -1880,6 +1997,11 @@ function bindActions() {
   });
 
   document.addEventListener("click", (event) => {
+    const settingsButton = event.target.closest("[data-settings-view]");
+    if (settingsButton) {
+      navigateSettings(settingsButton.dataset.settingsView);
+      return;
+    }
     if (event.target.closest("#resetOnboarding")) resetOnboarding();
     if (event.target.closest("#runnerStartWindows")) openRunnerRoleWindows();
     if (event.target.closest("#runnerRunProtocol")) void runIntegratedProtocol();
@@ -1953,6 +2075,7 @@ if (isRunnerRoleWindow) {
   bootRunnerRoleWindow();
 } else {
   bindRunnerEvents();
+  applyRouteFromLocation();
   render();
   bindActions();
 }
