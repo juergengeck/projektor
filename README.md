@@ -4,7 +4,7 @@ This folder contains a static browser prototype for `projektor.one`, based on:
 
 - `STEERINGone_20260525_V001.pdf`
 - `flexibel-rollenflows-patient-arzt-studienzentrum.pptx`
-- the role, trust, channel, and journal patterns from `../heiner/one.flexibel`
+- the role, trust, trie-sharing, and journal patterns from `../one`
 - the goal-first AI run model from `../vger` and `@refinio/coding.core`
 - the reusable runtime/package owners in `../one` whenever they already cover the primitive
 
@@ -37,7 +37,7 @@ npm run deploy
 The app models project management software for architecture offices first. The current seeded dataset uses a municipal Kita build only as an example from the source docs:
 
 - project cockpit for communication, documents, and decisions
-- role certificates and channel access derived from the Flexibel role model
+- role certificates with trust/context filtered trie sharing
 - HOAI phase tracking with cross-cutting topics
 - VGER-style AI surface with `ProjectGoal`, `ProjectPreparedWorkload`, and `ProjectAIRun`
 - ONE-style journal events with object references
@@ -52,7 +52,8 @@ The app models project management software for architecture offices first. The c
 When a primitive already exists in `../one`, `projektor.one` should consume it rather than recreate it:
 
 - `@refinio/one.core` for recipes, content-addressed objects, access and storage
-- `@refinio/one.models` for runtime models, channels, Leute/contact model and MultiUser wiring
+- `@refinio/trie.core` and ONE.core trie traversal for shared project memory
+- `@refinio/one.models` only where runtime models, Leute/contact model or MultiUser wiring are still the owning API
 - `@refinio/settings.core` for `UISettings`, `SettingsPlan` and `SecretsPlan`
 - `@refinio/source.core` for `Source`, `SourceEntry`, `SourceRun`, `Book` and provenance contracts
 - `@refinio/trust.core` for trust relationships, role evidence, revocation and verification

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>projektor.one Prototype</title>
-    <link rel="icon" href="data:," />
+    <link rel="icon" type="image/svg+xml" href="./projektor_logo.svg" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -13,7 +13,9 @@
     <div class="app-shell" id="appShell">
       <aside class="rail" aria-label="Hauptnavigation">
         <div class="brand">
-          <div class="brand-mark">one</div>
+          <div class="brand-mark" aria-hidden="true">
+            <img src="./projektor_logo.svg" alt="" />
+          </div>
           <div>
             <strong>projektor.one</strong>
             <span id="brandSubtitle">Architektur-Projekte</span>
@@ -21,16 +23,16 @@
         </div>
         <nav class="nav" id="nav"></nav>
         <div class="rail-note">
-          <span>ONE prototype</span>
-          <strong>lokal, foederiert, rollenbasiert</strong>
+          <span>Lokaler Prototyp</span>
+          <strong>rollenbasiert, nachvollziehbar, projektbezogen</strong>
         </div>
       </aside>
 
       <main class="workspace">
         <header class="topbar">
           <div>
-            <p class="eyebrow" id="topEyebrow">Projektmanagement fuer Architekturbueros</p>
-            <h1 id="mainTitle">Demo: Kita 2028 - Neubau einer kommunalen Kindertagesstaette</h1>
+            <p class="eyebrow" id="topEyebrow">Projektmanagement für Architekturbüros</p>
+            <h1 id="mainTitle">Demo: Kita 2028 - Neubau einer kommunalen Kindertagesstätte</h1>
           </div>
           <div class="status-strip" aria-label="Projektstatus">
             <span id="statusPhase"><strong>LP</strong> 3 Entwurf</span>
@@ -45,7 +47,7 @@
           <div class="section-head">
             <div>
               <p class="eyebrow" id="cockpitEyebrow">Projektsteuerung</p>
-              <h2 id="cockpit-title">Ein Projekt, viele Heads, kontrollierte Datenkanaele</h2>
+              <h2 id="cockpit-title">Ein Büro, viele Projekte, klare Datenbereiche</h2>
             </div>
             <button class="primary-action" id="simulateSync" type="button">Sync simulieren</button>
           </div>
@@ -55,11 +57,11 @@
               <div class="map-center">
                 <span id="mapProjectLabel">Aktives Demo-Projekt</span>
                 <strong>Demo: Kita 2028</strong>
-                <small id="mapProjectId">ProjektorProject demo-kita-2028</small>
+                <small id="mapProjectId">Projekt-ID demo-kita-2028</small>
               </div>
               <div class="map-node node-a" id="mapNodeA">Bauherr</div>
               <div class="map-node node-b" id="mapNodeB">Architekt</div>
-              <div class="map-node node-c" id="mapNodeC">Behoerde</div>
+              <div class="map-node node-c" id="mapNodeC">Behörde</div>
               <div class="map-node node-d" id="mapNodeD">Gewerk</div>
               <div class="map-line line-a"></div>
               <div class="map-line line-b"></div>
@@ -76,14 +78,14 @@
         <section class="panel" id="roles" aria-labelledby="roles-title">
           <div class="section-head">
             <div>
-              <p class="eyebrow" id="rolesEyebrow">Flexibel Rollenmodell uebertragen</p>
-              <h2 id="roles-title">Rollen, Zertifikate und Kanalzugriff</h2>
+              <p class="eyebrow" id="rolesEyebrow">Team und Zugriff</p>
+              <h2 id="roles-title">Rollen, Berechtigungen und Zugriff</h2>
             </div>
-            <div class="segmented" id="roleTabs" aria-label="Rolle auswaehlen"></div>
+            <div class="segmented" id="roleTabs" aria-label="Rolle auswählen"></div>
           </div>
           <div class="role-layout">
             <div class="role-detail" id="roleDetail"></div>
-            <div class="channel-matrix" id="channelMatrix"></div>
+            <div class="trie-matrix" id="trieMatrix"></div>
           </div>
         </section>
 
@@ -104,7 +106,7 @@
         <section class="panel" id="data" aria-labelledby="data-title">
           <div class="section-head">
             <div>
-              <p class="eyebrow" id="dataEyebrow">Flexibel Import/Export adaptiert</p>
+              <p class="eyebrow" id="dataEyebrow">Projektdateien</p>
               <h2 id="data-title">Datenimport, Vorschau und Projekt-Export</h2>
             </div>
             <div class="action-row">
@@ -115,13 +117,13 @@
           <div class="data-grid">
             <div class="data-card import-card">
               <div class="book-top">
-                <span class="card-kicker">ProjectSettingsDataImport</span>
-                <code class="book-ref">importSource: settings-data</code>
+                <span class="card-kicker">Import</span>
+                <code class="book-ref">Projektliste, Termine, Kontakte</code>
               </div>
               <label class="file-drop">
                 <input id="dataImportFile" type="file" accept=".xlsx,.xls,.ods,.csv,.json" />
-                <strong>Importdatei waehlen</strong>
-                <span>XLSX/CSV aus Projektliste, Terminplan oder Flexibel-artigem Datenexport</span>
+                <strong>Importdatei wählen</strong>
+                <span>XLSX/CSV aus Projektliste, Terminplan oder Kontaktliste</span>
               </label>
               <div class="import-status" id="importStatus"></div>
               <button class="secondary-action" id="simulateImport" type="button">Import simulieren</button>
@@ -134,10 +136,10 @@
         <section class="panel" id="ai" aria-labelledby="ai-title">
           <div class="section-head">
             <div>
-              <p class="eyebrow" id="aiEyebrow">VGER AI Surface</p>
-              <h2 id="ai-title">Goal Book, Prepared Workload, Run Book</h2>
+              <p class="eyebrow" id="aiEyebrow">Projektassistenz</p>
+              <h2 id="ai-title">Prüfung von Lücken, Risiken und nächsten Schritten</h2>
             </div>
-            <button class="primary-action" id="advanceRun" type="button">Naechsten Schritt pruefen</button>
+            <button class="primary-action" id="advanceRun" type="button">Nächsten Schritt prüfen</button>
           </div>
           <div class="ai-grid">
             <div class="ai-book" id="goalBook"></div>
@@ -150,7 +152,7 @@
           <div class="section-head">
             <div>
               <p class="eyebrow" id="journalEyebrow">ONE Journal</p>
-              <h2 id="journal-title">Faelschungssichere Ereignisse als Bedienoberflaeche</h2>
+              <h2 id="journal-title">Fälschungssichere Ereignisse als Bedienoberfläche</h2>
             </div>
             <button class="secondary-action" id="addJournalEntry" type="button">Demo-Ereignis</button>
           </div>
@@ -160,16 +162,16 @@
         <section class="panel" id="settings" aria-labelledby="settings-title">
           <div class="section-head">
             <div>
-              <p class="eyebrow" id="settingsEyebrow">settings.core + source.mail</p>
+              <p class="eyebrow" id="settingsEyebrow">Einstellungen</p>
               <h2 id="settings-title">Settings, Theme und IMAP-Projektmail</h2>
             </div>
-            <button class="primary-action" id="testImap" type="button">IMAP pruefen</button>
+            <button class="primary-action" id="testImap" type="button">IMAP prüfen</button>
           </div>
           <div class="settings-grid">
             <form class="settings-card" id="imapForm">
               <div class="book-top">
-                <span class="card-kicker">sourceImap.accounts</span>
-                <code class="book-ref">settings:project:demo-kita-2028</code>
+                <span class="card-kicker">Projektmail</span>
+                <code class="book-ref">Demo: Kita 2028</code>
               </div>
               <label>
                 Account ID

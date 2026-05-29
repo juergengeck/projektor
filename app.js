@@ -26,7 +26,7 @@ const navItems = [
   ["roles", "RO", "navRoles"],
   ["phases", "LP", "navPhases"],
   ["data", "DA", "navData"],
-  ["ai", "AI", "navAi"],
+  ["ai", "AS", "navAi"],
   ["journal", "JO", "navJournal"],
   ["settings", "SE", "navSettings"],
 ];
@@ -43,51 +43,51 @@ const onboardingSteps = ["identity", "web", "password", "stats", "review"];
 const onboardingCopy = {
   de: {
     appStoreStep: "Web",
-    back: "Zurueck",
+    back: "Zurück",
     continue: "Weiter",
     email: "E-Mail",
     emailHelp: "Wir verwenden deine E-Mail als lokale ID, nicht als Login bei unseren Servern.",
     emailPlaceholder: "du@architekturburo.example",
     finish: "projektor.one starten",
-    identityStep: "Identitaet",
-    intro: "Ein lokaler Start fuer Architektur-Projekte, Rollen, Projektmail und Entscheidungen.",
+    identityStep: "Identität",
+    intro: "Ein lokaler Start für Architektur-Projekte, Rollen, Projektmail und Entscheidungen.",
     localPromise:
-      "Alle Projekt- und Nutzerdaten bleiben auf deinem Rechner, in deinem Browser. projektor.one laedt Projektinhalte nicht automatisch auf unsere Server.",
+      "Alle Projekt- und Nutzerdaten bleiben auf deinem Rechner, in deinem Browser. projektor.one lädt Projektinhalte nicht automatisch auf unsere Server.",
     localPromiseTitle: "Deine Daten bleiben lokal",
     name: "Anrede / Name",
     namePlaceholder: "z. B. Alex, Frau Meyer oder Team LP3",
     nextStore:
-      "Der Browser wird hier wie ein App Store genutzt: du oeffnest oder installierst projektor.one direkt aus dem Web, ohne zentrale Store-Freigabe.",
+      "Der Browser wird hier wie ein App Store genutzt: du öffnest oder installierst projektor.one direkt aus dem Web, ohne zentrale Store-Freigabe.",
     nextStoreTitle: "Das Web ist der App Store",
     optional: "optional",
     password: "Passwort",
     passwordConfirm: "Passwort wiederholen",
     passwordHelp:
-      "Dieses Passwort ist nur fuer den Schutz deiner lokalen Daten gedacht. Es ist kein Konto-Passwort und wird in diesem Prototyp nicht gespeichert.",
+      "Dieses Passwort ist nur für den Schutz deiner lokalen Daten gedacht. Es ist kein Konto-Passwort und wird in diesem Prototyp nicht gespeichert.",
     passwordPlaceholder: "lokales Schutzpasswort",
     passwordStep: "Schutz",
-    passwordTitle: "Lokales Passwort nur, wenn du es moechtest",
+    passwordTitle: "Lokales Passwort nur, wenn du es möchtest",
     profileTitle: "Wie soll das System dich ansprechen?",
-    resetOnboarding: "Onboarding zuruecksetzen",
-    reviewEmail: "Identitaets-E-Mail",
+    resetOnboarding: "Onboarding zurücksetzen",
+    reviewEmail: "Identitäts-E-Mail",
     reviewName: "Anrede",
     reviewPasswordOff: "ohne lokales Passwort",
     reviewPasswordOn: "lokaler Schutz aktiviert",
     reviewStatsOff: "nicht freigegeben",
     reviewStatsOn: "freigegeben",
     reviewStep: "Start",
-    reviewTitle: "Alles bereit fuer dein lokales Projekt-Cockpit",
+    reviewTitle: "Alles bereit für dein lokales Projekt-Cockpit",
     secureEmail: "Bitte gib deine E-Mail ein, damit du dich sicher identifizieren kannst.",
     skipPassword: "Ohne Passwort weiter",
     statsConsent:
-      "Ich stimme zu, dass projektor.one Nutzungsstatistiken fuer Beschaffung und Einfuehrung auswerten darf.",
+      "Ich stimme zu, dass projektor.one Nutzungsstatistiken für Beschaffung und Einführung auswerten darf.",
     statsHelp:
-      "Erfasst werden nur Nutzungsereignisse wie geoeffnete Bereiche, Sitzungen und technische Kategorie. Projektinhalte, Dokumente, Mailtexte und Dateinamen gehoeren nicht dazu.",
+      "Erfasst werden nur Nutzungsereignisse wie geöffnete Bereiche, Sitzungen und technische Kategorie. Projektinhalte, Dokumente, Mailtexte und Dateinamen gehören nicht dazu.",
     statsStep: "Statistik",
     statsTitle: "Nutzungsstatistiken nur mit deiner Zustimmung",
     validationEmail: "Bitte gib eine plausible E-Mail-Adresse ein.",
     validationName: "Bitte gib ein, wie projektor.one dich ansprechen soll.",
-    validationPassword: "Die Passwoerter muessen uebereinstimmen.",
+    validationPassword: "Die Passwörter müssen übereinstimmen.",
   },
   en: {
     appStoreStep: "Web",
@@ -237,18 +237,18 @@ const onboardingCopy = {
 
 const demoProject = {
   id: "demo-kita-2028",
-  objectType: "ProjektorProject",
+  objectType: "Projekt-ID",
   titles: {
-    de: "Demo: Kita 2028 - Neubau einer kommunalen Kindertagesstaette",
+    de: "Demo: Kita 2028 - Neubau einer kommunalen Kindertagesstätte",
     en: "Demo: Kita 2028 - New municipal daycare building",
     fr: "Démo : Kita 2028 - construction d'une crèche municipale",
     es: "Demo: Kita 2028 - nueva guardería municipal",
   },
   subtitles: {
-    de: "Beispielprojekt aus den Projektor-Unterlagen",
-    en: "Example project from the Projektor source documents",
-    fr: "Projet exemple issu des documents Projektor",
-    es: "Proyecto de ejemplo de los documentos de Projektor",
+    de: "Kommunales Bauprojekt mit Rollen, Terminen, Dokumenten und Projektmail",
+    en: "Municipal building project with roles, dates, documents and project mail",
+    fr: "Projet public avec rôles, dates, documents et mail projet",
+    es: "Proyecto municipal con roles, fechas, documentos y correo de proyecto",
   },
   mapLabel: {
     de: "Aktives Demo-Projekt",
@@ -269,7 +269,7 @@ const demoProject = {
     es: "Medio",
   },
   nodes: {
-    de: ["Bauherr", "Architekt", "Behoerde", "Gewerk"],
+    de: ["Bauherr", "Architekt", "Behörde", "Gewerk"],
     en: ["Client", "Architect", "Authority", "Trade"],
     fr: ["Maître d'ouvrage", "Architecte", "Autorité", "Entreprise"],
     es: ["Cliente", "Arquitecto", "Autoridad", "Contrata"],
@@ -282,51 +282,49 @@ const i18n = {
     navRoles: "Rollen",
     navPhases: "Phasen",
     navData: "Daten",
-    navAi: "AI Surface",
+    navAi: "Assistenz",
     navJournal: "Journal",
-    navSettings: "Settings",
+    navSettings: "Einstellungen",
     brandSubtitle: "Architektur-Projekte",
-    topEyebrow: "Projektmanagement fuer Architekturbueros",
+    topEyebrow: "Projektmanagement für Architekturbüros",
     statusRiskLabel: "Risiko",
     statusSync: "Sync",
     dark: "Dark",
     light: "Light",
     simulateSync: "Sync simulieren",
     cockpitEyebrow: "Projektsteuerung",
-    cockpitTitle: "Ein Buero, viele Projekte, kontrollierte Datenkanaele",
-    rolesEyebrow: "Flexibel Rollenmodell uebertragen",
-    rolesTitle: "Rollen, Zertifikate und Kanalzugriff",
+    cockpitTitle: "Ein Büro, viele Projekte, klare Datenbereiche",
+    rolesEyebrow: "Team und Zugriff",
+    rolesTitle: "Rollen, Berechtigungen und Zugriff",
     phasesEyebrow: "HOAI Leistungsphasen",
     phasesTitle: "Phasen, Querschnittsthemen und offene Entscheidungen",
-    dataEyebrow: "Flexibel Import/Export adaptiert",
+    dataEyebrow: "Projektdateien",
     dataTitle: "Datenimport, Vorschau und Projekt-Export",
     template: "Template",
     export: "Export",
-    aiEyebrow: "VGER AI Surface",
-    aiTitle: "Goal Book, Prepared Workload, Run Book",
-    advanceRun: "Naechsten Schritt pruefen",
-    journalEyebrow: "ONE Journal",
-    journalTitle: "Faelschungssichere Ereignisse als Bedienoberflaeche",
+    aiEyebrow: "Projektassistenz",
+    aiTitle: "Prüfung von Lücken, Risiken und nächsten Schritten",
+    advanceRun: "Nächsten Schritt prüfen",
+    journalEyebrow: "Projektjournal",
+    journalTitle: "Fälschungssichere Ereignisse als Bedienoberfläche",
     demoEvent: "Demo-Ereignis",
-    settingsEyebrow: "settings.core + source.mail",
-    settingsTitle: "Settings, Theme und IMAP-Projektmail",
-    testImap: "IMAP pruefen",
-    importPick: "Importdatei waehlen",
-    importHint: "XLSX/CSV aus Projektliste, Terminplan oder Flexibel-artigem Datenexport",
+    settingsEyebrow: "Einstellungen",
+    settingsTitle: "Einstellungen, Darstellung und IMAP-Projektmail",
+    testImap: "IMAP prüfen",
+    importPick: "Importdatei wählen",
+    importHint: "XLSX/CSV aus Projektliste, Terminplan oder Kontaktliste",
     simulateImport: "Import simulieren",
     dataPreviewTitle: "Vorschau vor Schreibzugriff",
-    dataPreviewText: "Wie in Flexibel wird erst normalisiert, dann vorgezeigt, dann in Domain-Objekte geschrieben.",
+    dataPreviewText: "Projektor prüft die Datei zuerst und zeigt Änderungen an, bevor Daten übernommen werden.",
     exportBundleTitle: "Export-Bundle",
-    exportBundleText: "Der Export folgt Flexibel: Kontext, fachliche Tabellen, Warnungen und runde Re-Import-Struktur.",
-    settingsText: "Settings zeigt hier nur die unmittelbar bedienbaren Projektpraeferenzen und Datenquellen. Die breitere target-scoped Steuerung bleibt ausserhalb dieser UI.",
-    oneOwners: "../one package owners",
+    exportBundleText: "Der Export sammelt Kontakte, Rollen, Termine, Dokumente, Mailbezug und Journal in einer nachvollziehbaren Projektdatei.",
     roleAllowed: "erlaubt",
     status: "Status",
-    parser: "Parser",
-    importSource: "Import source",
-    noImportFile: "Keine Importdatei gewaehlt",
+    parser: "Dateityp",
+    importSource: "Quelle",
+    noImportFile: "Keine Importdatei gewählt",
     importReady: "bereit zur Vorschau",
-    importPreview: "Vorschau erzeugt, 4 Konflikte pruefen",
+    importPreview: "Vorschau erzeugt, 4 Konflikte prüfen",
     imported: "Demo-Import journalisiert",
   },
   en: {
@@ -334,7 +332,7 @@ const i18n = {
     navRoles: "Roles",
     navPhases: "Phases",
     navData: "Data",
-    navAi: "AI Surface",
+    navAi: "Assistant",
     navJournal: "Journal",
     navSettings: "Settings",
     brandSubtitle: "Architecture projects",
@@ -345,37 +343,35 @@ const i18n = {
     light: "Light",
     simulateSync: "Simulate sync",
     cockpitEyebrow: "Project steering",
-    cockpitTitle: "One office, many projects, controlled data channels",
-    rolesEyebrow: "Flexibel role model adapted",
-    rolesTitle: "Roles, certificates and channel access",
+    cockpitTitle: "One office, many projects, clear data areas",
+    rolesEyebrow: "Team and access",
+    rolesTitle: "Roles, permissions and access",
     phasesEyebrow: "HOAI phases",
     phasesTitle: "Phases, cross-cutting topics and open decisions",
-    dataEyebrow: "Flexibel import/export adapted",
+    dataEyebrow: "Project files",
     dataTitle: "Data import, preview and project export",
     template: "Template",
     export: "Export",
-    aiEyebrow: "VGER AI Surface",
-    aiTitle: "Goal Book, Prepared Workload, Run Book",
+    aiEyebrow: "Project assistant",
+    aiTitle: "Review gaps, risks and next steps",
     advanceRun: "Check next step",
-    journalEyebrow: "ONE Journal",
+    journalEyebrow: "Project journal",
     journalTitle: "Tamper-evident events as an operating surface",
     demoEvent: "Demo event",
-    settingsEyebrow: "settings.core + source.mail",
+    settingsEyebrow: "Settings",
     settingsTitle: "Settings, theme and IMAP project mail",
     testImap: "Check IMAP",
     importPick: "Choose import file",
-    importHint: "XLSX/CSV from project list, schedule or Flexibel-style data export",
+    importHint: "XLSX/CSV from a project list, schedule or contact list",
     simulateImport: "Simulate import",
     dataPreviewTitle: "Preview before write access",
-    dataPreviewText: "As in Flexibel, data is normalized first, previewed, then written into domain objects.",
+    dataPreviewText: "Projektor checks the file first and previews changes before anything is imported.",
     exportBundleTitle: "Export bundle",
-    exportBundleText: "The export follows Flexibel: context, domain tables, warnings and stable re-import structure.",
-    settingsText: "Settings shows only directly editable project preferences and data sources here. Broader target-scoped control stays outside this UI.",
-    oneOwners: "../one package owners",
+    exportBundleText: "The export collects contacts, roles, dates, documents, mail references and journal entries in one traceable project file.",
     roleAllowed: "allowed",
     status: "Status",
-    parser: "Parser",
-    importSource: "Import source",
+    parser: "File type",
+    importSource: "Source",
     noImportFile: "No import file selected",
     importReady: "ready for preview",
     importPreview: "Preview created, review 4 conflicts",
@@ -397,36 +393,34 @@ const i18n = {
     light: "Clair",
     simulateSync: "Simuler la sync",
     cockpitEyebrow: "Pilotage de projet",
-    cockpitTitle: "Un cabinet, plusieurs projets, des canaux de données contrôlés",
-    rolesEyebrow: "Modèle de rôles Flexibel adapté",
-    rolesTitle: "Rôles, certificats et accès aux canaux",
+    cockpitTitle: "Un cabinet, plusieurs projets, des espaces de données clairs",
+    rolesEyebrow: "Équipe et accès",
+    rolesTitle: "Rôles, droits et accès",
     phasesEyebrow: "Phases HOAI",
     phasesTitle: "Phases, thèmes transversaux et décisions ouvertes",
-    dataEyebrow: "Import/export Flexibel adapté",
+    dataEyebrow: "Fichiers projet",
     dataTitle: "Import, aperçu et export du projet",
     template: "Modèle",
     export: "Exporter",
-    aiEyebrow: "Surface IA VGER",
-    aiTitle: "Goal Book, Prepared Workload, Run Book",
+    aiEyebrow: "Assistant projet",
+    aiTitle: "Vérifier les manques, risques et prochaines étapes",
     advanceRun: "Vérifier l'étape suivante",
-    journalEyebrow: "Journal ONE",
+    journalEyebrow: "Journal projet",
     journalTitle: "Événements infalsifiables comme surface opérationnelle",
     demoEvent: "Événement démo",
-    settingsEyebrow: "settings.core + source.mail",
+    settingsEyebrow: "Réglages",
     settingsTitle: "Réglages, thème et mail projet IMAP",
     testImap: "Vérifier IMAP",
     importPick: "Choisir un fichier",
-    importHint: "XLSX/CSV depuis une liste projet, un planning ou un export de type Flexibel",
+    importHint: "XLSX/CSV depuis une liste projet, un planning ou une liste de contacts",
     simulateImport: "Simuler l'import",
     dataPreviewTitle: "Aperçu avant écriture",
-    dataPreviewText: "Comme dans Flexibel, les données sont normalisées, prévisualisées, puis écrites dans des objets métier.",
+    dataPreviewText: "Projektor vérifie d'abord le fichier et affiche les changements avant toute importation.",
     exportBundleTitle: "Bundle d'export",
-    exportBundleText: "L'export suit Flexibel : contexte, tables métier, avertissements et structure de réimport stable.",
-    settingsText: "Les réglages affichent ici seulement les préférences projet et sources de données directement éditables. Le pilotage target-scoped plus large reste hors de cette UI.",
-    oneOwners: "packages propriétaires ../one",
+    exportBundleText: "L'export rassemble contacts, rôles, dates, documents, références mail et journal dans un fichier projet traçable.",
     roleAllowed: "autorisé",
     status: "Statut",
-    parser: "Parseur",
+    parser: "Type de fichier",
     importSource: "Source import",
     noImportFile: "Aucun fichier sélectionné",
     importReady: "prêt pour l'aperçu",
@@ -449,36 +443,34 @@ const i18n = {
     light: "Claro",
     simulateSync: "Simular sync",
     cockpitEyebrow: "Dirección de proyecto",
-    cockpitTitle: "Un estudio, varios proyectos, canales de datos controlados",
-    rolesEyebrow: "Modelo de roles Flexibel adaptado",
-    rolesTitle: "Roles, certificados y acceso a canales",
+    cockpitTitle: "Un estudio, varios proyectos, áreas de datos claras",
+    rolesEyebrow: "Equipo y acceso",
+    rolesTitle: "Roles, permisos y acceso",
     phasesEyebrow: "Fases HOAI",
     phasesTitle: "Fases, temas transversales y decisiones abiertas",
-    dataEyebrow: "Import/export Flexibel adaptado",
+    dataEyebrow: "Archivos de proyecto",
     dataTitle: "Importación, vista previa y exportación del proyecto",
     template: "Plantilla",
     export: "Exportar",
-    aiEyebrow: "Superficie IA VGER",
-    aiTitle: "Goal Book, Prepared Workload, Run Book",
+    aiEyebrow: "Asistente de proyecto",
+    aiTitle: "Revisar vacíos, riesgos y próximos pasos",
     advanceRun: "Revisar siguiente paso",
-    journalEyebrow: "Diario ONE",
+    journalEyebrow: "Diario del proyecto",
     journalTitle: "Eventos verificables como superficie operativa",
     demoEvent: "Evento demo",
-    settingsEyebrow: "settings.core + source.mail",
+    settingsEyebrow: "Ajustes",
     settingsTitle: "Ajustes, tema y correo IMAP del proyecto",
     testImap: "Comprobar IMAP",
     importPick: "Elegir archivo",
-    importHint: "XLSX/CSV de lista de proyecto, cronograma o export tipo Flexibel",
+    importHint: "XLSX/CSV de lista de proyecto, cronograma o lista de contactos",
     simulateImport: "Simular importación",
     dataPreviewTitle: "Vista previa antes de escribir",
-    dataPreviewText: "Como en Flexibel, los datos se normalizan, se previsualizan y luego se escriben en objetos de dominio.",
+    dataPreviewText: "Projektor revisa primero el archivo y muestra los cambios antes de importar datos.",
     exportBundleTitle: "Paquete de exportación",
-    exportBundleText: "La exportación sigue Flexibel: contexto, tablas de dominio, advertencias y estructura estable para reimportar.",
-    settingsText: "Ajustes muestra aquí solo preferencias de proyecto y fuentes de datos editables. El control target-scoped más amplio queda fuera de esta UI.",
-    oneOwners: "paquetes propietarios ../one",
+    exportBundleText: "La exportación reúne contactos, roles, fechas, documentos, referencias de correo y diario en un archivo trazable.",
     roleAllowed: "permitido",
     status: "Estado",
-    parser: "Parser",
+    parser: "Tipo de archivo",
     importSource: "Fuente import",
     noImportFile: "Ningún archivo seleccionado",
     importReady: "listo para vista previa",
@@ -500,26 +492,26 @@ function projectText(field) {
 }
 
 const metrics = [
-  ["100", "Beteiligte", "Schaetzung fuer Bauherr, Planer, Pruefer, Gutachter und Gewerke."],
-  ["42", "aktive Kontakte", "Heads und Stellvertreter mit direkter Einladung oder delegierter Rolle."],
+  ["100", "Beteiligte", "Schätzung für Bauherr, Planer, Prüfer, Gutachter und Gewerke."],
+  ["42", "aktive Kontakte", "Hauptkontakte und Stellvertreter mit direkter Einladung oder delegierter Rolle."],
   ["9", "Leistungsphasen", "Von Grundlagenermittlung bis Objektbetreuung und Dokumentation."],
-  ["5", "Querschnittsthemen", "Kosten, Termine, Foerdermittel, Kommunikation und Nachhaltigkeit."],
+  ["5", "Querschnittsthemen", "Kosten, Termine, Fördermittel, Kommunikation und Nachhaltigkeit."],
 ];
 
 const lanes = [
   {
     title: "Kommunikation",
-    text: "Projektmail, Chat und Termine bleiben pro Projektkanal nachvollziehbar.",
+    text: "Projektmail, Chat und Termine bleiben pro Projektbereich nachvollziehbar.",
     progress: 72,
   },
   {
     title: "Dokumente",
-    text: "Plaene, Nachweise und Freigaben werden als ProjectDocumentRef geteilt.",
+    text: "Pläne, Nachweise und Freigaben werden mit Status und Verantwortlichen geteilt.",
     progress: 58,
   },
   {
     title: "Entscheidungen",
-    text: "Freigaben, Rueckfragen und Konflikte landen im Journal statt in Nebenkanaelen.",
+    text: "Freigaben, Rückfragen und Konflikte landen im Journal statt in Nebenspuren.",
     progress: 44,
   },
 ];
@@ -527,76 +519,124 @@ const lanes = [
 const roles = {
   owner: {
     label: "Bauherr",
-    type: "ProjectOwnerRoleCertificate",
-    id: "role:owner:demo-kita-2028",
+    type: "Projektrolle",
+    id: "Vollzugriff auf Entscheidungen und Budget",
     summary:
       "Sieht das Gesamtprojekt, gibt Budgets und Entscheidungen frei und kann Stellvertreter mit identischer Rolle einladen.",
-    permissions: ["Alle Projektkanaele", "Kostenfreigabe", "Terminkalender", "Journal und Export"],
+    permissions: ["Alle Projektrouten", "Kostenfreigabe", "Terminkalender", "Journal und Export"],
   },
   architect: {
     label: "Architekt",
-    type: "ProjectCoordinatorRoleCertificate",
-    id: "role:architect:demo-kita-2028",
+    type: "Projektrolle",
+    id: "Koordination und Projektanlage",
     summary:
-      "Zentraler Koordinator ueber 4 bis 7 Jahre. Erstellt das Projekt, laedt Heads ein und steuert Rechte pro Leistungsphase.",
-    permissions: ["Projektanlage", "Rolleneinladung", "Dokumentengruppen", "AI Goal Surface"],
+      "Zentraler Koordinator über 4 bis 7 Jahre. Erstellt das Projekt, lädt Beteiligte ein und steuert Rechte pro Leistungsphase.",
+    permissions: ["Projektanlage", "Rolleneinladung", "Dokumentengruppen", "Projektassistenz"],
   },
   controller: {
     label: "Projektsteuerer",
-    type: "ProjectControllerRoleCertificate",
-    id: "role:controller:demo-kita-2028",
+    type: "Projektrolle",
+    id: "Termine, Kosten und Berichtslagen",
     summary:
       "Koordiniert Termine, Kosten und Berichtslagen, falls diese Rolle im Projekt eingesetzt wird.",
-    permissions: ["Kostenkanal", "Terminsteuerung", "Berichte", "Journal lesen"],
+    permissions: ["Kostentrie", "Terminsteuerung", "Berichte", "Journal lesen"],
   },
   authority: {
-    label: "Behoerde",
-    type: "AuthorityRoleCertificate",
-    id: "role:authority:lp4",
+    label: "Behörde",
+    type: "Externe Rolle",
+    id: "Begrenzter Zugriff für Genehmigung",
     summary:
-      "Erhaelt begrenzten Zugriff auf genehmigungsrelevante Dokumente, Rueckfragen und Freigaben.",
-    permissions: ["LP4 Dokumente", "Rueckfragen", "Status lesen", "Kein Vollzugriff"],
+      "Erhält begrenzten Zugriff auf genehmigungsrelevante Dokumente, Rückfragen und Freigaben.",
+    permissions: ["LP4 Dokumente", "Rückfragen", "Status lesen", "Kein Vollzugriff"],
   },
   trade: {
     label: "Gewerk",
-    type: "TradeRoleCertificate",
-    id: "role:trade:lp6-lp8",
+    type: "Externe Rolle",
+    id: "Begrenzter Zugriff für Ausführung",
     summary:
-      "Arbeitet mit eingeschraenkten Plan-, Termin- und Dokumentengruppen in der Ausfuehrung.",
+      "Arbeitet mit eingeschränkten Plan-, Termin- und Dokumentengruppen in der Ausführung.",
     permissions: ["Dokumentengruppe", "Termine", "Chat", "Journal begrenzt"],
   },
 };
 
-const channels = [
+const runnerRoleKeys = ["architect", "owner", "authority", "trade"];
+
+const runnerRoleWindowLayout = {
+  architect: { left: 40, top: 60, width: 470, height: 640 },
+  owner: { left: 540, top: 60, width: 470, height: 640 },
+  authority: { left: 1040, top: 60, width: 470, height: 640 },
+  trade: { left: 1540, top: 60, width: 470, height: 640 },
+};
+
+const runnerProtocolSteps = [
   {
-    name: "project.mail",
-    object: "ProjectMailChannel",
-    owner: "architect",
-    access: { owner: "full", architect: "full", controller: "full", authority: "limited", trade: "limited" },
+    from: "architect",
+    to: "owner",
+    text: "Bitte prüfe die LP3-Kostenfreigabe für Demo: Kita 2028.",
+    journal: "Architekt fordert Bauherr-Freigabe für LP3 an.",
   },
   {
-    name: "source.mail.imap",
-    object: "ImapSourceProjectionRoot",
-    owner: "architect",
-    access: { owner: "limited", architect: "full", controller: "limited", authority: "none", trade: "none" },
+    from: "owner",
+    to: "architect",
+    text: "Freigabe unter der Bedingung, dass der Fördermitteltermin im Projektkalender bleibt.",
+    journal: "Bauherr gibt LP3 mit Terminauflage frei.",
   },
   {
-    name: "documents.lp4",
-    object: "ProjectDocumentChannel",
-    owner: "architect",
-    access: { owner: "full", architect: "full", controller: "limited", authority: "limited", trade: "none" },
+    from: "architect",
+    to: "authority",
+    text: "Genehmigungsmappe LP4 ist vorbereitet. Rückfrage Stellplatznachweis bitte an den LP4-Ast hängen.",
+    journal: "Architekt teilt LP4-Trie-Ast mit Behörde.",
   },
   {
-    name: "costs.din276",
-    object: "CostControlChannel",
+    from: "authority",
+    to: "architect",
+    text: "Rückfrage liegt vor: Stellplatznachweis und Brandschutzverweis fehlen noch.",
+    journal: "Behörde meldet zwei offene Nachweise.",
+  },
+  {
+    from: "architect",
+    to: "trade",
+    text: "Vorabinfo: Planstand LP5 bleibt gesperrt, bis LP4-Rückfrage geklärt ist.",
+    journal: "Gewerk erhält begrenzten Vorabhinweis ohne Planfreigabe.",
+  },
+  {
+    from: "trade",
+    to: "architect",
+    text: "Verstanden. Baustellenast wartet auf freigegebenen Planstand.",
+    journal: "Gewerk bestätigt begrenzten Zugriff.",
+  },
+];
+
+const sharedTrieRoots = [
+  {
+    path: "/demo-kita-2028/project-mail",
+    object: "ProjectMailTrieRoot",
+    owner: "architect",
+    visibility: { owner: "full", architect: "full", controller: "full", authority: "filtered", trade: "filtered" },
+  },
+  {
+    path: "/demo-kita-2028/source/imap",
+    object: "SourceEntryTrieRoot",
+    owner: "architect",
+    visibility: { owner: "filtered", architect: "full", controller: "filtered", authority: "none", trade: "none" },
+  },
+  {
+    path: "/demo-kita-2028/lp4/permit-documents",
+    object: "ProjectDocumentTrieRoot",
+    owner: "architect",
+    visibility: { owner: "full", architect: "full", controller: "filtered", authority: "filtered", trade: "none" },
+  },
+  {
+    path: "/demo-kita-2028/costs/din276",
+    object: "CostControlTrieRoot",
     owner: "controller",
-    access: { owner: "full", architect: "full", controller: "full", authority: "none", trade: "none" },
+    visibility: { owner: "full", architect: "full", controller: "full", authority: "none", trade: "none" },
   },
   {
-    name: "site.lp8",
-    object: "ConstructionSiteChannel",
+    path: "/demo-kita-2028/lp8/site",
+    object: "ConstructionSiteTrieRoot",
     owner: "architect",
-    access: { owner: "limited", architect: "full", controller: "limited", authority: "none", trade: "limited" },
+    visibility: { owner: "filtered", architect: "full", controller: "filtered", authority: "none", trade: "filtered" },
   },
 ];
 
@@ -605,78 +645,78 @@ const phases = [
     id: "lp1",
     short: "LP1",
     title: "Grundlagenermittlung",
-    decision: "Bedarf, Flaechen, Beteiligte und erste Projektstruktur klaeren.",
-    risk: "Unklare Anforderungen werden spaeter teuer.",
+    decision: "Bedarf, Flächen, Beteiligte und erste Projektstruktur klären.",
+    risk: "Unklare Anforderungen werden später teuer.",
   },
   {
     id: "lp2",
     short: "LP2",
     title: "Vorplanung",
-    decision: "Varianten, Kostenrahmen und Foerderlogik zusammenbringen.",
-    risk: "Foerderbedingungen und Nutzerbedarf laufen auseinander.",
+    decision: "Varianten, Kostenrahmen und Förderlogik zusammenbringen.",
+    risk: "Förderbedingungen und Nutzerbedarf laufen auseinander.",
   },
   {
     id: "lp3",
     short: "LP3",
     title: "Entwurfsplanung",
-    decision: "Entwurf, Kostenberechnung und Terminpfad beschlussfaehig machen.",
+    decision: "Entwurf, Kostenberechnung und Terminpfad beschlussfähig machen.",
     risk: "Bauherr, Fachplaner und Nachhaltigkeitsanforderungen sind nicht synchron.",
   },
   {
     id: "lp4",
     short: "LP4",
     title: "Genehmigungsplanung",
-    decision: "Unterlagen, Behoerdenrueckfragen und Nachweise vollstaendig halten.",
-    risk: "Rueckfragen verschwinden in Mailverlaeufen.",
+    decision: "Unterlagen, Behördenrückfragen und Nachweise vollständig halten.",
+    risk: "Rückfragen verschwinden in Mailverläufen.",
   },
   {
     id: "lp5",
     short: "LP5",
-    title: "Ausfuehrungsplanung",
-    decision: "Planstaende, Freigaben und Aenderungen kontrolliert verteilen.",
-    risk: "Gewerke arbeiten mit abweichenden Planstaenden.",
+    title: "Ausführungsplanung",
+    decision: "Planstände, Freigaben und Änderungen kontrolliert verteilen.",
+    risk: "Gewerke arbeiten mit abweichenden Planständen.",
   },
   {
     id: "lp8",
     short: "LP8",
-    title: "Bauueberwachung",
-    decision: "Maengel, Termine, Protokolle und Nachtraege im Takt fuehren.",
-    risk: "Baustellenereignisse sind nicht beweisfest verknuepft.",
+    title: "Bauüberwachung",
+    decision: "Mängel, Termine, Protokolle und Nachträge im Takt führen.",
+    risk: "Baustellenereignisse sind nicht beweisfest verknüpft.",
   },
 ];
 
 const topics = [
   ["Kosten", "DIN 276 Fortschreibung, Freigaben, Budgetabweichungen"],
-  ["Termine", "Meilensteine, Gremien, Behoerdenlaufzeiten, Bauzeitenplan"],
-  ["Foerdermittel", "Nachweise, Fristen, Zweckbindung und Dokumentationspflicht"],
+  ["Termine", "Meilensteine, Gremien, Behördenlaufzeiten, Bauzeitenplan"],
+  ["Fördermittel", "Nachweise, Fristen, Zweckbindung und Dokumentationspflicht"],
   ["Kommunikation", "Projektmail, Gruppenchat, Aufgaben, Eskalationen"],
   ["Nachhaltigkeit", "GEG, BNB-Optionen, Energie- und Materialnachweise"],
 ];
 
 const ai = {
   goal: {
-    type: "ProjectGoal",
-    ref: "goal:demo-kita-2028:lp3-lp4-readiness",
-    objective: "LP3 nach LP4 uebergabefaehig machen, ohne Rueckfragen und Nachweise in Nebenkanaelen zu verlieren.",
-    why: "Das Architekturbuero traegt die Koordination. Der AI-Agent soll nicht entscheiden, sondern Luecken, Risiken und widerspruechliche Dokumentstaende sichtbar machen.",
-    criteria: ["Genehmigungsmappe vollstaendig", "Kosten- und Terminannahmen verlinkt", "Behoerdenfragen als Journal refs", "Freigabe durch Bauherr dokumentiert"],
+    type: "Assistenzauftrag",
+    ref: "LP3 zu LP4 vorbereiten",
+    objective: "LP3 nach LP4 übergabefähig machen, ohne Rückfragen und Nachweise in Nebenspuren zu verlieren.",
+    why: "Das Architekturbüro trägt die Koordination. Der AI-Agent soll nicht entscheiden, sondern Lücken, Risiken und widersprüchliche Dokumentstände sichtbar machen.",
+    criteria: ["Genehmigungsmappe vollständig", "Kosten- und Terminannahmen verknüpft", "Behördenfragen nachvollziehbar", "Freigabe durch Bauherr dokumentiert"],
   },
   workload: {
-    type: "ProjectPreparedWorkload",
-    ref: "workload:lp3-genehmigungscheck:002",
-    context: ["documents.lp3", "costs.din276", "calendar.milestones", "journal.decisions", "source.mail.imap"],
-    mutable: ["ProjectTask", "ProjectRiskNote", "ProjectJournalDraft"],
-    handoff: "Wenn ein fehlender Nachweis eine neue Rolle, neue Einwilligung oder breiteren Dokumentzugriff braucht, Rueckgabe an Architekt statt Autokorrektur.",
+    type: "Arbeitsbereich",
+    ref: "Genehmigungscheck 002",
+    context: ["Planstand LP3", "Kosten DIN 276", "Meilensteine", "Entscheidungen", "Projektmail"],
+    mutable: ["Aufgaben", "Risikohinweise", "Journalentwürfe"],
+    handoff: "Wenn ein fehlender Nachweis eine neue Rolle, neue Einwilligung oder breiteren Dokumentzugriff braucht, Rückgabe an Architekt statt Autokorrektur.",
   },
   run: {
-    type: "ProjectAIRun",
-    ref: "run:2026-05-27T17:40Z",
+    type: "Prüflauf",
+    ref: "27.05.2026, 17:40",
     steps: [
-      ["inspect", "Quellen und Rollenrechte gelesen"],
-      ["prepare", "Genehmigungscheck auf LP3/LP4 begrenzt"],
-      ["analyze", "3 offene Nachweise und 1 Rollenfrage gefunden"],
-      ["review", "Architekt prueft Vorschlaege"],
-      ["digest", "Entscheidung in Goal Book und Journal zurueckschreiben"],
+      ["gelesen", "Quellen und Rollenrechte gelesen"],
+      ["vorbereitet", "Genehmigungscheck auf LP3/LP4 begrenzt"],
+      ["gefunden", "3 offene Nachweise und 1 Rollenfrage gefunden"],
+      ["Prüfung", "Architekt prüft Vorschläge"],
+      ["gesichert", "Entscheidung im Journal dokumentieren"],
     ],
   },
 };
@@ -690,9 +730,7 @@ const settingsModel = {
     notifications: true,
   },
   imap: {
-    type: "ImapAccountSettings",
     section: "sourceImap",
-    module: "@refinio/source.imap",
     accountId: "demo-kita-2028-project-mail",
     host: "imap.architekt.example",
     port: 993,
@@ -701,72 +739,60 @@ const settingsModel = {
     mailbox: "INBOX/Demo: Kita 2028",
     enabled: true,
     hasPassword: true,
-    secretProviderKey: "source.imap.password:demo-kita-2028-project-mail",
   },
 };
 
-const onePackageOwners = [
-  ["@refinio/one.core", "content-addressed objects, recipes, access and storage"],
-  ["@refinio/one.models", "runtime models, channels, Leute/contact model and MultiUser wiring"],
-  ["@refinio/settings.core", "UISettings, SettingsPlan and SecretsPlan"],
-  ["@refinio/source.core", "Source, SourceEntry, SourceRun, Book and provenance contracts"],
-  ["@refinio/trust.core", "trust relationships, role evidence, revocation and verification"],
-  ["@refinio/calendar.core", "calendar events and schedule projection when project dates become real objects"],
-  ["@refinio/chat.core", "project chat/conversation primitives instead of custom message storage"],
-  ["@refinio/refinio.api", "ModuleRegistry demand/supply and public operation registration"],
-];
-
 const mailPreview = [
   ["Heute", "Bauherr", "Kostenberechnung LP3 freigeben", "entscheidung"],
-  ["Gestern", "Behoerde", "Rueckfrage Stellplatznachweis", "lp4"],
+  ["Gestern", "Behörde", "Rückfrage Stellplatznachweis", "lp4"],
   ["Mo", "Fachplaner TGA", "Energieannahmen aktualisiert", "nachhaltigkeit"],
 ];
 
 const dataImportModel = {
-  type: "ProjectSettingsDataImport",
-  source: "settings-data",
+  type: "Importvorschau",
+  source: "Projektdatei",
   workbookSheets: [
-    ["Beteiligte", "ProjectParticipantImport", 42, "Heads, Stellvertreter, Gewerke und Kontaktrollen"],
-    ["Rollen", "ProjectRoleAssignmentImport", 18, "Rollen-Zertifikate, Delegation und LP-Begrenzung"],
-    ["Termine", "ProjectCalendarImport", 26, "Gremientermine, Behoerdenfristen und Bauzeitenplan"],
-    ["Dokumente", "ProjectDocumentRefImport", 64, "Planstaende, Nachweise, Freigaben und Hash-Referenzen"],
-    ["Mail Mapping", "ProjectMailMappingImport", 12, "IMAP Absender, Betreffmuster und Projektkanalzuordnung"],
+    ["Beteiligte", "Kontakte", 42, "Ansprechpartner, Stellvertreter, Gewerke und Kontaktrollen"],
+    ["Rollen", "Zugriff", 18, "Projektrollen, Delegation und Begrenzung nach Leistungsphase"],
+    ["Termine", "Kalender", 26, "Gremientermine, Behördenfristen und Bauzeitenplan"],
+    ["Dokumente", "Planstand", 64, "Planstände, Nachweise und Freigaben"],
+    ["Mail-Zuordnung", "Projektmail", 12, "Absender, Betreffmuster und Projektkanalzuordnung"],
   ],
   previewRows: [
-    ["Bauherr Darmstadt", "ProjectOwnerRoleCertificate", "project.mail", "voll"],
-    ["Amt Bauaufsicht", "AuthorityRoleCertificate", "documents.lp4", "begrenzt bis LP4"],
-    ["TGA Fachplanung", "ProjectContributorRoleCertificate", "documents.lp5", "Planstand lesen/schreiben"],
-    ["Gewerk Rohbau", "TradeRoleCertificate", "site.lp8", "begrenzt ab LP6"],
+    ["Bauherr Darmstadt", "Bauherr", "Projektmail", "voll"],
+    ["Amt Bauaufsicht", "Behörde", "Genehmigungsunterlagen", "begrenzt bis LP4"],
+    ["TGA Fachplanung", "Fachplanung", "Ausführungsplanung", "Planstand lesen/schreiben"],
+    ["Gewerk Rohbau", "Gewerk", "Baustelle LP8", "begrenzt ab LP6"],
   ],
 };
 
 const exportBundleModel = {
-  type: "ProjectDataExportBundle",
-  ref: "export:demo-kita-2028:full",
+  type: "Projekt-Export",
+  ref: "Demo: Kita 2028",
   sections: [
-    ["Context", "Project, active LP, owner identity, export time"],
-    ["Participants", "ProjectParticipant + RoleCertificate projections"],
-    ["Channels", "ChannelInfo ids, access posture, source.mail mappings"],
-    ["Documents", "ProjectDocumentRef rows with current status"],
-    ["Mail", "SourceEntry refs from source.mail/source.imap"],
-    ["AI", "ProjectGoal, ProjectPreparedWorkload, ProjectAIRun refs"],
-    ["Journal", "ProjectJournalEntry audit trail"],
-    ["Settings", "UISettings and sourceImap account metadata"],
+    ["Projekt", "Titel, aktive Leistungsphase, Exportzeit"],
+    ["Beteiligte", "Kontakte, Rollen und Stellvertretungen"],
+    ["Zugriff", "Projektbereiche und sichtbare Berechtigungen"],
+    ["Dokumente", "Planstände und aktueller Status"],
+    ["Mail", "Projektmail-Bezüge ohne Mailpasswort"],
+    ["Assistenz", "Prüfauftrag, Quellen und Ergebnisstand"],
+    ["Journal", "Nachvollziehbare Ereignisse"],
+    ["Einstellungen", "Sprache, Theme und IMAP-Metadaten"],
   ],
   warnings: [
-    "Use ../one package owners when a primitive already exists; projektor.one owns only project-specific semantics.",
-    "SecretsPlan values are never exported, only provider keys and hasSecret state.",
-    "Channel access is exported as posture metadata; object grants remain runtime-owned.",
+    "Passwörter und Tokens werden nicht exportiert.",
+    "Mailinhalte werden nur über Projektbezüge aufgeführt.",
+    "Zugriffe werden als sichtbare Berechtigungsliste exportiert.",
   ],
 };
 
 const journalBase = [
-  ["2026-05-27 09:12", "RoleCertificateIssued", "Architekt laedt Bauherr Head per Link ein.", "obj:role-cert:81ac"],
-  ["2026-05-27 10:35", "ProjectDocumentRefStored", "Entwurf LP3 Version 14 im Dokumentenkanal freigegeben.", "obj:doc-ref:2f19"],
-  ["2026-05-27 11:48", "ProjectDecisionRecorded", "Kostenberechnung wird als Grundlage fuer Gremientermin markiert.", "obj:decision:7c02"],
-  ["2026-05-27 13:05", "PreparedWorkloadCreated", "AI-Pruefung fuer LP3 zu LP4 vorbereitet.", "obj:workload:44b9"],
-  ["2026-05-27 13:31", "SettingsSectionUpdated", "sourceImap Account-Metadaten aktualisiert; Secret bleibt in SecretsPlan.", "obj:settings:sourceImap"],
-  ["2026-05-27 13:46", "ProjectDataExportPrepared", "Export-Bundle mit Beteiligten, Rollen, Dokumenten, Mail-Refs, Settings und Journal vorbereitet.", "obj:export:project"],
+  ["2026-05-27 09:12", "Rolle vergeben", "Architekt lädt Bauherr per Link ein.", "Journal 001"],
+  ["2026-05-27 10:35", "Dokument freigegeben", "Entwurf LP3 Version 14 im Dokumentenbereich freigegeben.", "Journal 002"],
+  ["2026-05-27 11:48", "Entscheidung erfasst", "Kostenberechnung wird als Grundlage für Gremientermin markiert.", "Journal 003"],
+  ["2026-05-27 13:05", "Assistenz vorbereitet", "Prüfung für LP3 zu LP4 vorbereitet.", "Journal 004"],
+  ["2026-05-27 13:31", "Einstellungen aktualisiert", "IMAP Account-Metadaten aktualisiert; Passwort bleibt lokal geschützt.", "Journal 005"],
+  ["2026-05-27 13:46", "Export vorbereitet", "Projekt-Export mit Beteiligten, Rollen, Dokumenten, Mailbezügen, Einstellungen und Journal vorbereitet.", "Journal 006"],
 ];
 
 function el(tag, options = {}, children = []) {
@@ -830,9 +856,8 @@ function renderOnboardingLanguage() {
   return select;
 }
 
-function renderTrustCard(title, text, ref) {
+function renderTrustCard(title, text) {
   return el("article", { className: "onboarding-info-card" }, [
-    el("span", { className: "card-kicker", text: ref }),
     el("h3", { text: title }),
     el("p", { text }),
   ]);
@@ -853,8 +878,8 @@ function renderOnboardingBody() {
       el("h1", { text: onb("nextStoreTitle") }),
       el("p", { className: "onboarding-lede", text: onb("intro") }),
       el("div", { className: "onboarding-info-grid" }, [
-        renderTrustCard(onb("nextStoreTitle"), onb("nextStore"), "web.appstore"),
-        renderTrustCard(onb("localPromiseTitle"), onb("localPromise"), "local.browser.data"),
+        renderTrustCard(onb("nextStoreTitle"), onb("nextStore")),
+        renderTrustCard(onb("localPromiseTitle"), onb("localPromise")),
       ]),
     ];
   }
@@ -926,9 +951,14 @@ function renderOnboarding() {
   root.replaceChildren(
     el("div", { className: "onboarding-card" }, [
       el("header", { className: "onboarding-header" }, [
-        el("div", {}, [
-          el("span", { className: "card-kicker", text: "projektor.one" }),
-          el("strong", { text: tr("topEyebrow") }),
+        el("div", { className: "onboarding-brand" }, [
+          el("span", { className: "brand-mark onboarding-brand-mark", "aria-hidden": "true" }, [
+            el("img", { src: "./projektor_logo.svg", alt: "" }),
+          ]),
+          el("div", {}, [
+            el("span", { className: "card-kicker", text: "projektor.one" }),
+            el("strong", { text: tr("topEyebrow") }),
+          ]),
         ]),
         renderOnboardingLanguage(),
       ]),
@@ -1034,7 +1064,7 @@ function renderCockpit() {
   document.querySelector("#workLanes").replaceChildren(
     ...lanes.map((lane) =>
       el("article", { className: "lane" }, [
-        el("span", { className: "card-kicker", text: "ProjectChannel" }),
+        el("span", { className: "card-kicker", text: "Projektbereich" }),
         el("h3", { text: lane.title }),
         el("p", { text: lane.text }),
         el("div", { className: "lane-progress" }, [el("span", { style: `width: ${lane.progress}%` })]),
@@ -1069,9 +1099,9 @@ function renderRoles() {
     el("p", { text: role.summary }),
     el("ul", { className: "role-permissions" }, role.permissions.map((permission) => el("li", {}, [el("span", { text: permission }), el("strong", { text: tr("roleAllowed") })]))),
     el("ul", { className: "object-list" }, [
-      el("li", {}, [el("span", { text: "Identity field" }), el("strong", { text: "projectId + role + personId" })]),
-      el("li", {}, [el("span", { text: "Sharing boundary" }), el("strong", { text: "ChannelInfo idHash" })]),
-      el("li", {}, [el("span", { text: "Revocation" }), el("strong", { text: "Journal + access update" })]),
+      el("li", {}, [el("span", { text: "Zuordnung" }), el("strong", { text: "Projekt, Rolle, Person" })]),
+        el("li", {}, [el("span", { text: "Grenze" }), el("strong", { text: "Trust + Kontext filtern Trie-Export" })]),
+        el("li", {}, [el("span", { text: "Entzug" }), el("strong", { text: "Policy-Änderung mit Assembly-Spur" })]),
     ]),
   );
 
@@ -1080,24 +1110,24 @@ function renderRoles() {
   table.append(
     el("thead", {}, [
       el("tr", {}, [
-        el("th", { text: "Kanal" }),
-        el("th", { text: "ONE Objekt" }),
+        el("th", { text: "Trie-Pfad" }),
+        el("th", { text: "Root-Objekt" }),
         ...roleKeys.map((key) => el("th", { text: roles[key].label })),
       ]),
     ]),
-    el("tbody", {}, channels.map((channel) =>
+    el("tbody", {}, sharedTrieRoots.map((root) =>
       el("tr", {}, [
-        el("td", { text: channel.name }),
-        el("td", { text: channel.object }),
+        el("td", { text: root.path }),
+        el("td", { text: root.object }),
         ...roleKeys.map((key) => {
-          const access = channel.access[key] || "none";
-          const label = access === "full" ? "voll" : access === "limited" ? "begrenzt" : "-";
+          const access = root.visibility[key] || "none";
+          const label = access === "full" ? "voll" : access === "filtered" ? "gefiltert" : "-";
           return el("td", {}, [el("span", { className: `access-chip ${access}`, text: label })]);
         }),
       ]),
     )),
   );
-  document.querySelector("#channelMatrix").replaceChildren(table);
+  document.querySelector("#trieMatrix").replaceChildren(table);
 }
 
 function renderPhases() {
@@ -1122,9 +1152,9 @@ function renderPhases() {
     el("h3", { text: phase.title }),
     el("p", { text: phase.decision }),
     el("ul", { className: "object-list" }, [
-      el("li", {}, [el("span", { text: "ProjectPhaseState" }), el("strong", { text: phase.id })]),
+      el("li", {}, [el("span", { text: "Projektphase" }), el("strong", { text: phase.short })]),
       el("li", {}, [el("span", { text: "Aktuelles Risiko" }), el("strong", { text: phase.risk })]),
-      el("li", {}, [el("span", { text: "AI Policy" }), el("strong", { text: "nur Hinweise, keine Freigabe" })]),
+      el("li", {}, [el("span", { text: "Assistenz" }), el("strong", { text: "nur Hinweise, keine Freigabe" })]),
     ]),
   );
 
@@ -1147,17 +1177,17 @@ function renderAI() {
 
   document.querySelector("#workloadBook").replaceChildren(
     bookTop(ai.workload.type, ai.workload.ref),
-    el("h3", { text: "Gelesene Kanaele" }),
-    el("ul", { className: "run-steps" }, ai.workload.context.map((item) => el("li", {}, [el("span", { text: item }), el("strong", { text: "read" })]))),
-    el("h3", { text: "Schreibbarer Scope" }),
-    el("ul", { className: "run-steps" }, ai.workload.mutable.map((item) => el("li", {}, [el("span", { text: item }), el("strong", { text: "write" })]))),
+    el("h3", { text: "Gelesene Bereiche" }),
+    el("ul", { className: "run-steps" }, ai.workload.context.map((item) => el("li", {}, [el("span", { text: item }), el("strong", { text: "Trie-Leseast" })]))),
+    el("h3", { text: "Bereich für Vorschläge" }),
+    el("ul", { className: "run-steps" }, ai.workload.mutable.map((item) => el("li", {}, [el("span", { text: item }), el("strong", { text: "Vorschlag" })]))),
     el("p", { text: ai.workload.handoff }),
   );
 
   document.querySelector("#runBook").replaceChildren(
     bookTop(ai.run.type, ai.run.ref),
-    el("h3", { text: "Gebundener Versuch" }),
-    el("p", { text: "Dieser Lauf ist eine Projektion aus dauerhaften Objekten: Ziel, Workload, Quellen, Analyse, Review und Digest." }),
+    el("h3", { text: "Aktueller Prüflauf" }),
+    el("p", { text: "Dieser Prüflauf zeigt, welche Quellen gelesen wurden, was gefunden wurde und wo eine menschliche Entscheidung nötig ist." }),
     el("ul", { className: "run-steps" }, ai.run.steps.map(([kind, text], index) => {
       const itemState = index < state.runStep ? "done" : index === state.runStep ? "active" : "";
       return el("li", { className: itemState }, [el("span", { text }), el("strong", { text: kind })]);
@@ -1179,13 +1209,13 @@ function renderData() {
   document.querySelector("#importStatus").replaceChildren(
     el("ul", { className: "object-list compact-list" }, [
       el("li", {}, [el("span", { text: tr("status") }), el("strong", { text: statusText })]),
-      el("li", {}, [el("span", { text: tr("parser") }), el("strong", { text: "Flexibel-style workbook" })]),
+      el("li", {}, [el("span", { text: tr("parser") }), el("strong", { text: "Tabellenimport" })]),
       el("li", {}, [el("span", { text: tr("importSource") }), el("strong", { text: dataImportModel.source })]),
     ]),
   );
 
   document.querySelector("#importPreview").replaceChildren(
-    bookTop(dataImportModel.type, "workbook:demo-kita-2028-import"),
+    bookTop(dataImportModel.type, "Demo: Kita 2028"),
     el("h3", { text: tr("dataPreviewTitle") }),
     el("p", { text: tr("dataPreviewText") }),
     el("ul", { className: "topic-list" }, dataImportModel.workbookSheets.map(([sheet, object, count, purpose]) =>
@@ -1220,7 +1250,7 @@ function renderPreviewTable() {
       el("tr", {}, [
         el("th", { text: "Name" }),
         el("th", { text: "Rolle" }),
-        el("th", { text: "Kanal" }),
+        el("th", { text: "Trie-Pfad" }),
         el("th", { text: "Zugriff" }),
       ]),
     ]),
@@ -1241,9 +1271,9 @@ function bookTop(type, ref) {
 function renderJournal() {
   const extra = Array.from({ length: state.journalExtra }, (_, index) => [
     "2026-05-27 14:" + String(10 + index).padStart(2, "0"),
-    "ProjectJournalEntry",
-    "Demo-Sync hat Status, Kanalzugriffe und AI Run Book als Projektion aktualisiert.",
-    "obj:journal:demo-" + String(index + 1).padStart(2, "0"),
+    "Demo-Ereignis",
+    "Demo-Sync hat Status, Zugriff und Assistenzstand aktualisiert.",
+    "Journal Demo " + String(index + 1).padStart(2, "0"),
   ]);
   document.querySelector("#journalList").replaceChildren(
     ...[...extra, ...journalBase].map(([time, kind, text, ref]) =>
@@ -1280,7 +1310,7 @@ function renderSettings() {
   document.querySelector("#imapPort").value = String(imap.port);
   document.querySelector("#imapSecure").checked = imap.secure;
   document.querySelector("#imapUser").value = imap.user;
-  document.querySelector("#imapSecret").value = imap.hasPassword ? "stored-secret-ref" : "";
+  document.querySelector("#imapSecret").value = imap.hasPassword ? "********" : "";
   document.querySelector("#imapMailbox").value = imap.mailbox;
 
   renderSettingsSummary();
@@ -1297,26 +1327,31 @@ function setInputLabel(inputId, text) {
 function renderSettingsSummary() {
   const imap = settingsModel.imap;
   const statusText = {
-    idle: state.language === "de" ? "nicht geprueft" : state.language === "fr" ? "non vérifié" : state.language === "es" ? "no comprobado" : "not checked",
-    checking: state.language === "de" ? "prueft" : state.language === "fr" ? "vérification" : state.language === "es" ? "comprobando" : "checking",
+    idle: state.language === "de" ? "nicht geprüft" : state.language === "fr" ? "non vérifié" : state.language === "es" ? "no comprobado" : "not checked",
+    checking: state.language === "de" ? "prüft" : state.language === "fr" ? "vérification" : state.language === "es" ? "comprobando" : "checking",
     ok: state.language === "de" ? "bereit" : state.language === "fr" ? "prêt" : state.language === "es" ? "listo" : "ready",
-    failed: state.language === "de" ? "Konfiguration unvollstaendig" : state.language === "fr" ? "configuration incomplète" : state.language === "es" ? "configuración incompleta" : "configuration incomplete",
+    failed: state.language === "de" ? "Konfiguration unvollständig" : state.language === "fr" ? "configuration incomplète" : state.language === "es" ? "configuración incompleta" : "configuration incomplete",
   }[state.imapStatus];
 
   document.querySelector("#settingsSummary").replaceChildren(
-    bookTop("settings.core", "settings:ui+sourceImap"),
+    bookTop("Einstellungen", "lokal gespeichert"),
     el("p", {
-      text: tr("settingsText"),
+      text: state.language === "de"
+        ? "Hier steuerst du Sprache, Darstellung und die Projektmail-Verbindung für das aktive Projekt."
+        : state.language === "fr"
+          ? "Ici tu règles la langue, l'affichage et la connexion mail du projet actif."
+          : state.language === "es"
+            ? "Aquí configuras idioma, apariencia y conexión de correo del proyecto activo."
+            : "Control language, appearance and project mail connection for the active project here.",
     }),
     el("ul", { className: "object-list" }, [
-      el("li", {}, [el("span", { text: "UI theme" }), el("strong", { text: settingsModel.ui.theme })]),
-      el("li", {}, [el("span", { text: "SettingsPlan section" }), el("strong", { text: imap.section })]),
-      el("li", {}, [el("span", { text: "Domain module" }), el("strong", { text: imap.module })]),
-      el("li", {}, [el("span", { text: "Secret provider" }), el("strong", { text: imap.secretProviderKey })]),
+      el("li", {}, [el("span", { text: "Theme" }), el("strong", { text: settingsModel.ui.theme })]),
+      el("li", {}, [el("span", { text: "Sprache" }), el("strong", { text: languages[state.language] || state.language })]),
+      el("li", {}, [el("span", { text: "IMAP Account" }), el("strong", { text: imap.accountId || "-" })]),
+      el("li", {}, [el("span", { text: "IMAP Host" }), el("strong", { text: imap.host || "-" })]),
       el("li", {}, [el("span", { text: "IMAP status" }), el("strong", { text: statusText })]),
-      el("li", {}, [el("span", { text: "../one rule" }), el("strong", { text: "reuse before steering-specific code" })]),
     ]),
-    el("h3", { text: "Local onboarding" }),
+    el("h3", { text: state.language === "de" ? "Lokales Profil" : state.language === "fr" ? "Profil local" : state.language === "es" ? "Perfil local" : "Local profile" }),
     el("ul", { className: "object-list" }, [
       el("li", {}, [el("span", { text: onb("reviewName") }), el("strong", { text: localStorage.getItem("projektor-profile-name") || state.onboarding.name || "-" })]),
       el("li", {}, [el("span", { text: onb("reviewEmail") }), el("strong", { text: localStorage.getItem("projektor-profile-email") || state.onboarding.email || "-" })]),
@@ -1324,26 +1359,17 @@ function renderSettingsSummary() {
     ]),
     el("div", { className: "settings-actions" }, [
       el("button", { className: "secondary-action", id: "resetOnboarding", type: "button", text: onb("resetOnboarding") }),
-      el("a", { className: "secondary-action doc-link", href: "./docs/projektor-onboarding-mrd.md", text: "MRD" }),
-      el("a", { className: "secondary-action doc-link", href: "./docs/projektor-onboarding-prd.md", text: "PRD" }),
     ]),
-    el("h3", { text: tr("oneOwners") }),
-    el("ul", { className: "topic-list" }, onePackageOwners.map(([pkg, owner]) =>
-      el("li", {}, [
-        el("strong", { text: pkg }),
-        el("span", { text: owner }),
-      ]),
-    )),
   );
 }
 
 function renderMailPreview() {
   document.querySelector("#mailPreview").replaceChildren(
-    bookTop("source.mail projection", "source:imap:demo-kita-2028"),
+    bookTop("Projektmail", "IMAP Vorschau"),
     el("h3", { text: "Projektmail als Quelle" }),
     el("p", {
       text:
-        "IMAP wird als externe Quelle eingebunden. Nachrichten werden zu SourceEntry/ProjectMailRef-Projektionen, nicht zu unkontrollierten Kopien.",
+        "IMAP wird als Projektquelle eingebunden. Nachrichten bleiben nachvollziehbar zugeordnet und werden nicht als unkontrollierte Kopien verteilt.",
     }),
     el("ul", { className: "topic-list" }, mailPreview.map(([date, sender, subject, tag]) =>
       el("li", {}, [
@@ -1363,7 +1389,6 @@ function updateSettingsFromForm() {
   settingsModel.imap.user = document.querySelector("#imapUser").value.trim();
   settingsModel.imap.mailbox = document.querySelector("#imapMailbox").value.trim();
   settingsModel.imap.hasPassword = Boolean(document.querySelector("#imapSecret").value.trim());
-  settingsModel.imap.secretProviderKey = `source.imap.password:${settingsModel.imap.accountId || "missing-account"}`;
   state.imapStatus = "idle";
   renderSettingsSummary();
 }
@@ -1391,11 +1416,11 @@ function downloadTextFile(filename, mimeType, content) {
 }
 
 function downloadTemplate() {
-  const headers = ["Name", "Rolle", "Kanal", "Zugriff", "Leistungsphase", "E-Mail", "Hinweis"];
+  const headers = ["Name", "Rolle", "Trie-Pfad", "Sichtbarkeit", "Leistungsphase", "E-Mail", "Hinweis"];
   const rows = [
-    ["Bauherr Darmstadt", "ProjectOwnerRoleCertificate", "project.mail", "voll", "LP1-LP9", "bauherr@example.org", "Head"],
-    ["Amt Bauaufsicht", "AuthorityRoleCertificate", "documents.lp4", "begrenzt", "LP4", "amt@example.org", "Behoerde"],
-    ["Gewerk Rohbau", "TradeRoleCertificate", "site.lp8", "begrenzt", "LP6-LP8", "rohbau@example.org", "Ausfuehrung"],
+    ["Bauherr Darmstadt", "Bauherr", "/demo-kita-2028/project-mail", "voll", "LP1-LP9", "bauherr@example.org", "Hauptansprechpartner"],
+    ["Amt Bauaufsicht", "Behörde", "/demo-kita-2028/lp4/permit-documents", "gefiltert", "LP4", "amt@example.org", "Behörde"],
+    ["Gewerk Rohbau", "Gewerk", "/demo-kita-2028/lp8/site", "gefiltert", "LP6-LP8", "rohbau@example.org", "Ausführung"],
   ];
   const csv = [headers, ...rows].map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\n");
   state.journalExtra += 1;
@@ -1405,7 +1430,7 @@ function downloadTemplate() {
 
 function exportProjectBundle() {
   const bundle = {
-    $type$: exportBundleModel.type,
+    kind: exportBundleModel.type,
     exportedAt: new Date().toISOString(),
     project: {
       id: demoProject.id,
@@ -1415,7 +1440,7 @@ function exportProjectBundle() {
       syncAgeMinutes: state.syncCount,
     },
     roles,
-    channels,
+    sharedTrieRoots,
     settings: {
       ui: settingsModel.ui,
       sourceImap: {
@@ -1424,7 +1449,6 @@ function exportProjectBundle() {
         accessToken: undefined,
       },
     },
-    onePackageOwners,
     importModel: dataImportModel,
     ai,
     warnings: exportBundleModel.warnings,

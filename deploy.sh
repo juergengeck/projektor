@@ -42,6 +42,7 @@ mkdir -p "$BUILD_DIR"
 cp "$SCRIPT_DIR/index.html" "$BUILD_DIR/index.html"
 cp "$SCRIPT_DIR/styles.css" "$BUILD_DIR/styles.css"
 cp "$SCRIPT_DIR/app.js" "$BUILD_DIR/app.js"
+cp "$SCRIPT_DIR/projektor_logo.svg" "$BUILD_DIR/projektor_logo.svg"
 
 if [ -d "$SCRIPT_DIR/docs" ]; then
     cp -R "$SCRIPT_DIR/docs" "$BUILD_DIR/docs"
@@ -62,6 +63,11 @@ fi
 
 if [ ! -f "$BUILD_DIR/app.js" ]; then
     echo -e "${RED}✗ Build verification failed: app.js not found${NC}"
+    exit 1
+fi
+
+if [ ! -f "$BUILD_DIR/projektor_logo.svg" ]; then
+    echo -e "${RED}✗ Build verification failed: projektor_logo.svg not found${NC}"
     exit 1
 fi
 
