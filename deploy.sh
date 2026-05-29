@@ -40,6 +40,7 @@ rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 
 cp "$SCRIPT_DIR/index.html" "$BUILD_DIR/index.html"
+cp "$SCRIPT_DIR/market-validation.html" "$BUILD_DIR/market-validation.html"
 cp "$SCRIPT_DIR/styles.css" "$BUILD_DIR/styles.css"
 cp "$SCRIPT_DIR/app.js" "$BUILD_DIR/app.js"
 cp "$SCRIPT_DIR/projektor_logo.svg" "$BUILD_DIR/projektor_logo.svg"
@@ -53,6 +54,11 @@ printf '/* /index.html 200\n' > "$BUILD_DIR/_redirects"
 
 if [ ! -f "$BUILD_DIR/index.html" ]; then
     echo -e "${RED}✗ Build verification failed: index.html not found${NC}"
+    exit 1
+fi
+
+if [ ! -f "$BUILD_DIR/market-validation.html" ]; then
+    echo -e "${RED}✗ Build verification failed: market-validation.html not found${NC}"
     exit 1
 fi
 

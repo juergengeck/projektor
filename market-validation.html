@@ -1,0 +1,1087 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>projektor.one - Marktvalidierung</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #1a1a2e;
+        --steel: #2d3561;
+        --accent: #e8a020;
+        --light: #f4f1eb;
+        --mid: #e8e3d8;
+        --white: #fdfcf8;
+        --text: #2c2c2c;
+        --muted: #7a7a7a;
+        --radius: 4px;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        background: var(--light);
+        color: var(--text);
+        font-family: "DM Sans", system-ui, sans-serif;
+      }
+
+      .hero {
+        background: var(--ink);
+        color: var(--white);
+        overflow: hidden;
+        padding: 60px 40px 50px;
+        position: relative;
+      }
+
+      .hero::before,
+      .hero::after {
+        border: 2px solid rgba(232, 160, 32, 0.14);
+        border-radius: 50%;
+        content: "";
+        position: absolute;
+      }
+
+      .hero::before {
+        height: 300px;
+        right: -60px;
+        top: -60px;
+        width: 300px;
+      }
+
+      .hero::after {
+        border-width: 1px;
+        bottom: -80px;
+        height: 200px;
+        left: 30%;
+        opacity: 0.7;
+        width: 200px;
+      }
+
+      .hero-label {
+        color: var(--accent);
+        font-size: 11px;
+        letter-spacing: 3px;
+        margin-bottom: 16px;
+        text-transform: uppercase;
+      }
+
+      .hero h1 {
+        font-family: "DM Serif Display", Georgia, serif;
+        font-size: clamp(2rem, 5vw, 3.2rem);
+        font-weight: 400;
+        line-height: 1.15;
+        margin-bottom: 20px;
+        max-width: 640px;
+        position: relative;
+        z-index: 1;
+      }
+
+      .hero h1 em {
+        color: var(--accent);
+        font-style: italic;
+      }
+
+      .hero p {
+        color: rgba(253, 252, 248, 0.74);
+        font-size: 15px;
+        line-height: 1.7;
+        margin-bottom: 24px;
+        max-width: 620px;
+        position: relative;
+        z-index: 1;
+      }
+
+      .hero-meta {
+        color: rgba(253, 252, 248, 0.56);
+        display: flex;
+        flex-wrap: wrap;
+        font-size: 12px;
+        gap: 32px;
+        letter-spacing: 1px;
+        position: relative;
+        z-index: 1;
+      }
+
+      .hero-meta span {
+        align-items: center;
+        display: flex;
+        gap: 6px;
+      }
+
+      .hero-meta span::before {
+        color: var(--accent);
+        content: "-";
+      }
+
+      .progress-bar {
+        background: var(--mid);
+        height: 3px;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+      }
+
+      .progress-fill {
+        background: var(--accent);
+        height: 100%;
+        transition: width 0.25s ease;
+        width: 0%;
+      }
+
+      .container {
+        margin: 0 auto;
+        max-width: 780px;
+        padding: 48px 24px 80px;
+      }
+
+      .section {
+        margin-bottom: 56px;
+      }
+
+      .section-header {
+        align-items: flex-start;
+        border-bottom: 1px solid var(--mid);
+        display: flex;
+        gap: 20px;
+        margin-bottom: 32px;
+        padding-bottom: 20px;
+      }
+
+      .section-number {
+        color: var(--mid);
+        flex-shrink: 0;
+        font-family: "DM Serif Display", Georgia, serif;
+        font-size: 3rem;
+        line-height: 1;
+        margin-top: -4px;
+      }
+
+      .section-title {
+        color: var(--ink);
+        font-family: "DM Serif Display", Georgia, serif;
+        font-size: 1.55rem;
+        font-weight: 400;
+        margin-bottom: 6px;
+      }
+
+      .section-desc {
+        color: var(--muted);
+        font-size: 13.5px;
+        line-height: 1.6;
+      }
+
+      .info-box {
+        background: var(--steel);
+        border-radius: var(--radius);
+        color: var(--white);
+        margin-bottom: 28px;
+        overflow: hidden;
+        padding: 24px 28px;
+        position: relative;
+      }
+
+      .info-box::before {
+        background: var(--accent);
+        content: "";
+        height: 100%;
+        left: 0;
+        position: absolute;
+        top: 0;
+        width: 4px;
+      }
+
+      .info-box h4 {
+        color: var(--accent);
+        font-size: 11px;
+        letter-spacing: 2px;
+        margin-bottom: 10px;
+        text-transform: uppercase;
+      }
+
+      .info-box p {
+        color: rgba(253, 252, 248, 0.86);
+        font-size: 14px;
+        line-height: 1.7;
+      }
+
+      .question {
+        margin-bottom: 28px;
+      }
+
+      .question-label {
+        color: var(--ink);
+        display: flex;
+        font-size: 15px;
+        font-weight: 500;
+        gap: 10px;
+        line-height: 1.5;
+        margin-bottom: 10px;
+      }
+
+      .q-num {
+        color: var(--accent);
+        flex-shrink: 0;
+        font-weight: 700;
+      }
+
+      .question-hint {
+        color: var(--muted);
+        font-size: 12px;
+        font-style: italic;
+        margin: -2px 0 10px 28px;
+      }
+
+      .options,
+      .control-wrap {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-left: 28px;
+      }
+
+      .options-grid {
+        display: grid;
+        gap: 8px;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        margin-left: 28px;
+      }
+
+      .option {
+        align-items: flex-start;
+        background: var(--white);
+        border: 1.5px solid var(--mid);
+        border-radius: var(--radius);
+        cursor: pointer;
+        display: flex;
+        font-size: 14px;
+        gap: 12px;
+        line-height: 1.4;
+        padding: 12px 16px;
+        transition: background 0.15s ease, border-color 0.15s ease;
+      }
+
+      .option:hover {
+        background: #fef9f0;
+        border-color: var(--accent);
+      }
+
+      .option input {
+        accent-color: var(--accent);
+        flex-shrink: 0;
+        height: 16px;
+        margin-top: 1px;
+        width: 16px;
+      }
+
+      .option.selected {
+        background: #fef5e0;
+        border-color: var(--accent);
+      }
+
+      textarea,
+      input[type="text"],
+      input[type="email"],
+      input[type="tel"] {
+        background: var(--white);
+        border: 1.5px solid var(--mid);
+        border-radius: var(--radius);
+        color: var(--text);
+        font-family: "DM Sans", system-ui, sans-serif;
+        font-size: 14px;
+        line-height: 1.6;
+        padding: 13px 16px;
+        transition: border-color 0.15s ease;
+        width: 100%;
+      }
+
+      textarea {
+        min-height: 86px;
+        resize: vertical;
+      }
+
+      textarea:focus,
+      input[type="text"]:focus,
+      input[type="email"]:focus,
+      input[type="tel"]:focus {
+        border-color: var(--accent);
+        outline: none;
+      }
+
+      .scale {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-left: 28px;
+      }
+
+      .scale-labels {
+        color: var(--muted);
+        display: flex;
+        font-size: 11px;
+        justify-content: space-between;
+        margin-bottom: 4px;
+      }
+
+      .scale-options {
+        display: flex;
+        gap: 8px;
+      }
+
+      .scale-btn {
+        background: var(--white);
+        border: 1.5px solid var(--mid);
+        border-radius: var(--radius);
+        color: var(--muted);
+        cursor: pointer;
+        flex: 1;
+        font-family: "DM Serif Display", Georgia, serif;
+        font-size: 14px;
+        padding: 12px 4px;
+        text-align: center;
+        transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+      }
+
+      .scale-btn:hover,
+      .scale-btn.active {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: var(--white);
+      }
+
+      .top3-wrap {
+        margin-left: 28px;
+      }
+
+      .top3-hint {
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 700;
+        margin-bottom: 8px;
+      }
+
+      .top3-option {
+        align-items: center;
+        background: var(--white);
+        border: 1.5px solid var(--mid);
+        border-radius: var(--radius);
+        cursor: pointer;
+        display: flex;
+        font-size: 14px;
+        gap: 12px;
+        margin-bottom: 6px;
+        padding: 10px 16px;
+        transition: background 0.15s ease, border-color 0.15s ease;
+      }
+
+      .top3-option:hover {
+        background: #fef9f0;
+        border-color: var(--accent);
+      }
+
+      .rank-badge {
+        align-items: center;
+        border: 1.5px solid var(--mid);
+        border-radius: 50%;
+        display: flex;
+        flex-shrink: 0;
+        font-size: 11px;
+        font-weight: 700;
+        height: 24px;
+        justify-content: center;
+        width: 24px;
+      }
+
+      .top3-option.ranked-1 .rank-badge {
+        background: #e8a020;
+        border-color: #e8a020;
+        color: #fff;
+      }
+
+      .top3-option.ranked-2 .rank-badge {
+        background: #4a7aab;
+        border-color: #4a7aab;
+        color: #fff;
+      }
+
+      .top3-option.ranked-3 .rank-badge {
+        background: #7a7a7a;
+        border-color: #7a7a7a;
+        color: #fff;
+      }
+
+      .input-row {
+        display: flex;
+        gap: 12px;
+        margin-left: 28px;
+      }
+
+      .input-row + .input-row {
+        margin-top: 8px;
+      }
+
+      .input-row > div {
+        flex: 1;
+      }
+
+      .input-row label {
+        color: var(--muted);
+        display: block;
+        font-size: 12px;
+        margin-bottom: 4px;
+      }
+
+      .checkbox-consent {
+        align-items: flex-start;
+        background: #fef9f0;
+        border: 1.5px solid var(--accent);
+        border-radius: var(--radius);
+        cursor: pointer;
+        display: flex;
+        font-size: 14px;
+        gap: 12px;
+        line-height: 1.5;
+        margin-left: 28px;
+        padding: 16px;
+      }
+
+      .checkbox-consent input {
+        accent-color: var(--accent);
+        flex-shrink: 0;
+        height: 18px;
+        margin-top: 2px;
+        width: 18px;
+      }
+
+      .divider {
+        background: var(--mid);
+        height: 1px;
+        margin: 40px 0;
+      }
+
+      .submit-section {
+        background: var(--ink);
+        border-radius: var(--radius);
+        margin-top: 48px;
+        padding: 40px;
+        text-align: center;
+      }
+
+      .submit-section h3 {
+        color: var(--white);
+        font-family: "DM Serif Display", Georgia, serif;
+        font-size: 1.6rem;
+        font-weight: 400;
+        margin-bottom: 10px;
+      }
+
+      .submit-section p {
+        color: rgba(253, 252, 248, 0.64);
+        font-size: 14px;
+        margin-bottom: 28px;
+      }
+
+      .btn-submit,
+      .btn-copy {
+        border: 0;
+        border-radius: var(--radius);
+        cursor: pointer;
+        font-family: "DM Sans", system-ui, sans-serif;
+        font-size: 15px;
+        font-weight: 700;
+        padding: 16px 48px;
+        transition: background 0.2s ease, transform 0.2s ease;
+      }
+
+      .btn-submit {
+        background: var(--accent);
+        color: var(--ink);
+      }
+
+      .btn-submit:hover {
+        background: #f0b030;
+        transform: translateY(-1px);
+      }
+
+      .send-status {
+        color: rgba(253, 252, 248, 0.72);
+        font-size: 12px;
+        line-height: 1.5;
+        margin: 16px auto 0;
+        max-width: 520px;
+        min-height: 18px;
+      }
+
+      .send-status[data-state="success"] {
+        color: #9ed9a8;
+      }
+
+      .send-status[data-state="error"] {
+        color: #ffb5a7;
+      }
+
+      #result {
+        background: var(--white);
+        border: 1.5px solid var(--mid);
+        border-radius: var(--radius);
+        color: var(--text);
+        display: none;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 13px;
+        line-height: 1.8;
+        margin-top: 32px;
+        max-height: 420px;
+        overflow-y: auto;
+        padding: 32px;
+        white-space: pre-wrap;
+      }
+
+      .btn-copy {
+        background: var(--steel);
+        color: var(--white);
+        display: none;
+        margin-top: 16px;
+        padding: 12px 32px;
+      }
+
+      body.embedded {
+        background: transparent;
+      }
+
+      body.embedded .hero {
+        display: none;
+      }
+
+      body.embedded .container {
+        max-width: none;
+        padding: 24px;
+      }
+
+      body.embedded .progress-bar {
+        top: 0;
+      }
+
+      body.embedded .section:first-child .section-header {
+        margin-top: 0;
+      }
+
+      @media (max-width: 600px) {
+        .hero {
+          padding: 40px 24px 36px;
+        }
+
+        .options-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .scale-options,
+        .input-row {
+          flex-direction: column;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="hero">
+      <div class="hero-label">Marktvalidierung 2025</div>
+      <h1>Die Zukunft der Bauprojekt&shy;steuerung -<br /><em>projektor.one</em></h1>
+      <p>
+        Wir entwickeln eine föderierte Projektplattform für alle Beteiligten im Bauprozess. Dieser
+        Fragebogen hilft uns zu verstehen, was wirklich gebraucht wird - und wo der Schmerz sitzt.
+      </p>
+      <div class="hero-meta">
+        <span>ca. 15-18 Minuten</span>
+        <span>Anonym & vertraulich</span>
+        <span>projektor.one</span>
+      </div>
+    </div>
+
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+
+    <main class="container">
+      <form id="survey"></form>
+
+      <section class="submit-section">
+        <h3>Vielen Dank.</h3>
+        <p>Ihre Antworten helfen uns, projektor.one so zu bauen wie die Praxis es braucht.</p>
+        <button type="button" class="btn-submit" id="submitButton">Antworten zusammenfassen & senden</button>
+        <div class="send-status" id="sendStatus" role="status" aria-live="polite"></div>
+      </section>
+
+      <div id="result"></div>
+      <button class="btn-copy" id="copyButton" type="button">Antworten kopieren</button>
+    </main>
+
+    <script>
+      if (new URLSearchParams(window.location.search).has("embedded")) {
+        document.body.classList.add("embedded");
+      }
+
+      const pageParams = new URLSearchParams(window.location.search);
+      const defaultRefinioEndpoint = "https://refinio.one/api/projector/questionnaire-responses";
+      const refinioFeedbackEndpoint = pageParams.get("feedbackEndpoint") || defaultRefinioEndpoint;
+      const questionnaireId = "projektor-market-validation";
+      const responseVersion = "2026-05";
+
+      const sections = [
+        {
+          id: "A",
+          title: "Ihre Rolle & Ihr Kontext",
+          desc: "Damit wir Ihre Antworten richtig einordnen können.",
+          questions: [
+            { id: "q01", num: "01", type: "radio", label: "Welche Rolle haben Sie im Bauprozess?", options: ["Architekt / Planungsbüro", "Projektsteuerer", "Bauherr / Investor / Kommune", "Generalunternehmer / Bauunternehmen", "Handwerk / Gewerk", "Sonstiges"] },
+            { id: "q02", num: "02", type: "radio", label: "Wie viele Projekte betreuen Sie gleichzeitig?", options: ["1-2 Projekte", "3-5 Projekte", "6-10 Projekte", "Mehr als 10 Projekte"] },
+            { id: "q03", num: "03", type: "radio", label: "Wie groß sind Ihre typischen Projekte?", options: ["Unter 2 Mio. EUR", "2-10 Mio. EUR", "10-50 Mio. EUR", "Über 50 Mio. EUR"] },
+            { id: "q04a", num: "04a", type: "radio", label: "Wie viele Firmen / direkte Ansprechpartner koordinieren Sie typisch pro Projekt?", options: ["Bis 10", "10-25", "25-50", "Über 50"] },
+            { id: "q04b", num: "04b", type: "radio", label: "Wie viele Personen insgesamt - vom Bauherrn bis zum Handwerker auf der Baustelle?", options: ["Bis 20 Personen", "20-50 Personen", "50-150 Personen", "Über 150 Personen"] }
+          ]
+        },
+        {
+          id: "B",
+          title: "Quantifizierter Schmerz",
+          desc: "Konkrete Zahlen helfen uns zu verstehen, was der Status quo wirklich kostet.",
+          questions: [
+            { id: "q05", num: "05", type: "radio", label: "Wie viele Stunden pro Woche verlieren Sie durch schlechte Projektkommunikation, Informationssuche oder Systemwechsel?", options: ["Unter 2 Stunden", "2-5 Stunden", "5-10 Stunden", "Über 10 Stunden"] },
+            { id: "q06", num: "06", type: "radio", label: "Wie hoch schätzen Sie den Anteil der Projektkosten, der durch Kommunikationsprobleme, Nacharbeit oder fehlende Informationen entsteht?", options: ["Unter 2%", "2-5%", "5-10%", "Über 10%", "Kann ich nicht einschätzen"] },
+            { id: "q07", num: "07", type: "radio", label: "Wie viele Streit- oder Nachtragsverfahren hatten Sie in den letzten 12 Monaten, bei denen fehlende Dokumentation eine Rolle spielte?", options: ["Keine", "1-2", "3-5", "Mehr als 5"] },
+            { id: "q08", num: "08", type: "radio", label: "Wie oft entstehen Projektverzögerungen durch fehlende oder verspätete Informationen?", options: ["In fast jedem Projekt", "In etwa der Hälfte der Projekte", "Gelegentlich", "Selten"] },
+            { id: "q09", num: "09", type: "textarea", label: "Beschreiben Sie kurz Ihren größten konkreten Frustrationspunkt mit der aktuellen Situation.", placeholder: "Z. B.: Jedes Projekt eine andere Plattform, Datenverlust bei Firmenwechsel, Handwerker nicht erreichbar..." }
+          ]
+        },
+        {
+          id: "C",
+          title: "Aktuelle Software, Kosten & Verträge",
+          desc: "Was eingesetzt wird, was es kostet - und wer zahlt.",
+          questions: [
+            { id: "q10", num: "10", type: "checkbox", grid: true, label: "Welche Software nutzen Sie aktuell?", hint: "Mehrfachauswahl möglich", options: ["Autodesk Construction Cloud", "Procore", "MS Teams / SharePoint", "E-Mail", "WhatsApp / Messenger", "PlanRadar", "BIM 360", "Eigene Lösung / Excel", "Keine einheitliche Lösung"] },
+            { id: "q11", num: "11", type: "radio", label: "Was zahlen Sie aktuell pro Monat für Projektsoftware (alle Tools zusammen, Ihr Büro)?", options: ["Nichts / nur kostenlose Tools", "Unter 100 EUR / Monat", "100-500 EUR / Monat", "500-2.000 EUR / Monat", "Über 2.000 EUR / Monat", "Weiß ich nicht genau"] },
+            { id: "q12", num: "12", type: "radio", label: "Wer trägt die Kosten für die Projektsoftware?", options: ["Die vorgebende Instanz (Bauherr / Projektsteuerer)", "Jeder Beteiligte zahlt seinen eigenen Zugang", "Unser Büro trägt die Kosten", "Wird auf die Projektkosten umgelegt", "Unklar / nicht geregelt"] },
+            { id: "q13", num: "13", type: "radio", label: "Wer hat die Software vorgegeben?", options: ["Wir selbst / unser Büro", "Der Bauherr", "Der Projektsteuerer", "Der Generalunternehmer", "Wechselt je nach Projekt"] },
+            { id: "q14", num: "14", type: "radio", label: "Wie lang sind Ihre aktuellen Softwareverträge typischerweise?", options: ["Monatlich kündbar", "1 Jahr", "2-3 Jahre", "Über 3 Jahre", "Keine formalen Verträge"] },
+            { id: "q15", num: "15", type: "checkbox", grid: true, label: "Was sind die größten Hürden, wenn Sie die Software wechseln wollen?", hint: "Mehrfachauswahl möglich", options: ["Vertragsbindung", "Datenmigration", "Schulungsaufwand", "Bauherr schreibt die Software vor", "Gewohnheit der Beteiligten", "Keine Entscheidungshoheit", "Ich möchte gar nicht wechseln"] },
+            { id: "q16", num: "16", type: "radio", label: "Wie oft gibt es Probleme mit der eingesetzten Software?", options: ["Regelmäßig - dauerndes Thema", "Gelegentlich", "Selten", "Keine nennenswerten Probleme"] },
+            { id: "q16b", num: "16b", type: "textarea", label: "Welche konkreten Probleme treten auf?", placeholder: "Z. B.: Datenverlust, fehlende Funktionen, Akzeptanzprobleme...", optional: true }
+          ]
+        },
+        {
+          id: "D",
+          title: "Entscheidungsprozess",
+          desc: "Wer kann einführen - wer blockiert?",
+          questions: [
+            { id: "q17", num: "17", type: "radio", label: "Wer kann in Ihrer Organisation die Einführung einer neuen Projektsoftware freigeben?", options: ["Ich selbst", "Die Geschäftsführung", "Die IT-Abteilung", "Gemeinsame Entscheidung mehrerer Personen", "Niemand intern - Auftraggeber entscheidet"] },
+            { id: "q18", num: "18", type: "checkbox", grid: true, label: "Wer blockiert typischerweise den Wechsel zu einer neuen Lösung?", hint: "Mehrfachauswahl möglich", options: ["Bauherr / Auftraggeber", "Eigene Geschäftsführung", "IT-Abteilung", "Handwerk / Subunternehmer", "Niemand blockiert aktiv", "Allgemeine Trägheit / Gewohnheit"] },
+            { id: "q19", num: "19", type: "radio", label: "Wie wird Software in Ihrem Unternehmen typischerweise beschafft?", options: ["Einzelentscheidung durch Fachkraft / Projektleiter", "Formaler Budgetprozess / Jahresplanung", "Öffentliche Ausschreibung (z. B. Vergaberecht)", "Über bestehende Rahmenverträge", "Vom Auftraggeber vorgegeben"] }
+          ]
+        },
+        {
+          id: "E",
+          title: "Alle Beteiligten - vom Bauherrn bis zum Handwerker",
+          desc: "projektor.one denkt Inklusion radikal.",
+          info: { title: "Konzept: Radikale Inklusion", body: "projektor.one gibt nicht nur Architekten und Bauherrn Zugang - sondern jedem Beteiligten: vom Polier über den Elektriker bis zum Maler. Jeder sieht nur, was er sehen darf. Jeder kann seine Arbeit dokumentieren, Aufgaben empfangen und Rückmeldung geben." },
+          questions: [
+            { id: "q20", num: "20", type: "radio", label: "Haben alle Projektbeteiligten aktuell Zugang zur eingesetzten Projektsoftware?", options: ["Ja - alle aktiv", "Büros ja, Baustelle eher nicht", "Poliere ja, Arbeiter nein", "Nur Planungs- und Steuerungsbeteiligte", "Keine einheitliche Lösung für alle"] },
+            { id: "q21", num: "21", type: "radio", label: "Gibt es Unterschiede im Zugang je nach eingesetzter Software?", options: ["Ja deutlich - manche Tools schließen Baustelle aus", "Ja etwas - Kosten oder Komplexität als Hürde", "Kaum", "Kein Thema bei uns"] },
+            { id: "q22", num: "22", type: "radio", label: "Wer sollte Rollen & Rechte verwalten?", options: ["Der Architekt", "Der Projektsteuerer", "Der Bauherr", "Jede Firma für ihre eigenen Leute", "Kombiniert: zentral + dezentral", "Sonstiges"] },
+            { id: "q22b", num: "22b", type: "textarea", label: "Falls Sonstiges oder Ergänzung:", placeholder: "Kurze Ergänzung...", optional: true }
+          ]
+        },
+        {
+          id: "F",
+          title: "Föderierte Architektur & Compliance",
+          desc: "Datensouveränität, DSGVO, Self-Hosting.",
+          info: { title: "Was bedeutet föderiert?", body: "Bei gängigen Cloud-Lösungen liegen alle Ihre Projektdaten auf fremden Servern - unkontrollierbar, oft in den USA. projektor.one ist anders: Jeder Beteiligte behält seine eigenen Daten. Wie bei E-Mail - jeder hat seinen eigenen Server, trotzdem kann jeder mit jedem kommunizieren." },
+          questions: [
+            { id: "q23", num: "23", type: "scale", label: "Wie relevant ist für Sie, dass Projektdaten nicht bei einem US-amerikanischen Anbieter liegen?", min: "Nicht relevant", max: "Sehr relevant" },
+            { id: "q24", num: "24", type: "checkbox", grid: true, label: "Welche Sicherheits- und Compliance-Anforderungen gelten für Sie?", hint: "Mehrfachauswahl möglich", options: ["DSGVO-Konformität", "Datenstandort Deutschland / EU", "Self-Hosting / eigener Server", "ISO 27001", "Anforderungen kommunaler Vergaben", "Keine speziellen Anforderungen"] },
+            { id: "q25", num: "25", type: "radio", label: "Hätten Sie Bedenken, wenn Ihr Kunde wüsste, dass Projektdaten auf US-Servern liegen?", options: ["Ja, erheblich - das ist bereits ein Thema", "Ja, möglicherweise bei bestimmten Kunden", "Eher nicht", "Nein - kein Thema"] },
+            { id: "q26", num: "26", type: "radio", label: "Bei kommunalen Projekten: Würde eine DSGVO-konforme, föderierte Lösung die Vergabechancen verbessern?", options: ["Ja, erheblich", "Möglicherweise", "Spielt keine Rolle", "Wir machen keine kommunalen Projekte"] }
+          ]
+        },
+        {
+          id: "G",
+          title: "KI als zusätzliches Gewerk",
+          desc: "Nicht Gadget - ein aktiver Projektbeteiligter in Ihrer Datensphäre.",
+          info: { title: "Konzept: KI als aktives Gewerk", body: "Die interne KI von projektor.one liest und indexiert alle Projektinhalte - Dokumente, Chats, Protokolle, Fotos. Sie läuft innerhalb Ihrer eigenen Datensphäre und sendet nichts an externe Dienste. Sie kann vergangene Entscheidungen finden, Widersprüche erkennen, Terminrisiken melden und neue Mitglieder automatisch einarbeiten." },
+          questions: [
+            { id: "q27", num: "27", type: "radio", label: "Wie oft verlieren Sie Zeit damit, frühere Entscheidungen oder Dokumente wiederzufinden?", options: ["Täglich - ernstes Problem", "Mehrmals pro Woche", "Gelegentlich", "Selten"] },
+            { id: "q28", num: "28", type: "top3", label: "Welche KI-Funktionen wären am wertvollsten? Wählen Sie Ihre Top 3.", hint: "Klicken Sie auf die Optionen in der Reihenfolge ihrer Wichtigkeit (1 = wichtigste).", options: ["Frühere Entscheidungen sofort finden", "Automatische Risikowarnungen", "Terminverzüge früh erkennen", "Neue Mitglieder automatisch einarbeiten", "Besprechungen automatisch zusammenfassen", "Widersprüche in Dokumenten erkennen", "Nachträge aus Kommunikation erkennen", "Kostenwarnungen bei Abweichungen"] },
+            { id: "q29", num: "29", type: "radio", label: "Würden Sie einer KI vertrauen, die ausschließlich innerhalb Ihrer eigenen Datensphäre läuft - keinerlei Daten an externe Dienste sendet?", options: ["Ja - das ist sogar eine Voraussetzung für mich", "Wahrscheinlich schon", "Ich bin unsicher", "Ich bin gegenüber KI generell skeptisch"] },
+            { id: "q30", num: "30", type: "textarea", label: "Konkreter Anwendungsfall: Wo würde KI in Ihrem Alltag sofort etwas verändern?", placeholder: "Beschreiben Sie eine konkrete Situation..." }
+          ]
+        },
+        {
+          id: "H",
+          title: "Funktionen & Integrationsbedarf",
+          desc: "Was muss projektor.one können - und womit muss es zusammenspielen?",
+          questions: [
+            { id: "q31", num: "31", type: "top3", label: "Welche Funktionen sind absolut unverzichtbar? Wählen Sie Ihre Top 3.", hint: "Klicken Sie in Reihenfolge der Wichtigkeit.", options: ["Dokumentenmanagement & Versionierung", "Aufgaben- & Terminverfolgung", "Interner Chat / Kommunikation", "E-Mail-Integration", "Rollen- & Rechteverwaltung", "Lückenlose Änderungshistorie", "Kalender & Meilensteine", "Foto-Dokumentation Baustelle", "Mängelverfolgung & Abnahme", "Kostenkontrolle & Nachtragswesen", "Offline-Funktion Baustelle", "KI-Unterstützung"] },
+            { id: "q32", num: "32", type: "checkbox", grid: true, label: "Welche Integrationen sind für Sie unverzichtbar?", hint: "Mehrfachauswahl möglich", options: ["MS 365 / Office", "E-Mail (IMAP/SMTP)", "Kalender (Google / Outlook)", "BIM / IFC / BCF", "Buchhaltung / ERP", "Dokumentenablage (SharePoint, Dropbox)", "Keine Integrationen nötig"] },
+            { id: "q33", num: "33", type: "textarea", label: "Das eine Feature, das Sie sofort überzeugen würde:", placeholder: "Das eine Feature, das für Sie alles entscheidet..." }
+          ]
+        },
+        {
+          id: "I",
+          title: "Pilotbereitschaft & Markt",
+          desc: "Konkrete nächste Schritte.",
+          questions: [
+            { id: "q34", num: "34", type: "radio", label: "Angenommen, Sie könnten frei wählen - würden Sie projektor.one einführen?", options: ["Ja, sofort", "Ja, wenn Preis-Leistung stimmt", "Erst nach erfolgreichem Pilotprojekt", "Eher nicht", "Nein"] },
+            { id: "q35", num: "35", type: "radio", label: "Haben Sie aktuell ein laufendes oder geplantes Projekt, das sich für einen Pilottest eignen würde?", options: ["Ja - ein laufendes Projekt", "Ja - ein geplantes Projekt (Start in 3-6 Monaten)", "Möglicherweise - müsste ich prüfen", "Nein, aktuell nicht"] },
+            { id: "q36", num: "36", type: "radio", label: "Hätten Sie Zugang zu den relevanten Beteiligten für ein Pilotprojekt (Bauherr, Gewerke)?", options: ["Ja - vollständig", "Teilweise", "Bauherr müsste erst zustimmen", "Eher nicht"] },
+            { id: "q37", num: "37", type: "radio", label: "Was wäre ein fairer monatlicher Preis pro Nutzer?", options: ["Unter 20 EUR / Monat / Nutzer", "20-50 EUR / Monat / Nutzer", "50-100 EUR / Monat / Nutzer", "Über 100 EUR / Monat / Nutzer", "Lieber projektbasierte Abrechnung"] },
+            { id: "q38", num: "38", type: "radio", label: "projektor.one sucht Praxispartner - wären Sie dabei?", hint: "Keine Verpflichtung, kein Risiko - aber eine echte Chance, die Plattform zu prägen und am Erfolg beteiligt zu werden.", options: ["Ja, sehr interessiert - bitte kontaktieren Sie mich", "Interessant - ich möchte mehr Informationen", "Am Pilotprojekt ja - Partnerschaft eher nicht", "Ich beobachte lieber erst", "Nein, danke"] },
+            { id: "q39", num: "39", type: "textarea", label: "Was wäre Ihr Traum - was müsste projektor.one bieten, damit es wirklich etwas verändert?", placeholder: "Mein Traum wäre eine Software, die..." }
+          ]
+        },
+        {
+          id: "J",
+          title: "Kontakt & Einwilligung",
+          desc: "Optional - nur wenn Sie möchten.",
+          questions: [
+            { id: "kontakt", num: "40", type: "contact", label: "Ihre Kontaktdaten (optional)" },
+            { id: "q41_consent", num: "41", type: "consent", label: "Einwilligung zur Kontaktaufnahme", text: "Ich bin damit einverstanden, dass das projektor.one-Team mich auf Basis meiner Angaben kontaktieren darf - für Rückfragen, weitere Informationen oder die Vereinbarung eines Gesprächstermins. Diese Einwilligung kann ich jederzeit widerrufen." }
+          ]
+        }
+      ];
+
+      const top3State = {};
+      const labels = new Map();
+
+      function escapeHtml(value) {
+        return String(value).replace(/[&<>"']/g, (char) => ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#39;"
+        })[char]);
+      }
+
+      function renderQuestion(question) {
+        labels.set(question.id, `${question.num} - ${question.label}`);
+        const hint = question.hint ? `<div class="question-hint">${escapeHtml(question.hint)}</div>` : "";
+        const label = `<div class="question-label"><span class="q-num">${escapeHtml(question.num)}</span>${escapeHtml(question.label)}</div>`;
+
+        if (question.type === "radio" || question.type === "checkbox") {
+          const className = question.grid ? "options-grid" : "options";
+          const options = question.options.map((option) => `
+            <label class="option">
+              <input type="${question.type}" name="${question.id}" value="${escapeHtml(option)}" />
+              <span>${escapeHtml(option)}</span>
+            </label>
+          `).join("");
+          return `<div class="question">${label}${hint}<div class="${className}">${options}</div></div>`;
+        }
+
+        if (question.type === "textarea") {
+          return `<div class="question">${label}${hint}<div class="control-wrap"><textarea name="${question.id}" placeholder="${escapeHtml(question.placeholder || "")}"></textarea></div></div>`;
+        }
+
+        if (question.type === "scale") {
+          return `
+            <div class="question">
+              ${label}${hint}
+              <div class="scale">
+                <div class="scale-labels"><span>${escapeHtml(question.min)}</span><span>${escapeHtml(question.max)}</span></div>
+                <div class="scale-options">
+                  ${[1, 2, 3, 4, 5].map((value) => `<button type="button" class="scale-btn" data-name="${question.id}" data-value="${value}">${value}</button>`).join("")}
+                </div>
+              </div>
+              <input type="hidden" name="${question.id}" id="${question.id}Value" />
+            </div>
+          `;
+        }
+
+        if (question.type === "top3") {
+          return `
+            <div class="question">
+              ${label}${hint}
+              <div class="top3-wrap">
+                <div class="top3-hint">Top 3 auswählen - in Reihenfolge klicken</div>
+                ${question.options.map((option) => `
+                  <div class="top3-option" role="button" tabindex="0" data-group="${question.id}" data-value="${escapeHtml(option)}">
+                    <div class="rank-badge">-</div><span>${escapeHtml(option)}</span>
+                  </div>
+                `).join("")}
+              </div>
+              <input type="hidden" name="${question.id}" id="${question.id}Value" />
+            </div>
+          `;
+        }
+
+        if (question.type === "contact") {
+          labels.set("kontakt_name", "Kontakt - Name");
+          labels.set("kontakt_firma", "Kontakt - Firma");
+          labels.set("kontakt_email", "Kontakt - E-Mail");
+          labels.set("kontakt_tel", "Kontakt - Telefon");
+          return `
+            <div class="question">
+              ${label}
+              <div class="input-row">
+                <div><label for="kontakt_name">Name</label><input id="kontakt_name" type="text" name="kontakt_name" placeholder="Ihr Name" /></div>
+                <div><label for="kontakt_firma">Firma</label><input id="kontakt_firma" type="text" name="kontakt_firma" placeholder="Ihr Unternehmen" /></div>
+              </div>
+              <div class="input-row">
+                <div><label for="kontakt_email">E-Mail</label><input id="kontakt_email" type="email" name="kontakt_email" placeholder="ihre@email.de" /></div>
+                <div><label for="kontakt_tel">Telefon (optional)</label><input id="kontakt_tel" type="tel" name="kontakt_tel" placeholder="+49..." /></div>
+              </div>
+            </div>
+          `;
+        }
+
+        if (question.type === "consent") {
+          return `
+            <div class="question">
+              ${label}
+              <label class="checkbox-consent">
+                <input type="checkbox" name="${question.id}" value="Ja" />
+                <span>${escapeHtml(question.text)}</span>
+              </label>
+            </div>
+          `;
+        }
+
+        return "";
+      }
+
+      function renderSurvey() {
+        const form = document.getElementById("survey");
+        form.innerHTML = sections.map((section, index) => `
+          <section class="section">
+            <div class="section-header">
+              <div class="section-number">${escapeHtml(section.id)}</div>
+              <div>
+                <div class="section-title">${escapeHtml(section.title)}</div>
+                <div class="section-desc">${escapeHtml(section.desc)}</div>
+              </div>
+            </div>
+            ${section.info ? `<div class="info-box"><h4>${escapeHtml(section.info.title)}</h4><p>${escapeHtml(section.info.body)}</p></div>` : ""}
+            ${section.questions.map(renderQuestion).join("")}
+          </section>
+          ${index < sections.length - 1 ? '<div class="divider"></div>' : ""}
+        `).join("");
+      }
+
+      function updateProgress() {
+        const answerableIds = sections.flatMap((section) => section.questions)
+          .filter((question) => !question.optional && !["contact", "consent"].includes(question.type))
+          .map((question) => question.id);
+        const answered = answerableIds.filter((id) => getValue(id).length > 0).length;
+        const pct = Math.round((answered / answerableIds.length) * 100);
+        document.getElementById("progressFill").style.width = `${pct}%`;
+      }
+
+      function getValue(name) {
+        const fields = [...document.querySelectorAll(`[name="${CSS.escape(name)}"]`)];
+        const first = fields[0];
+        if (!first) return [];
+
+        if (first.type === "radio" || first.type === "checkbox") {
+          return fields.filter((input) => input.checked).map((input) => input.value);
+        }
+
+        const field = first;
+        if (field && field.value.trim()) return [field.value.trim()];
+
+        return [];
+      }
+
+      function updateOptionHighlight(input) {
+        if (input.type === "radio") {
+          document.querySelectorAll(`.option input[name="${CSS.escape(input.name)}"]`).forEach((item) => {
+            item.closest(".option").classList.remove("selected");
+          });
+        }
+        input.closest(".option")?.classList.toggle("selected", input.checked);
+      }
+
+      function setScale(button) {
+        const name = button.dataset.name;
+        document.querySelectorAll(`.scale-btn[data-name="${CSS.escape(name)}"]`).forEach((item) => item.classList.remove("active"));
+        button.classList.add("active");
+        document.getElementById(`${name}Value`).value = button.dataset.value;
+        updateProgress();
+      }
+
+      function setTop3(option) {
+        const group = option.dataset.group;
+        const value = option.dataset.value;
+        top3State[group] ||= [];
+        const idx = top3State[group].indexOf(value);
+
+        if (idx >= 0) {
+          top3State[group].splice(idx, 1);
+        } else if (top3State[group].length < 3) {
+          top3State[group].push(value);
+        }
+
+        document.querySelectorAll(`.top3-option[data-group="${CSS.escape(group)}"]`).forEach((item) => {
+          const rank = top3State[group].indexOf(item.dataset.value);
+          const badge = item.querySelector(".rank-badge");
+          item.classList.remove("ranked-1", "ranked-2", "ranked-3");
+          if (rank >= 0) {
+            item.classList.add(`ranked-${rank + 1}`);
+            badge.textContent = String(rank + 1);
+          } else {
+            badge.textContent = "-";
+          }
+        });
+
+        document.getElementById(`${group}Value`).value = top3State[group].join(" > ");
+        updateProgress();
+      }
+
+      function collectAnswerData() {
+        const data = new Map();
+        document.querySelectorAll("input[type='radio']:checked, input[type='checkbox']:checked").forEach((input) => {
+          const current = data.get(input.name) || [];
+          current.push(input.value);
+          data.set(input.name, current);
+        });
+        document.querySelectorAll("textarea, input[type='text'], input[type='email'], input[type='tel'], input[type='hidden']").forEach((field) => {
+          if (field.value.trim()) data.set(field.name, [field.value.trim()]);
+        });
+
+        return data;
+      }
+
+      function formatAnswers(data) {
+        let out = "=======================================\n";
+        out += "  projektor.one - Fragebogen Auswertung\n";
+        out += `  ${new Date().toLocaleDateString("de-DE", { day: "2-digit", month: "long", year: "numeric" })}\n`;
+        out += "=======================================\n\n";
+
+        labels.forEach((label, key) => {
+          const values = data.get(key);
+          if (!values) return;
+          out += `${label}\n`;
+          values.forEach((value) => {
+            out += values.length > 1 ? `  [x] ${value}\n` : `  -> ${value}\n`;
+          });
+          out += "\n";
+        });
+
+        return out;
+      }
+
+      function mapToRecord(data) {
+        return Object.fromEntries([...data.entries()]);
+      }
+
+      function labelsToRecord() {
+        return Object.fromEntries(labels.entries());
+      }
+
+      function buildSubmissionPayload(data, summaryText) {
+        const answers = mapToRecord(data);
+        const contactConsent = answers.q41_consent?.includes("Ja") === true;
+
+        if (!contactConsent) {
+          delete answers.kontakt_name;
+          delete answers.kontakt_firma;
+          delete answers.kontakt_email;
+          delete answers.kontakt_tel;
+        }
+
+        return {
+          schemaVersion: 1,
+          questionnaireId,
+          responseVersion,
+          source: "projektor.one Settings > Feedback",
+          submittedAt: new Date().toISOString(),
+          language: document.documentElement.lang || "de",
+          embedded: document.body.classList.contains("embedded"),
+          origin: window.location.origin,
+          answers,
+          labels: labelsToRecord(),
+          summaryText: contactConsent ? summaryText : undefined
+        };
+      }
+
+      function setSendStatus(message, state = "") {
+        const status = document.getElementById("sendStatus");
+        status.textContent = message;
+        status.dataset.state = state;
+      }
+
+      async function sendToRefinio(payload) {
+        const response = await fetch(refinioFeedbackEndpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+          },
+          body: JSON.stringify(payload)
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok || body.success === false) {
+          throw new Error(body.error || `refinio.one antwortete mit HTTP ${response.status}`);
+        }
+        return body.data;
+      }
+
+      async function submitForm() {
+        const data = collectAnswerData();
+        const summaryText = formatAnswers(data);
+        const result = document.getElementById("result");
+        result.textContent = summaryText;
+        result.style.display = "block";
+        document.getElementById("copyButton").style.display = "inline-block";
+        result.scrollIntoView({ behavior: "smooth", block: "start" });
+
+        const submitButton = document.getElementById("submitButton");
+        submitButton.disabled = true;
+        setSendStatus("Sende Antworten an refinio.one...", "");
+        try {
+          const receipt = await sendToRefinio(buildSubmissionPayload(data, summaryText));
+          setSendStatus(`Gesendet an refinio.one. 42 sieht die Antwort unter projektor.one (${receipt.id}).`, "success");
+        } catch (error) {
+          setSendStatus(`Nicht gesendet: ${error.message}`, "error");
+        } finally {
+          submitButton.disabled = false;
+        }
+      }
+
+      async function copyResult() {
+        await navigator.clipboard.writeText(document.getElementById("result").textContent);
+        const button = document.getElementById("copyButton");
+        button.textContent = "Kopiert";
+        setTimeout(() => {
+          button.textContent = "Antworten kopieren";
+        }, 2000);
+      }
+
+      renderSurvey();
+      document.addEventListener("input", updateProgress);
+      document.addEventListener("change", (event) => {
+        if (event.target.matches(".option input")) updateOptionHighlight(event.target);
+        updateProgress();
+      });
+      document.addEventListener("click", (event) => {
+        const scaleButton = event.target.closest(".scale-btn");
+        const top3Option = event.target.closest(".top3-option");
+        if (scaleButton) setScale(scaleButton);
+        if (top3Option) setTop3(top3Option);
+      });
+      document.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        const top3Option = event.target.closest(".top3-option");
+        if (top3Option) {
+          event.preventDefault();
+          setTop3(top3Option);
+        }
+      });
+      document.getElementById("submitButton").addEventListener("click", submitForm);
+      document.getElementById("copyButton").addEventListener("click", copyResult);
+      updateProgress();
+    </script>
+  </body>
+</html>
