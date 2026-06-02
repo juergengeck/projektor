@@ -42,7 +42,11 @@ mkdir -p "$BUILD_DIR"
 cp "$SCRIPT_DIR/index.html" "$BUILD_DIR/index.html"
 cp "$SCRIPT_DIR/market-validation.html" "$BUILD_DIR/market-validation.html"
 cp "$SCRIPT_DIR/styles.css" "$BUILD_DIR/styles.css"
-cp "$SCRIPT_DIR/app.js" "$BUILD_DIR/app.js"
+npx --yes esbuild "$SCRIPT_DIR/app.js" \
+    --bundle \
+    --format=esm \
+    --platform=browser \
+    --outfile="$BUILD_DIR/app.js"
 cp "$SCRIPT_DIR/projektor_logo.svg" "$BUILD_DIR/projektor_logo.svg"
 
 if [ -d "$SCRIPT_DIR/docs" ]; then

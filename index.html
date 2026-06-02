@@ -104,6 +104,22 @@
           </div>
         </section>
 
+        <section class="panel" id="flows" aria-labelledby="flows-title">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow" id="flowsEyebrow">Projektflows</p>
+              <h2 id="flows-title">Verbindliche Abläufe für Dokumente, Termine und Änderungen</h2>
+            </div>
+            <div class="flow-tabs" id="flowTabs" aria-label="Flow auswählen"></div>
+          </div>
+          <div class="flow-board">
+            <div class="flow-detail" id="flowDetail"></div>
+            <div class="flow-steps" id="flowSteps"></div>
+            <div class="flow-checks" id="flowChecks"></div>
+          </div>
+          <div class="schedule-board" id="scheduleBoard"></div>
+        </section>
+
         <section class="panel" id="data" aria-labelledby="data-title">
           <div class="section-head">
             <div>
@@ -222,8 +238,8 @@
               <div class="feedback-head">
                 <div>
                   <span class="card-kicker">Feedback</span>
-                  <h3>Marktvalidierung</h3>
-                  <p>Der Fragebogen sammelt priorisierte Rückmeldungen zu Schmerz, Kosten, Integrationen, Pilotbereitschaft und Datenschutz.</p>
+                  <h3 id="feedbackMarketTitle">Marktvalidierung</h3>
+                  <p id="feedbackMarketText">Der Fragebogen sammelt priorisierte Rückmeldungen zu Schmerz, Kosten, Integrationen, Pilotbereitschaft und Datenschutz.</p>
                 </div>
                 <a class="secondary-action feedback-open" href="./market-validation.html" target="_blank" rel="noreferrer">Separat öffnen</a>
               </div>
@@ -238,6 +254,6 @@
       </main>
     </div>
 
-    <script src="./app.js"></script>
+    <script type="module" src="./app.js"></script>
   </body>
 </html>

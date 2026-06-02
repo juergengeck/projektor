@@ -1,7 +1,12 @@
+import { createProjectPlan, createProjectScheduleStateDagUpdate } from "./project.core.js";
+import { createDemoProjectSchedule, demoProjectBoundary } from "./demo-kita-2028.project.js";
+import { createHoaiPlanningDefaults, normalizeHoaiPlanning, phaseById } from "./hoai.core.js";
+
 const state = {
   activePanel: "cockpit",
   activeRole: "architect",
   activePhase: "lp3",
+  activeFlow: "invoices",
   theme: localStorage.getItem("projektor-theme") || localStorage.getItem("steering-theme") || "light",
   language: localStorage.getItem("projektor-language") || localStorage.getItem("steering-language") || "de",
   onboardingStep: localStorage.getItem("projektor-onboarding-complete") === "true" ? "done" : "identity",
@@ -38,6 +43,7 @@ const navItems = [
   ["cockpit", "CP", "navCockpit"],
   ["roles", "RO", "navRoles"],
   ["phases", "LP", "navPhases"],
+  ["flows", "FL", "navFlows"],
   ["data", "DA", "navData"],
   ["ai", "AS", "navAi"],
   ["journal", "JO", "navJournal"],
@@ -250,7 +256,7 @@ const onboardingCopy = {
   },
 };
 
-const demoProject = {
+let demoProject = {
   id: "demo-kita-2028",
   objectType: "Projekt-ID",
   titles: {
@@ -296,6 +302,7 @@ const i18n = {
     navCockpit: "Cockpit",
     navRoles: "Rollen",
     navPhases: "Phasen",
+    navFlows: "Flows",
     navData: "Daten",
     navAi: "Assistenz",
     navJournal: "Journal",
@@ -313,6 +320,8 @@ const i18n = {
     rolesTitle: "Rollen, Berechtigungen und Zugriff",
     phasesEyebrow: "HOAI Leistungsphasen",
     phasesTitle: "Phasen, Querschnittsthemen und offene Entscheidungen",
+    flowsEyebrow: "Projektflows",
+    flowsTitle: "Verbindliche Abläufe für Dokumente, Termine und Änderungen",
     dataEyebrow: "Projektdateien",
     dataTitle: "Datenimport, Vorschau und Projekt-Export",
     template: "Template",
@@ -329,6 +338,10 @@ const i18n = {
     settingsFeedbackTitle: "Feedback und Marktvalidierung",
     settingsConfig: "Konfiguration",
     settingsFeedback: "Feedback",
+    feedbackMarketTitle: "Marktvalidierung",
+    feedbackMarketText:
+      "Der Fragebogen sammelt priorisierte Rückmeldungen zu Schmerz, Kosten, Integrationen, Pilotbereitschaft und Datenschutz.",
+    feedbackOpen: "Separat öffnen",
     testImap: "IMAP prüfen",
     importPick: "Importdatei wählen",
     importHint: "XLSX/CSV aus Projektliste, Terminplan oder Kontaktliste",
@@ -350,6 +363,7 @@ const i18n = {
     navCockpit: "Cockpit",
     navRoles: "Roles",
     navPhases: "Phases",
+    navFlows: "Flows",
     navData: "Data",
     navAi: "Assistant",
     navJournal: "Journal",
@@ -367,6 +381,8 @@ const i18n = {
     rolesTitle: "Roles, permissions and access",
     phasesEyebrow: "HOAI phases",
     phasesTitle: "Phases, cross-cutting topics and open decisions",
+    flowsEyebrow: "Project flows",
+    flowsTitle: "Binding workflows for documents, dates and changes",
     dataEyebrow: "Project files",
     dataTitle: "Data import, preview and project export",
     template: "Template",
@@ -383,6 +399,10 @@ const i18n = {
     settingsFeedbackTitle: "Feedback and market validation",
     settingsConfig: "Configuration",
     settingsFeedback: "Feedback",
+    feedbackMarketTitle: "Market validation",
+    feedbackMarketText:
+      "The questionnaire collects prioritized feedback on pain, costs, integrations, pilot readiness and data protection.",
+    feedbackOpen: "Open separately",
     testImap: "Check IMAP",
     importPick: "Choose import file",
     importHint: "XLSX/CSV from a project list, schedule or contact list",
@@ -404,6 +424,7 @@ const i18n = {
     navCockpit: "Cockpit",
     navRoles: "Rôles",
     navPhases: "Phases",
+    navFlows: "Flux",
     navData: "Données",
     navAi: "Surface IA",
     navJournal: "Journal",
@@ -421,6 +442,8 @@ const i18n = {
     rolesTitle: "Rôles, droits et accès",
     phasesEyebrow: "Phases HOAI",
     phasesTitle: "Phases, thèmes transversaux et décisions ouvertes",
+    flowsEyebrow: "Flux projet",
+    flowsTitle: "Processus contraignants pour documents, dates et changements",
     dataEyebrow: "Fichiers projet",
     dataTitle: "Import, aperçu et export du projet",
     template: "Modèle",
@@ -437,6 +460,10 @@ const i18n = {
     settingsFeedbackTitle: "Feedback et validation marché",
     settingsConfig: "Configuration",
     settingsFeedback: "Feedback",
+    feedbackMarketTitle: "Validation marché",
+    feedbackMarketText:
+      "Le questionnaire recueille des retours priorisés sur la douleur, les coûts, les intégrations, la disposition au pilote et la protection des données.",
+    feedbackOpen: "Ouvrir séparément",
     testImap: "Vérifier IMAP",
     importPick: "Choisir un fichier",
     importHint: "XLSX/CSV depuis une liste projet, un planning ou une liste de contacts",
@@ -458,6 +485,7 @@ const i18n = {
     navCockpit: "Panel",
     navRoles: "Roles",
     navPhases: "Fases",
+    navFlows: "Flujos",
     navData: "Datos",
     navAi: "Superficie IA",
     navJournal: "Diario",
@@ -475,6 +503,8 @@ const i18n = {
     rolesTitle: "Roles, permisos y acceso",
     phasesEyebrow: "Fases HOAI",
     phasesTitle: "Fases, temas transversales y decisiones abiertas",
+    flowsEyebrow: "Flujos del proyecto",
+    flowsTitle: "Procesos vinculantes para documentos, fechas y cambios",
     dataEyebrow: "Archivos de proyecto",
     dataTitle: "Importación, vista previa y exportación del proyecto",
     template: "Plantilla",
@@ -491,6 +521,10 @@ const i18n = {
     settingsFeedbackTitle: "Feedback y validación de mercado",
     settingsConfig: "Configuración",
     settingsFeedback: "Feedback",
+    feedbackMarketTitle: "Validación de mercado",
+    feedbackMarketText:
+      "El cuestionario recoge comentarios priorizados sobre dolor, costes, integraciones, disposición a piloto y protección de datos.",
+    feedbackOpen: "Abrir por separado",
     testImap: "Comprobar IMAP",
     importPick: "Elegir archivo",
     importHint: "XLSX/CSV de lista de proyecto, cronograma o lista de contactos",
@@ -557,14 +591,14 @@ function navigateSettings(view) {
   navigateTo("settings", view);
 }
 
-const metrics = [
+let metrics = [
   ["100", "Beteiligte", "Schätzung für Bauherr, Planer, Prüfer, Gutachter und Gewerke."],
   ["42", "aktive Kontakte", "Hauptkontakte und Stellvertreter mit direkter Einladung oder delegierter Rolle."],
   ["9", "Leistungsphasen", "Von Grundlagenermittlung bis Objektbetreuung und Dokumentation."],
   ["5", "Querschnittsthemen", "Kosten, Termine, Fördermittel, Kommunikation und Nachhaltigkeit."],
 ];
 
-const lanes = [
+let lanes = [
   {
     title: "Kommunikation",
     text: "Projektmail, Chat und Termine bleiben pro Projektbereich nachvollziehbar.",
@@ -582,7 +616,7 @@ const lanes = [
   },
 ];
 
-const roles = {
+let roles = {
   owner: {
     label: "Bauherr",
     type: "Projektrolle",
@@ -625,16 +659,16 @@ const roles = {
   },
 };
 
-const runnerRoleKeys = ["architect", "owner", "authority", "trade"];
+let runnerRoleKeys = ["architect", "owner", "authority", "trade"];
 
-const runnerRoleWindowLayout = {
+let runnerRoleWindowLayout = {
   architect: { left: 40, top: 60, width: 470, height: 640 },
   owner: { left: 540, top: 60, width: 470, height: 640 },
   authority: { left: 1040, top: 60, width: 470, height: 640 },
   trade: { left: 1540, top: 60, width: 470, height: 640 },
 };
 
-const runnerProtocolSteps = [
+let runnerProtocolSteps = [
   {
     from: "architect",
     to: "owner",
@@ -673,7 +707,7 @@ const runnerProtocolSteps = [
   },
 ];
 
-const sharedTrieRoots = [
+let sharedTrieRoots = [
   {
     path: "/demo-kita-2028/project-mail",
     object: "ProjectMailTrieRoot",
@@ -706,60 +740,11 @@ const sharedTrieRoots = [
   },
 ];
 
-const phases = [
-  {
-    id: "lp1",
-    short: "LP1",
-    title: "Grundlagenermittlung",
-    decision: "Bedarf, Flächen, Beteiligte und erste Projektstruktur klären.",
-    risk: "Unklare Anforderungen werden später teuer.",
-  },
-  {
-    id: "lp2",
-    short: "LP2",
-    title: "Vorplanung",
-    decision: "Varianten, Kostenrahmen und Förderlogik zusammenbringen.",
-    risk: "Förderbedingungen und Nutzerbedarf laufen auseinander.",
-  },
-  {
-    id: "lp3",
-    short: "LP3",
-    title: "Entwurfsplanung",
-    decision: "Entwurf, Kostenberechnung und Terminpfad beschlussfähig machen.",
-    risk: "Bauherr, Fachplaner und Nachhaltigkeitsanforderungen sind nicht synchron.",
-  },
-  {
-    id: "lp4",
-    short: "LP4",
-    title: "Genehmigungsplanung",
-    decision: "Unterlagen, Behördenrückfragen und Nachweise vollständig halten.",
-    risk: "Rückfragen verschwinden in Mailverläufen.",
-  },
-  {
-    id: "lp5",
-    short: "LP5",
-    title: "Ausführungsplanung",
-    decision: "Planstände, Freigaben und Änderungen kontrolliert verteilen.",
-    risk: "Gewerke arbeiten mit abweichenden Planständen.",
-  },
-  {
-    id: "lp8",
-    short: "LP8",
-    title: "Bauüberwachung",
-    decision: "Mängel, Termine, Protokolle und Nachträge im Takt führen.",
-    risk: "Baustellenereignisse sind nicht beweisfest verknüpft.",
-  },
-];
+let { phases, topics, flowDomains } = createHoaiPlanningDefaults();
 
-const topics = [
-  ["Kosten", "DIN 276 Fortschreibung, Freigaben, Budgetabweichungen"],
-  ["Termine", "Meilensteine, Gremien, Behördenlaufzeiten, Bauzeitenplan"],
-  ["Fördermittel", "Nachweise, Fristen, Zweckbindung und Dokumentationspflicht"],
-  ["Kommunikation", "Projektmail, Gruppenchat, Aufgaben, Eskalationen"],
-  ["Nachhaltigkeit", "GEG, BNB-Optionen, Energie- und Materialnachweise"],
-];
+let projectSchedule = createDemoProjectSchedule();
 
-const ai = {
+let ai = {
   goal: {
     type: "Assistenzauftrag",
     ref: "LP3 zu LP4 vorbereiten",
@@ -787,7 +772,7 @@ const ai = {
   },
 };
 
-const settingsModel = {
+let settingsModel = {
   ui: {
     type: "UISettings",
     section: "ui",
@@ -808,13 +793,13 @@ const settingsModel = {
   },
 };
 
-const mailPreview = [
+let mailPreview = [
   ["Heute", "Bauherr", "Kostenberechnung LP3 freigeben", "entscheidung"],
   ["Gestern", "Behörde", "Rückfrage Stellplatznachweis", "lp4"],
   ["Mo", "Fachplaner TGA", "Energieannahmen aktualisiert", "nachhaltigkeit"],
 ];
 
-const dataImportModel = {
+let dataImportModel = {
   type: "Importvorschau",
   source: "Projektdatei",
   workbookSheets: [
@@ -832,7 +817,7 @@ const dataImportModel = {
   ],
 };
 
-const exportBundleModel = {
+let exportBundleModel = {
   type: "Projekt-Export",
   ref: "Demo: Kita 2028",
   sections: [
@@ -852,7 +837,7 @@ const exportBundleModel = {
   ],
 };
 
-const journalBase = [
+let journalBase = [
   ["2026-05-27 09:12", "Rolle vergeben", "Architekt lädt Bauherr per Link ein.", "Journal 001"],
   ["2026-05-27 10:35", "Dokument freigegeben", "Entwurf LP3 Version 14 im Dokumentenbereich freigegeben.", "Journal 002"],
   ["2026-05-27 11:48", "Entscheidung erfasst", "Kostenberechnung wird als Grundlage für Gremientermin markiert.", "Journal 003"],
@@ -860,6 +845,186 @@ const journalBase = [
   ["2026-05-27 13:31", "Einstellungen aktualisiert", "IMAP Account-Metadaten aktualisiert; Passwort bleibt lokal geschützt.", "Journal 005"],
   ["2026-05-27 13:46", "Export vorbereitet", "Projekt-Export mit Beteiligten, Rollen, Dokumenten, Mailbezügen, Einstellungen und Journal vorbereitet.", "Journal 006"],
 ];
+
+const PROJECT_DATATYPE_KIND = "projektor.one/project";
+const PROJECT_DATATYPE_VERSION = 1;
+const PROJECT_STORAGE_KEY = "projektor-active-project";
+
+function deepClone(value) {
+  if (typeof structuredClone === "function") return structuredClone(value);
+  return JSON.parse(JSON.stringify(value));
+}
+
+function isPlainObject(value) {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function sanitizeProjectSettings(settings) {
+  const sanitized = deepClone(settings || {});
+  sanitized.ui = { ...(settingsModel.ui || {}), ...(sanitized.ui || {}) };
+  sanitized.imap = { ...(settingsModel.imap || {}), ...(sanitized.imap || {}) };
+  if (sanitized.imap) {
+    delete sanitized.imap.password;
+    delete sanitized.imap.accessToken;
+    delete sanitized.imap.refreshToken;
+  }
+  return sanitized;
+}
+
+function projectRuntime() {
+  return {
+    activeRole: state.activeRole,
+    activePhase: state.activePhase,
+    activeFlow: state.activeFlow,
+    syncAgeMinutes: state.syncCount,
+    journalExtra: state.journalExtra,
+  };
+}
+
+function createProjectDatatype() {
+  return {
+    kind: PROJECT_DATATYPE_KIND,
+    schemaVersion: PROJECT_DATATYPE_VERSION,
+    project: deepClone(demoProject),
+    cockpit: {
+      metrics: deepClone(metrics),
+      lanes: deepClone(lanes),
+    },
+    roleModel: {
+      roles: deepClone(roles),
+      runnerRoleKeys: deepClone(runnerRoleKeys),
+      runnerRoleWindowLayout: deepClone(runnerRoleWindowLayout),
+      runnerProtocolSteps: deepClone(runnerProtocolSteps),
+      sharedTrieRoots: deepClone(sharedTrieRoots),
+    },
+    planning: {
+      phases: deepClone(phases),
+      topics: deepClone(topics),
+      flowDomains: deepClone(flowDomains),
+      schedule: deepClone(projectSchedule),
+    },
+    assistant: deepClone(ai),
+    settings: sanitizeProjectSettings(settingsModel),
+    mailPreview: deepClone(mailPreview),
+    importModel: deepClone(dataImportModel),
+    exportModel: deepClone(exportBundleModel),
+    journal: deepClone(journalBase),
+    runtime: projectRuntime(),
+  };
+}
+
+function projectFromLegacyExport(payload) {
+  const fallback = createProjectDatatype();
+  if (!isPlainObject(payload?.project)) return null;
+
+  return {
+    ...fallback,
+    project: {
+      ...fallback.project,
+      id: payload.project.id || fallback.project.id,
+      titles: payload.project.title ? { ...fallback.project.titles, de: payload.project.title } : fallback.project.titles,
+      subtitles: payload.project.subtitle ? { ...fallback.project.subtitles, de: payload.project.subtitle } : fallback.project.subtitles,
+    },
+    roleModel: {
+      ...fallback.roleModel,
+      roles: isPlainObject(payload.roles) ? payload.roles : fallback.roleModel.roles,
+      sharedTrieRoots: Array.isArray(payload.sharedTrieRoots) ? payload.sharedTrieRoots : fallback.roleModel.sharedTrieRoots,
+    },
+    settings: isPlainObject(payload.settings)
+      ? {
+          ui: payload.settings.ui || fallback.settings.ui,
+          imap: payload.settings.sourceImap || payload.settings.imap || fallback.settings.imap,
+        }
+      : fallback.settings,
+    importModel: isPlainObject(payload.importModel) ? payload.importModel : fallback.importModel,
+    assistant: isPlainObject(payload.ai) ? payload.ai : fallback.assistant,
+    runtime: {
+      ...fallback.runtime,
+      activePhase: payload.project.activePhase || fallback.runtime.activePhase,
+      syncAgeMinutes: payload.project.syncAgeMinutes || fallback.runtime.syncAgeMinutes,
+    },
+  };
+}
+
+function normalizeProjectDatatype(payload) {
+  if (payload?.kind === PROJECT_DATATYPE_KIND) {
+    if (payload.schemaVersion !== PROJECT_DATATYPE_VERSION) {
+      throw new Error(`Unsupported project schema version: ${payload.schemaVersion}`);
+    }
+    if (!isPlainObject(payload.project) || !payload.project.id) {
+      throw new Error("Project file has no project id.");
+    }
+    return payload;
+  }
+
+  const legacyProject = projectFromLegacyExport(payload);
+  if (legacyProject) return legacyProject;
+  throw new Error("This is not a projektor.one project file.");
+}
+
+function projectRootPath() {
+  return `/${demoProject.id || "project"}`;
+}
+
+function projectRolePath(roleKey) {
+  return `${projectRootPath()}/roles/${roleKey}`;
+}
+
+function projectRef() {
+  const localized = demoProject.shortTitle?.[state.language] || demoProject.shortTitle?.de || projectText("titles");
+  return localized || demoProject.id || "Project";
+}
+
+function installProjectDatatype(projectData, { persist = false } = {}) {
+  const normalized = normalizeProjectDatatype(projectData);
+  demoProject = deepClone(normalized.project);
+  metrics = deepClone(normalized.cockpit?.metrics || []);
+  lanes = deepClone(normalized.cockpit?.lanes || []);
+  roles = deepClone(normalized.roleModel?.roles || {});
+  runnerRoleKeys = deepClone(normalized.roleModel?.runnerRoleKeys || Object.keys(roles));
+  runnerRoleWindowLayout = deepClone(normalized.roleModel?.runnerRoleWindowLayout || runnerRoleWindowLayout);
+  runnerProtocolSteps = deepClone(normalized.roleModel?.runnerProtocolSteps || []);
+  sharedTrieRoots = deepClone(normalized.roleModel?.sharedTrieRoots || []);
+  ({ phases, topics, flowDomains } = normalizeHoaiPlanning(normalized.planning || {}));
+  projectSchedule = createProjectPlan(normalized.planning?.schedule || projectSchedule);
+  ai = deepClone(normalized.assistant || ai);
+  settingsModel = sanitizeProjectSettings(normalized.settings || settingsModel);
+  mailPreview = deepClone(normalized.mailPreview || []);
+  dataImportModel = deepClone(normalized.importModel || dataImportModel);
+  exportBundleModel = deepClone(normalized.exportModel || exportBundleModel);
+  journalBase = deepClone(normalized.journal || []);
+
+  const runtime = normalized.runtime || {};
+  state.activeRole = roles[runtime.activeRole] ? runtime.activeRole : Object.keys(roles)[0] || state.activeRole;
+  state.activePhase = phases.some((phase) => phase.id === runtime.activePhase) ? runtime.activePhase : phases[0]?.id || state.activePhase;
+  state.activeFlow = flowDomains.some((flow) => flow.id === runtime.activeFlow) ? runtime.activeFlow : flowDomains[0]?.id || state.activeFlow;
+  state.syncCount = Number.isFinite(runtime.syncAgeMinutes) ? runtime.syncAgeMinutes : state.syncCount;
+  state.journalExtra = Number.isInteger(runtime.journalExtra) ? runtime.journalExtra : state.journalExtra;
+  state.theme = settingsModel.ui?.theme || state.theme;
+  state.language = settingsModel.ui?.language || state.language;
+  state.runnerWindows = {};
+  state.runnerLog = [];
+  state.runnerMessages = [];
+  state.runnerProtocolStep = 0;
+  state.runnerStatus = "idle";
+
+  if (persist) {
+    localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(createProjectDatatype()));
+  }
+}
+
+function loadStoredProjectDatatype() {
+  const stored = localStorage.getItem(PROJECT_STORAGE_KEY);
+  if (!stored) return null;
+  try {
+    return normalizeProjectDatatype(JSON.parse(stored));
+  } catch {
+    localStorage.removeItem(PROJECT_STORAGE_KEY);
+    return null;
+  }
+}
+
+installProjectDatatype(loadStoredProjectDatatype() || createProjectDatatype());
 
 function el(tag, options = {}, children = []) {
   const node = document.createElement(tag);
@@ -1089,14 +1254,16 @@ function renderStaticText() {
   setText("brandSubtitle", tr("brandSubtitle"));
   setText("mapProjectLabel", projectText("mapLabel"));
   document.querySelector(".map-center strong").textContent = projectText("subtitles");
-  setText("mapProjectId", `${demoProject.objectType} ${demoProject.id}`);
-  const nodes = demoProject.nodes[state.language] ?? demoProject.nodes.de;
+  setText("mapProjectId", `${demoProject.objectType || "Project ID"} ${demoProject.id}`);
+  const nodes = [...(demoProject.nodes?.[state.language] ?? demoProject.nodes?.de ?? [])];
   setText("mapNodeA", nodes[0]);
   setText("mapNodeB", nodes[1]);
   setText("mapNodeC", nodes[2]);
   setText("mapNodeD", nodes[3]);
-  document.querySelector("#statusPhase").innerHTML = `<strong>LP</strong> ${demoProject.phase[state.language] ?? demoProject.phase.de}`;
-  document.querySelector("#statusRisk").innerHTML = `<strong>${tr("statusRiskLabel")}</strong> ${demoProject.risk[state.language] ?? demoProject.risk.de}`;
+  const phaseLabel = demoProject.phase?.[state.language] ?? demoProject.phase?.de ?? state.activePhase;
+  const riskLabel = demoProject.risk?.[state.language] ?? demoProject.risk?.de ?? "-";
+  document.querySelector("#statusPhase").innerHTML = `<strong>LP</strong> ${phaseLabel}`;
+  document.querySelector("#statusRisk").innerHTML = `<strong>${tr("statusRiskLabel")}</strong> ${riskLabel}`;
   document.querySelector("#statusSync").innerHTML = `<strong>${tr("statusSync")}</strong> ${state.syncCount} min`;
 
   setText("cockpitEyebrow", tr("cockpitEyebrow"));
@@ -1106,6 +1273,8 @@ function renderStaticText() {
   setText("roles-title", tr("rolesTitle"));
   setText("phasesEyebrow", tr("phasesEyebrow"));
   setText("phases-title", tr("phasesTitle"));
+  setText("flowsEyebrow", tr("flowsEyebrow"));
+  setText("flows-title", tr("flowsTitle"));
   setText("dataEyebrow", tr("dataEyebrow"));
   setText("data-title", tr("dataTitle"));
   setText("downloadTemplate", tr("template"));
@@ -1238,7 +1407,7 @@ function renderPhases() {
     }),
   );
 
-  const phase = phases.find((item) => item.id === state.activePhase);
+  const phase = phaseById(phases, state.activePhase);
   document.querySelector("#phaseDetail").replaceChildren(
     el("span", { className: "card-kicker", text: phase.short }),
     el("h3", { text: phase.title }),
@@ -1254,6 +1423,195 @@ function renderPhases() {
     el("span", { className: "card-kicker", text: "Querschnittsthemen" }),
     el("h3", { text: "Kontinuierliche Projektkontrolle" }),
     el("ul", { className: "topic-list" }, topics.map(([title, text]) => el("li", {}, [el("strong", { text: title }), el("span", { text })]))),
+  );
+}
+
+function renderFlows() {
+  const tabs = document.querySelector("#flowTabs");
+  const activeFlow = flowDomains.find((flow) => flow.id === state.activeFlow) ?? flowDomains[0];
+
+  tabs.replaceChildren(
+    ...flowDomains.map((flow) => {
+      const button = el("button", {
+        type: "button",
+        className: activeFlow.id === flow.id ? "active" : "",
+        text: flow.label,
+      });
+      button.addEventListener("click", () => {
+        state.activeFlow = flow.id;
+        renderFlows();
+      });
+      return button;
+    }),
+  );
+
+  document.querySelector("#flowDetail").replaceChildren(
+    bookTop(activeFlow.label, activeFlow.object),
+    el("h3", { text: "Auslöser" }),
+    el("p", { text: activeFlow.trigger }),
+    el("h3", { text: "Beteiligte Rollen" }),
+    el("ul", { className: "flow-chip-list" }, activeFlow.owners.map((owner) => el("li", { text: owner }))),
+    el("h3", { text: "Ergebnis" }),
+    el("p", { text: activeFlow.output }),
+  );
+
+  document.querySelector("#flowSteps").replaceChildren(
+    el("span", { className: "card-kicker", text: "Ablauf" }),
+    el("ol", { className: "flow-step-list" }, activeFlow.steps.map((step, index) =>
+      el("li", {}, [
+        el("strong", { text: String(index + 1).padStart(2, "0") }),
+        el("span", { text: step }),
+      ]),
+    )),
+  );
+
+  document.querySelector("#flowChecks").replaceChildren(
+    el("span", { className: "card-kicker", text: "Prüfpunkte" }),
+    el("ul", { className: "topic-list" }, activeFlow.checks.map((check) =>
+      el("li", {}, [
+        el("strong", { text: check }),
+        el("span", { text: "muss vor Statuswechsel sichtbar sein" }),
+      ]),
+    )),
+  );
+}
+
+function dateFromProjectDay(projectStart, day) {
+  const start = new Date(`${projectStart || "2026-06-01"}T00:00:00Z`);
+  start.setUTCDate(start.getUTCDate() + Math.round(day));
+  return start;
+}
+
+function formatProjectDay(day) {
+  const locale = state.language === "de" ? "de-DE" : state.language === "fr" ? "fr-FR" : state.language === "es" ? "es-ES" : "en-US";
+  return new Intl.DateTimeFormat(locale, { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" }).format(
+    dateFromProjectDay(projectSchedule.projectStart, day),
+  );
+}
+
+function dependencyLabel(dependency) {
+  const lag = dependency.lagDays === 0 ? "" : dependency.lagDays > 0 ? ` +${dependency.lagDays}d` : ` ${dependency.lagDays}d`;
+  return `${dependency.type}${lag}`;
+}
+
+function renderScheduleBoard() {
+  const root = document.querySelector("#scheduleBoard");
+  if (!root) return;
+
+  let update;
+  try {
+    update = createProjectScheduleStateDagUpdate(projectSchedule, { managedTaskId: "entwurf" });
+  } catch (error) {
+    root.replaceChildren(
+      el("article", { className: "schedule-card schedule-error" }, [
+        bookTop("project.core", "planner/updater validation"),
+        el("h3", { text: "Terminplan blockiert" }),
+        el("p", { text: error.message }),
+      ]),
+    );
+    return;
+  }
+
+  const plan = update.schedule;
+  const stateDagPlan = update.bundle.plan;
+  const workload = update.bundle.workload;
+  const oneSurface = update.oneIntegration;
+  const taskById = new Map(plan.tasks.map((task) => [task.id, task]));
+  const criticalLabels = plan.criticalPath.map((taskId) => taskById.get(taskId)?.label || taskId).join(" -> ");
+  const finish = formatProjectDay(plan.projectFinishDay);
+
+  const table = el("table", { className: "matrix-table schedule-table" });
+  table.append(
+    el("thead", {}, [
+      el("tr", {}, [
+        el("th", { text: "Aufgabe" }),
+        el("th", { text: "ES" }),
+        el("th", { text: "EF" }),
+        el("th", { text: "LS" }),
+        el("th", { text: "LF" }),
+        el("th", { text: "Float" }),
+      ]),
+    ]),
+    el("tbody", {}, plan.tasks.map((task) =>
+      el("tr", { className: task.isCritical ? "critical" : "" }, [
+        el("td", {}, [
+          el("strong", { text: task.label || task.id }),
+          el("span", { text: `${task.phase || "-"} · ${task.owner || "-"} · ${task.durationDays}d` }),
+        ]),
+        el("td", { text: formatProjectDay(task.earlyStart) }),
+        el("td", { text: formatProjectDay(task.earlyFinish) }),
+        el("td", { text: formatProjectDay(task.lateStart) }),
+        el("td", { text: formatProjectDay(task.lateFinish) }),
+        el("td", {}, [el("span", { className: task.isCritical ? "access-chip full" : "access-chip", text: `${task.totalFloat}d` })]),
+      ]),
+    )),
+  );
+
+  root.replaceChildren(
+    el("article", { className: "schedule-card schedule-summary" }, [
+      bookTop("project.core", "CPM over planner.core"),
+      el("ul", { className: "object-list compact-list" }, [
+        el("li", {}, [el("span", { text: "Planner states" }), el("strong", { text: `${stateDagPlan.topologicalStateIds.length}` })]),
+        el("li", {}, [el("span", { text: "Updater mutable" }), el("strong", { text: `${workload.mutableStateIds.length}` })]),
+        el("li", {}, [el("span", { text: "Projektende" }), el("strong", { text: finish })]),
+      ]),
+      el("h3", { text: "Kritischer Pfad" }),
+      el("p", { text: criticalLabels || "-" }),
+    ]),
+    el("article", { className: "schedule-card schedule-tasks" }, [
+      bookTop("Forward/Backward Pass", `${plan.projectStart} -> ${finish}`),
+      el("div", { className: "preview-table-wrap" }, [table]),
+    ]),
+    el("article", { className: "schedule-card schedule-links" }, [
+      bookTop("Abhängigkeiten", "typed weighted edges"),
+      el("ul", { className: "topic-list" }, plan.dependencies.map((dependency) =>
+        el("li", {}, [
+          el("strong", { text: dependencyLabel(dependency) }),
+          el("span", {
+            text: `${taskById.get(dependency.from)?.label || dependency.from} -> ${taskById.get(dependency.to)?.label || dependency.to}`,
+          }),
+        ]),
+      )),
+    ]),
+    el("article", { className: "schedule-card schedule-boundary" }, [
+      bookTop("Boundary", demoProjectBoundary.projectId),
+      el("h3", { text: "App logic" }),
+      el("ul", { className: "topic-list compact-list" }, demoProjectBoundary.appLogic.slice(0, 4).map((item) =>
+        el("li", {}, [
+          el("strong", { text: "shared" }),
+          el("span", { text: item }),
+        ]),
+      )),
+      el("h3", { text: "Domain core" }),
+      el("ul", { className: "topic-list compact-list" }, demoProjectBoundary.domainCore.map((item) =>
+        el("li", {}, [
+          el("strong", { text: "core" }),
+          el("span", { text: item }),
+        ]),
+      )),
+      el("h3", { text: "Project data" }),
+      el("ul", { className: "topic-list compact-list" }, demoProjectBoundary.projectSpecific.slice(0, 4).map((item) =>
+        el("li", {}, [
+          el("strong", { text: "active graph" }),
+          el("span", { text: item }),
+        ]),
+      )),
+    ]),
+    el("article", { className: "schedule-card schedule-runtime" }, [
+      bookTop("ONE runtime", "one.core + one.models"),
+      el("ul", { className: "object-list compact-list" }, [
+        el("li", {}, [el("span", { text: "one.core" }), el("strong", { text: oneSurface.oneCore.stableStringifier })]),
+        el("li", {}, [el("span", { text: "one.models Model" }), el("strong", { text: oneSurface.oneModels.modelClass })]),
+        el("li", {}, [el("span", { text: "one.models Settings" }), el("strong", { text: oneSurface.oneModels.propertyTreeClass })]),
+      ]),
+      el("h3", { text: "State-DAG workload" }),
+      el("ul", { className: "topic-list" }, stateDagPlan.steps.slice(0, 4).map((step) =>
+        el("li", {}, [
+          el("strong", { text: `${step.ordinal}. ${step.status}` }),
+          el("span", { text: step.explanation || step.stateId }),
+        ]),
+      )),
+    ]),
   );
 }
 
@@ -1307,7 +1665,7 @@ function renderData() {
   );
 
   document.querySelector("#importPreview").replaceChildren(
-    bookTop(dataImportModel.type, "Demo: Kita 2028"),
+    bookTop(dataImportModel.type, projectRef()),
     el("h3", { text: tr("dataPreviewTitle") }),
     el("p", { text: tr("dataPreviewText") }),
     el("ul", { className: "topic-list" }, dataImportModel.workbookSheets.map(([sheet, object, count, purpose]) =>
@@ -1320,7 +1678,7 @@ function renderData() {
   );
 
   document.querySelector("#exportSummary").replaceChildren(
-    bookTop(exportBundleModel.type, exportBundleModel.ref),
+    bookTop(exportBundleModel.type, projectRef()),
     el("h3", { text: tr("exportBundleTitle") }),
     el("p", { text: tr("exportBundleText") }),
     el("ul", { className: "topic-list" }, exportBundleModel.sections.map(([section, purpose]) =>
@@ -1393,6 +1751,8 @@ function renderSettings() {
   const imap = settingsModel.imap;
   renderSettingsTabs();
   renderSettingsPanes();
+  const imapProjectRef = document.querySelector("#imapForm .book-ref");
+  if (imapProjectRef) imapProjectRef.textContent = projectRef();
   setInputLabel("imapAccountId", "Account ID");
   setInputLabel("imapHost", state.language === "de" ? "IMAP Host" : state.language === "fr" ? "Hôte IMAP" : state.language === "es" ? "Host IMAP" : "IMAP host");
   setInputLabel("imapPort", state.language === "fr" ? "Port" : "Port");
@@ -1436,10 +1796,22 @@ function renderSettingsPanes() {
   const configPane = document.querySelector("#settingsConfigPane");
   const feedbackPane = document.querySelector("#settingsFeedbackPane");
   const testButton = document.querySelector("#testImap");
+  const feedbackUrl = `./market-validation.html?embedded=1&lang=${encodeURIComponent(state.language)}`;
+  const feedbackFrame = document.querySelector(".feedback-frame");
+  const feedbackOpen = document.querySelector(".feedback-open");
   setText("settings-title", state.settingsView === "feedback" ? tr("settingsFeedbackTitle") : tr("settingsConfigTitle"));
   configPane.hidden = state.settingsView !== "configuration";
   feedbackPane.hidden = state.settingsView !== "feedback";
   testButton.hidden = state.settingsView !== "configuration";
+  setText("feedbackMarketTitle", tr("feedbackMarketTitle"));
+  setText("feedbackMarketText", tr("feedbackMarketText"));
+  if (feedbackOpen) {
+    feedbackOpen.textContent = tr("feedbackOpen");
+    feedbackOpen.href = `./market-validation.html?lang=${encodeURIComponent(state.language)}`;
+  }
+  if (feedbackFrame && feedbackFrame.getAttribute("src") !== feedbackUrl) {
+    feedbackFrame.src = feedbackUrl;
+  }
 }
 
 function setInputLabel(inputId, text) {
@@ -1623,14 +1995,13 @@ function openRunnerRoleWindows() {
 }
 
 function runnerRootForRole(roleKey) {
-  return `/demo-kita-2028/roles/${roleKey}`;
+  return projectRolePath(roleKey);
 }
 
 function runnerStepRoot(step) {
-  if (step.to === "owner") return "/demo-kita-2028/costs/din276";
-  if (step.to === "authority") return "/demo-kita-2028/lp4/permit-documents";
-  if (step.to === "trade") return "/demo-kita-2028/lp8/site";
-  return "/demo-kita-2028/project-mail";
+  const visibleRoot = sharedTrieRoots.find((root) => root.visibility?.[step.to] && root.visibility[step.to] !== "none");
+  if (visibleRoot) return visibleRoot.path;
+  return sharedTrieRoots[0]?.path || projectRootPath();
 }
 
 function wait(ms) {
@@ -1834,11 +2205,20 @@ function downloadTextFile(filename, mimeType, content) {
 
 function downloadTemplate() {
   const headers = ["Name", "Rolle", "Trie-Pfad", "Sichtbarkeit", "Leistungsphase", "E-Mail", "Hinweis"];
-  const rows = [
-    ["Bauherr Darmstadt", "Bauherr", "/demo-kita-2028/project-mail", "voll", "LP1-LP9", "bauherr@example.org", "Hauptansprechpartner"],
-    ["Amt Bauaufsicht", "Behörde", "/demo-kita-2028/lp4/permit-documents", "gefiltert", "LP4", "amt@example.org", "Behörde"],
-    ["Gewerk Rohbau", "Gewerk", "/demo-kita-2028/lp8/site", "gefiltert", "LP6-LP8", "rohbau@example.org", "Ausführung"],
-  ];
+  const roleEntries = Object.entries(roles);
+  const rows = sharedTrieRoots.slice(0, 3).map((root, index) => {
+    const [roleKey, role] = roleEntries[index] || roleEntries[0] || ["role", { label: "Projektrolle" }];
+    const access = root.visibility?.[roleKey] || "filtered";
+    return [
+      role.label,
+      role.type || roleKey,
+      root.path,
+      access === "full" ? "voll" : access === "filtered" ? "gefiltert" : "kein Zugriff",
+      root.phase || "LP1-LP9",
+      `${roleKey}@example.org`,
+      root.object,
+    ];
+  });
   const csv = [headers, ...rows].map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\n");
   state.journalExtra += 1;
   renderJournal();
@@ -1846,33 +2226,14 @@ function downloadTemplate() {
 }
 
 function exportProjectBundle() {
-  const bundle = {
-    kind: exportBundleModel.type,
-    exportedAt: new Date().toISOString(),
-    project: {
-      id: demoProject.id,
-      title: projectText("titles"),
-      subtitle: projectText("subtitles"),
-      activePhase: state.activePhase,
-      syncAgeMinutes: state.syncCount,
-    },
-    roles,
-    sharedTrieRoots,
-    settings: {
-      ui: settingsModel.ui,
-      sourceImap: {
-        ...settingsModel.imap,
-        password: undefined,
-        accessToken: undefined,
-      },
-    },
-    importModel: dataImportModel,
-    ai,
-    warnings: exportBundleModel.warnings,
-  };
   state.journalExtra += 1;
+  const bundle = {
+    ...createProjectDatatype(),
+    exportedAt: new Date().toISOString(),
+  };
+  const projectId = demoProject.id || "project";
   renderJournal();
-  downloadTextFile("projektor-one-demo-kita-2028-export.json", "application/json", JSON.stringify(bundle, null, 2));
+  downloadTextFile(`projektor-one-${projectId}.project.json`, "application/vnd.projektor.project+json", JSON.stringify(bundle, null, 2));
 }
 
 function simulateDataImport() {
@@ -1880,6 +2241,34 @@ function simulateDataImport() {
   state.journalExtra += 1;
   renderData();
   renderJournal();
+}
+
+async function importProjectFile(file) {
+  state.importFileName = file?.name || "";
+  if (!file) {
+    state.importStatus = "idle";
+    renderData();
+    return;
+  }
+
+  if (!file.name.toLowerCase().endsWith(".json")) {
+    state.importStatus = "preview";
+    renderData();
+    return;
+  }
+
+  try {
+    const projectData = normalizeProjectDatatype(JSON.parse(await file.text()));
+    installProjectDatatype(projectData, { persist: true });
+    state.importFileName = file.name;
+    state.importStatus = "imported";
+    state.journalExtra += 1;
+    render();
+  } catch (error) {
+    state.importStatus = "idle";
+    renderData();
+    window.alert(error.message || "Project import failed.");
+  }
 }
 
 function syncOnboardingInputs() {
@@ -2046,9 +2435,7 @@ function bindActions() {
   document.querySelector("#exportBundle").addEventListener("click", exportProjectBundle);
   document.querySelector("#simulateImport").addEventListener("click", simulateDataImport);
   document.querySelector("#dataImportFile").addEventListener("change", (event) => {
-    state.importFileName = event.target.files?.[0]?.name || "";
-    state.importStatus = state.importFileName ? "preview" : "idle";
-    renderData();
+    void importProjectFile(event.target.files?.[0]);
   });
 
   document.querySelector("#imapForm").addEventListener("input", updateSettingsFromForm);
@@ -2065,6 +2452,8 @@ function render() {
   renderCockpit();
   renderRoles();
   renderPhases();
+  renderFlows();
+  renderScheduleBoard();
   renderData();
   renderAI();
   renderJournal();
