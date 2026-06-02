@@ -1,28 +1,5 @@
 import { createProjectPlan } from "./project.core.js";
 
-export const demoProjectBoundary = {
-  projectId: "demo-kita-2028",
-  dataOwner: "active project graph",
-  appLogic: [
-    "route state and rendering",
-    "ONE package wiring",
-    "planner.core/updater.core orchestration",
-    "CPM calculation and schedule projection",
-    "project import/export envelope",
-  ],
-  domainCore: [
-    "HOAI.core phases and cross-cutting topics",
-    "HOAI.core workflow templates",
-    "project.core schedule validation and CPM solver",
-  ],
-  projectSpecific: [
-    "project title and localized labels",
-    "roles and visible trie roots",
-    "task ids, durations, owners, phase refs and dependencies",
-    "mail preview, import preview and journal entries",
-  ],
-};
-
 export function createDemoProjectSchedule() {
   return createProjectPlan({
     projectId: "demo-kita-2028",

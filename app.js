@@ -1,5 +1,13 @@
 import { createProjectPlan, createProjectScheduleStateDagUpdate } from "./project.core.js";
-import { createDemoProjectSchedule, demoProjectBoundary } from "./demo-kita-2028.project.js";
+import { createDemoProjectSchedule } from "./demo-kita-2028.project.js";
+import { createProjectEditorWorkbench } from "./content-editors.project.js";
+import {
+  DEMO_DATASET_CREATOR_SKILL,
+  PROJECT_DATATYPE_KIND,
+  PROJECT_DATATYPE_VERSION,
+  createDemoDatasetProject,
+  listDemoDatasetPlans,
+} from "./demo-dataset.creator.js";
 import { createHoaiPlanningDefaults, normalizeHoaiPlanning, phaseById } from "./hoai.core.js";
 
 const state = {
@@ -24,6 +32,7 @@ const state = {
   imapStatus: "idle",
   importStatus: "idle",
   importFileName: "",
+  datasetCreatorStatus: "bereit",
   runnerStatus: "idle",
   runnerSessionId: localStorage.getItem("projektor-runner-session") || "",
   runnerWindows: {},
@@ -31,13 +40,14 @@ const state = {
   runnerMessages: [],
   runnerProtocolStep: 0,
   settingsView: "configuration",
+  activeProjectVisual: "gantt",
 };
 
 const runtimeWindowId = `projektor-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const runnerWindowRefs = new Map();
 let activeRunnerAbort = false;
 const runnerRoleParam = new URLSearchParams(window.location.search).get("runnerRole");
-const isRunnerRoleWindow = ["architect", "owner", "authority", "trade"].includes(runnerRoleParam);
+const isRunnerRoleWindow = ["architect", "owner", "authority", "trade", "operator", "tenant"].includes(runnerRoleParam);
 
 const navItems = [
   ["cockpit", "CP", "navCockpit"],
@@ -51,6 +61,15 @@ const navItems = [
 ];
 
 const settingsViews = ["configuration", "feedback"];
+
+const projectVisualTypes = [
+  ["gantt", "Gantt", "Terminbalken"],
+  ["kanban", "Kanban", "Arbeitsfluss"],
+  ["pert", "PERT", "Abhängigkeiten"],
+  ["burn", "Burn", "Fortschritt"],
+  ["wbs", "WBS", "Lieferstruktur"],
+  ["flowchart", "Flowchart", "Ablauf"],
+];
 
 const languages = {
   de: "Deutsch",
@@ -846,9 +865,15 @@ let journalBase = [
   ["2026-05-27 13:46", "Export vorbereitet", "Projekt-Export mit Beteiligten, Rollen, Dokumenten, Mailbezügen, Einstellungen und Journal vorbereitet.", "Journal 006"],
 ];
 
-const PROJECT_DATATYPE_KIND = "projektor.one/project";
-const PROJECT_DATATYPE_VERSION = 1;
 const PROJECT_STORAGE_KEY = "projektor-active-project";
+const datasetPlans = listDemoDatasetPlans();
+
+let demoDatasetCreator = {
+  skill: deepClone(DEMO_DATASET_CREATOR_SKILL),
+  plan: datasetPlans[0],
+  generatedAt: "2026-06-02T09:30:00.000Z",
+  plannerEvidence: null,
+};
 
 function deepClone(value) {
   if (typeof structuredClone === "function") return structuredClone(value);
@@ -885,6 +910,7 @@ function createProjectDatatype() {
   return {
     kind: PROJECT_DATATYPE_KIND,
     schemaVersion: PROJECT_DATATYPE_VERSION,
+    creator: deepClone(demoDatasetCreator),
     project: deepClone(demoProject),
     cockpit: {
       metrics: deepClone(metrics),
@@ -975,8 +1001,14 @@ function projectRef() {
   return localized || demoProject.id || "Project";
 }
 
+function conciseProjectRef() {
+  const ref = projectRef();
+  return ref.split(" - ")[0] || ref;
+}
+
 function installProjectDatatype(projectData, { persist = false } = {}) {
   const normalized = normalizeProjectDatatype(projectData);
+  demoDatasetCreator = deepClone(normalized.creator || demoDatasetCreator);
   demoProject = deepClone(normalized.project);
   metrics = deepClone(normalized.cockpit?.metrics || []);
   lanes = deepClone(normalized.cockpit?.lanes || []);
@@ -1031,6 +1063,16 @@ function el(tag, options = {}, children = []) {
   Object.entries(options).forEach(([key, value]) => {
     if (key === "className") node.className = value;
     else if (key === "text") node.textContent = value;
+    else node.setAttribute(key, value);
+  });
+  children.forEach((child) => node.append(child));
+  return node;
+}
+
+function svgEl(tag, options = {}, children = []) {
+  const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  Object.entries(options).forEach(([key, value]) => {
+    if (key === "text") node.textContent = value;
     else node.setAttribute(key, value);
   });
   children.forEach((child) => node.append(child));
@@ -1402,6 +1444,7 @@ function renderPhases() {
       button.addEventListener("click", () => {
         state.activePhase = phase.id;
         renderPhases();
+        renderProjectVisuals();
       });
       return button;
     }),
@@ -1440,6 +1483,7 @@ function renderFlows() {
       button.addEventListener("click", () => {
         state.activeFlow = flow.id;
         renderFlows();
+        renderProjectVisuals();
       });
       return button;
     }),
@@ -1489,9 +1533,26 @@ function formatProjectDay(day) {
   );
 }
 
-function dependencyLabel(dependency) {
-  const lag = dependency.lagDays === 0 ? "" : dependency.lagDays > 0 ? ` +${dependency.lagDays}d` : ` ${dependency.lagDays}d`;
-  return `${dependency.type}${lag}`;
+function taskLabel(taskById, taskId) {
+  return taskById.get(taskId)?.label || taskId;
+}
+
+function dependencySentence(dependency, taskById) {
+  const predecessor = taskLabel(taskById, dependency.from);
+  const lagText = dependency.lagDays === 0
+    ? ""
+    : dependency.lagDays > 0
+      ? ` mit ${dependency.lagDays} Tagen Abstand`
+      : ` mit ${Math.abs(dependency.lagDays)} Tagen Überlappung`;
+
+  const dependencyTypeText = {
+    FS: `startet nach Abschluss von ${predecessor}${lagText}`,
+    SS: `startet parallel zu ${predecessor}${lagText}`,
+    FF: `muss zusammen mit ${predecessor} fertig werden${lagText}`,
+    SF: `kann erst fertig werden, wenn ${predecessor} startet${lagText}`,
+  };
+
+  return dependencyTypeText[dependency.type] || `hängt von ${predecessor}${lagText} ab`;
 }
 
 function renderScheduleBoard() {
@@ -1504,7 +1565,7 @@ function renderScheduleBoard() {
   } catch (error) {
     root.replaceChildren(
       el("article", { className: "schedule-card schedule-error" }, [
-        bookTop("project.core", "planner/updater validation"),
+        bookTop("Terminsteuerung", conciseProjectRef()),
         el("h3", { text: "Terminplan blockiert" }),
         el("p", { text: error.message }),
       ]),
@@ -1513,23 +1574,27 @@ function renderScheduleBoard() {
   }
 
   const plan = update.schedule;
-  const stateDagPlan = update.bundle.plan;
-  const workload = update.bundle.workload;
-  const oneSurface = update.oneIntegration;
   const taskById = new Map(plan.tasks.map((task) => [task.id, task]));
-  const criticalLabels = plan.criticalPath.map((taskId) => taskById.get(taskId)?.label || taskId).join(" -> ");
+  const criticalLabels = plan.criticalPath.map((taskId) => taskLabel(taskById, taskId)).join(" -> ");
   const finish = formatProjectDay(plan.projectFinishDay);
+  const managedTask = taskById.get("entwurf") || plan.tasks.find((task) => task.isCritical) || plan.tasks[0];
+  const managedSuccessors = plan.dependencies
+    .filter((dependency) => dependency.from === managedTask?.id)
+    .map((dependency) => taskLabel(taskById, dependency.to));
+  const bufferTask = plan.tasks
+    .filter((task) => !task.isCritical)
+    .sort((left, right) => right.totalFloat - left.totalFloat)[0];
 
   const table = el("table", { className: "matrix-table schedule-table" });
   table.append(
     el("thead", {}, [
       el("tr", {}, [
         el("th", { text: "Aufgabe" }),
-        el("th", { text: "ES" }),
-        el("th", { text: "EF" }),
-        el("th", { text: "LS" }),
-        el("th", { text: "LF" }),
-        el("th", { text: "Float" }),
+        el("th", { text: "Start" }),
+        el("th", { text: "Fertig" }),
+        el("th", { text: "Spätstart" }),
+        el("th", { text: "Spät fertig" }),
+        el("th", { text: "Puffer" }),
       ]),
     ]),
     el("tbody", {}, plan.tasks.map((task) =>
@@ -1549,66 +1614,384 @@ function renderScheduleBoard() {
 
   root.replaceChildren(
     el("article", { className: "schedule-card schedule-summary" }, [
-      bookTop("project.core", "CPM over planner.core"),
+      bookTop("Terminsteuerung", conciseProjectRef()),
       el("ul", { className: "object-list compact-list" }, [
-        el("li", {}, [el("span", { text: "Planner states" }), el("strong", { text: `${stateDagPlan.topologicalStateIds.length}` })]),
-        el("li", {}, [el("span", { text: "Updater mutable" }), el("strong", { text: `${workload.mutableStateIds.length}` })]),
+        el("li", {}, [el("span", { text: "Projektstart" }), el("strong", { text: formatProjectDay(0) })]),
         el("li", {}, [el("span", { text: "Projektende" }), el("strong", { text: finish })]),
+        el("li", {}, [el("span", { text: "Kritische Aufgaben" }), el("strong", { text: `${plan.criticalPath.length}` })]),
       ]),
-      el("h3", { text: "Kritischer Pfad" }),
+      el("h3", { text: "Was den Projekttermin bestimmt" }),
       el("p", { text: criticalLabels || "-" }),
     ]),
+    el("article", { className: "schedule-card schedule-decision" }, [
+      bookTop("Nächste Entscheidung", managedTask?.phase || "Projekt"),
+      el("h3", { text: managedTask?.label || "Freigabe klären" }),
+      el("p", {
+        text: managedTask?.isCritical
+          ? `Wenn diese Freigabe rutscht, verschieben sich ${managedSuccessors.slice(0, 3).join(", ") || "die Folgeaufgaben"} mit.`
+          : "Diese Aufgabe hat Puffer, sollte aber vor der nächsten Freigabe sichtbar entschieden sein.",
+      }),
+      el("ul", { className: "object-list compact-list" }, [
+        el("li", {}, [el("span", { text: "Zieltermin" }), el("strong", { text: formatProjectDay(managedTask?.earlyFinish || 0) })]),
+        el("li", {}, [el("span", { text: "Puffer" }), el("strong", { text: `${managedTask?.totalFloat || 0}d` })]),
+        el("li", {}, [el("span", { text: "Verantwortung" }), el("strong", { text: managedTask?.owner || "-" })]),
+      ]),
+    ]),
     el("article", { className: "schedule-card schedule-tasks" }, [
-      bookTop("Forward/Backward Pass", `${plan.projectStart} -> ${finish}`),
+      bookTop("Terminplan", `${formatProjectDay(0)} -> ${finish}`),
       el("div", { className: "preview-table-wrap" }, [table]),
     ]),
     el("article", { className: "schedule-card schedule-links" }, [
-      bookTop("Abhängigkeiten", "typed weighted edges"),
+      bookTop("Abhängigkeiten", "projektbezogen"),
       el("ul", { className: "topic-list" }, plan.dependencies.map((dependency) =>
         el("li", {}, [
-          el("strong", { text: dependencyLabel(dependency) }),
-          el("span", {
-            text: `${taskById.get(dependency.from)?.label || dependency.from} -> ${taskById.get(dependency.to)?.label || dependency.to}`,
-          }),
+          el("strong", { text: taskLabel(taskById, dependency.to) }),
+          el("span", { text: dependencySentence(dependency, taskById) }),
         ]),
       )),
     ]),
-    el("article", { className: "schedule-card schedule-boundary" }, [
-      bookTop("Boundary", demoProjectBoundary.projectId),
-      el("h3", { text: "App logic" }),
-      el("ul", { className: "topic-list compact-list" }, demoProjectBoundary.appLogic.slice(0, 4).map((item) =>
-        el("li", {}, [
-          el("strong", { text: "shared" }),
-          el("span", { text: item }),
-        ]),
-      )),
-      el("h3", { text: "Domain core" }),
-      el("ul", { className: "topic-list compact-list" }, demoProjectBoundary.domainCore.map((item) =>
-        el("li", {}, [
-          el("strong", { text: "core" }),
-          el("span", { text: item }),
-        ]),
-      )),
-      el("h3", { text: "Project data" }),
-      el("ul", { className: "topic-list compact-list" }, demoProjectBoundary.projectSpecific.slice(0, 4).map((item) =>
-        el("li", {}, [
-          el("strong", { text: "active graph" }),
-          el("span", { text: item }),
-        ]),
-      )),
-    ]),
-    el("article", { className: "schedule-card schedule-runtime" }, [
-      bookTop("ONE runtime", "one.core + one.models"),
+    ...(bufferTask ? [el("article", { className: "schedule-card schedule-buffer" }, [
+      bookTop("Puffer", bufferTask.phase || "Projekt"),
+      el("h3", { text: bufferTask.label }),
+      el("p", { text: "Diese Aufgabe ist nicht terminbestimmend, bleibt aber ein sichtbarer Risikopunkt für Finanzierung und Freigaben." }),
       el("ul", { className: "object-list compact-list" }, [
-        el("li", {}, [el("span", { text: "one.core" }), el("strong", { text: oneSurface.oneCore.stableStringifier })]),
-        el("li", {}, [el("span", { text: "one.models Model" }), el("strong", { text: oneSurface.oneModels.modelClass })]),
-        el("li", {}, [el("span", { text: "one.models Settings" }), el("strong", { text: oneSurface.oneModels.propertyTreeClass })]),
+        el("li", {}, [el("span", { text: "Frühestens fertig" }), el("strong", { text: formatProjectDay(bufferTask.earlyFinish) })]),
+        el("li", {}, [el("span", { text: "Spätestens fertig" }), el("strong", { text: formatProjectDay(bufferTask.lateFinish) })]),
+        el("li", {}, [el("span", { text: "Puffer" }), el("strong", { text: `${bufferTask.totalFloat}d` })]),
       ]),
-      el("h3", { text: "State-DAG workload" }),
-      el("ul", { className: "topic-list" }, stateDagPlan.steps.slice(0, 4).map((step) =>
+    ])] : []),
+  );
+}
+
+function activeProjectVisualType() {
+  return projectVisualTypes.find(([id]) => id === state.activeProjectVisual)?.[0] || projectVisualTypes[0][0];
+}
+
+function projectPhaseNumber(value) {
+  const match = String(value || "").match(/LP(\d)/i);
+  return match ? Number(match[1]) : 99;
+}
+
+function projectVisualHeader(title, ref, text = "") {
+  return el("div", { className: "visual-head" }, [
+    el("div", {}, [
+      el("span", { className: "card-kicker", text: title }),
+      el("h3", { text: ref }),
+      text ? el("p", { text }) : el("p", { text: "" }),
+    ]),
+    el("div", { className: "visual-tabs", role: "tablist", "aria-label": "Projektvisualisierung auswählen" }, projectVisualTypes.map(([id, label, hint]) => {
+      const button = el("button", {
+        type: "button",
+        role: "tab",
+        className: activeProjectVisualType() === id ? "active" : "",
+        "aria-selected": activeProjectVisualType() === id ? "true" : "false",
+        "data-project-visual": id,
+      }, [
+        el("strong", { text: label }),
+        el("span", { text: hint }),
+      ]);
+      button.addEventListener("click", () => {
+        state.activeProjectVisual = id;
+        renderProjectVisuals();
+      });
+      return button;
+    })),
+  ]);
+}
+
+function renderGanttVisual(plan) {
+  const maxDay = Math.max(1, plan.projectFinishDay);
+  const ticks = Array.from({ length: 5 }, (_, index) => Math.round((maxDay / 4) * index));
+  return el("div", { className: "gantt-visual" }, [
+    el("div", { className: "gantt-axis" }, [
+      el("span", { className: "gantt-axis-label", text: "Aufgabe" }),
+      el("div", { className: "gantt-axis-track" }, ticks.map((day) =>
+        el("span", { style: `left: ${(day / maxDay) * 100}%`, text: formatProjectDay(day) }),
+      )),
+    ]),
+    ...plan.tasks.map((task) => {
+      const left = Math.max(0, (task.earlyStart / maxDay) * 100);
+      const width = Math.max(3, ((task.earlyFinish - task.earlyStart) / maxDay) * 100);
+      return el("div", { className: "gantt-row" }, [
+        el("div", { className: "gantt-label" }, [
+          el("strong", { text: task.label || task.id }),
+          el("span", { text: `${task.phase || "-"} · ${task.owner || "-"}` }),
+        ]),
+        el("div", { className: "gantt-track" }, [
+          el("span", {
+            className: task.isCritical ? "gantt-bar critical" : "gantt-bar",
+            style: `left: ${left}%; width: ${width}%`,
+            title: `${formatProjectDay(task.earlyStart)} - ${formatProjectDay(task.earlyFinish)}`,
+          }, [
+            el("em", { text: `${task.durationDays}d` }),
+          ]),
+        ]),
+      ]);
+    }),
+  ]);
+}
+
+function kanbanColumnForTask(task) {
+  const activePhase = projectPhaseNumber(state.activePhase);
+  const taskPhase = projectPhaseNumber(task.phase);
+  if (taskPhase < activePhase) return "done";
+  if (task.isCritical && taskPhase === activePhase) return "review";
+  if (taskPhase === activePhase) return "doing";
+  return "ready";
+}
+
+function renderKanbanVisual(plan) {
+  const columns = [
+    ["done", "Erledigt"],
+    ["doing", "In Arbeit"],
+    ["review", "Freigabe"],
+    ["ready", "Bereit"],
+  ];
+  const grouped = new Map(columns.map(([id]) => [id, []]));
+  plan.tasks.forEach((task) => grouped.get(kanbanColumnForTask(task)).push(task));
+
+  return el("div", { className: "kanban-visual" }, columns.map(([id, label]) =>
+    el("section", { className: "kanban-column" }, [
+      el("header", {}, [
+        el("strong", { text: label }),
+        el("span", { text: String(grouped.get(id).length) }),
+      ]),
+      el("div", { className: "kanban-cards" }, grouped.get(id).map((task) =>
+        el("article", { className: task.isCritical ? "kanban-card critical" : "kanban-card" }, [
+          el("strong", { text: task.label || task.id }),
+          el("span", { text: `${task.phase || "-"} · ${task.owner || "-"}` }),
+          el("small", { text: `${formatProjectDay(task.earlyStart)} -> ${formatProjectDay(task.earlyFinish)}` }),
+        ]),
+      )),
+    ]),
+  ));
+}
+
+function renderPertVisual(plan) {
+  const taskById = new Map(plan.tasks.map((task) => [task.id, task]));
+  return el("div", { className: "pert-visual" }, [
+    el("div", { className: "pert-network" }, plan.tasks.map((task, index) =>
+      el("article", { className: task.isCritical ? "pert-node critical" : "pert-node" }, [
+        el("span", { text: String(index + 1).padStart(2, "0") }),
+        el("strong", { text: task.label || task.id }),
+        el("small", { text: `${formatProjectDay(task.earlyStart)} - ${formatProjectDay(task.earlyFinish)}` }),
+      ]),
+    )),
+    el("ul", { className: "dependency-list" }, plan.dependencies.map((dependency) =>
+      el("li", {}, [
+        el("strong", { text: taskLabel(taskById, dependency.from) }),
+        el("span", { text: `${dependency.type}${dependency.lagDays ? ` ${dependency.lagDays}d` : ""}` }),
+        el("strong", { text: taskLabel(taskById, dependency.to) }),
+      ]),
+    )),
+  ]);
+}
+
+function burnSeries(plan) {
+  const totalWork = plan.tasks.reduce((sum, task) => sum + task.durationDays, 0);
+  const maxDay = Math.max(1, plan.projectFinishDay);
+  const step = Math.max(1, Math.ceil(maxDay / 6));
+  const days = Array.from(new Set([0, ...Array.from({ length: 6 }, (_, index) => Math.min(maxDay, (index + 1) * step)), maxDay]));
+  const completed = days.map((day) =>
+    plan.tasks.reduce((sum, task) => sum + (task.earlyFinish <= day ? task.durationDays : 0), 0),
+  );
+  const remaining = completed.map((value) => Math.max(0, totalWork - value));
+  const idealRemaining = days.map((day) => Math.max(0, totalWork * (1 - day / maxDay)));
+  return { days, completed, remaining, idealRemaining, totalWork, maxDay };
+}
+
+function chartPoints(values, maxValue, width, height, padding, days, maxDay) {
+  return values.map((value, index) => {
+    const x = padding + (days[index] / maxDay) * (width - padding * 2);
+    const y = height - padding - (value / Math.max(1, maxValue)) * (height - padding * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+}
+
+function renderBurnVisual(plan) {
+  const series = burnSeries(plan);
+  const width = 720;
+  const height = 260;
+  const padding = 34;
+  const maxValue = series.totalWork;
+  const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, role: "img", "aria-label": "Burnup und Burndown Chart" }, [
+    svgEl("line", { x1: padding, y1: height - padding, x2: width - padding, y2: height - padding, class: "chart-axis" }),
+    svgEl("line", { x1: padding, y1: padding, x2: padding, y2: height - padding, class: "chart-axis" }),
+    svgEl("polyline", {
+      points: chartPoints(series.idealRemaining, maxValue, width, height, padding, series.days, series.maxDay),
+      class: "burn-line ideal",
+    }),
+    svgEl("polyline", {
+      points: chartPoints(series.remaining, maxValue, width, height, padding, series.days, series.maxDay),
+      class: "burn-line down",
+    }),
+    svgEl("polyline", {
+      points: chartPoints(series.completed, maxValue, width, height, padding, series.days, series.maxDay),
+      class: "burn-line up",
+    }),
+  ]);
+
+  return el("div", { className: "burn-visual" }, [
+    el("div", { className: "burn-chart" }, [svg]),
+    el("ul", { className: "burn-legend" }, [
+      el("li", {}, [el("span", { className: "legend-line up" }), el("strong", { text: "Burnup" }), el("small", { text: `${Math.max(...series.completed)}d erledigt` })]),
+      el("li", {}, [el("span", { className: "legend-line down" }), el("strong", { text: "Burndown" }), el("small", { text: `${series.remaining.at(-1)}d offen` })]),
+      el("li", {}, [el("span", { className: "legend-line ideal" }), el("strong", { text: "Ideal" }), el("small", { text: "lineare Referenz" })]),
+    ]),
+  ]);
+}
+
+function renderWbsVisual(plan) {
+  const groups = new Map();
+  plan.tasks.forEach((task) => {
+    const phase = task.phase || "Projekt";
+    if (!groups.has(phase)) groups.set(phase, []);
+    groups.get(phase).push(task);
+  });
+  return el("div", { className: "wbs-visual" }, [
+    el("article", { className: "wbs-root" }, [
+      el("span", { className: "card-kicker", text: demoProject.id || "project" }),
+      el("strong", { text: conciseProjectRef() }),
+    ]),
+    el("div", { className: "wbs-branches" }, [...groups.entries()].map(([phase, tasks]) =>
+      el("section", { className: "wbs-branch" }, [
+        el("header", {}, [
+          el("strong", { text: phase }),
+          el("span", { text: `${tasks.length} Arbeitspakete` }),
+        ]),
+        el("ul", {}, tasks.map((task) =>
+          el("li", {}, [
+            el("strong", { text: task.label || task.id }),
+            el("span", { text: task.owner || "-" }),
+          ]),
+        )),
+      ]),
+    )),
+  ]);
+}
+
+function renderFlowchartVisual() {
+  const activeFlow = flowDomains.find((flow) => flow.id === state.activeFlow) ?? flowDomains[0];
+  if (!activeFlow) return el("p", { text: "Kein Flow verfügbar." });
+  return el("div", { className: "flowchart-visual" }, [
+    el("article", { className: "flowchart-trigger" }, [
+      el("span", { className: "card-kicker", text: "Start" }),
+      el("strong", { text: activeFlow.trigger }),
+    ]),
+    ...activeFlow.steps.map((step, index) =>
+      el("article", { className: "flowchart-step" }, [
+        el("span", { text: String(index + 1).padStart(2, "0") }),
+        el("strong", { text: step }),
+      ]),
+    ),
+    el("article", { className: "flowchart-output" }, [
+      el("span", { className: "card-kicker", text: "Ergebnis" }),
+      el("strong", { text: activeFlow.output }),
+    ]),
+  ]);
+}
+
+function renderActiveProjectVisual(plan) {
+  const type = activeProjectVisualType();
+  if (type === "kanban") return renderKanbanVisual(plan);
+  if (type === "pert") return renderPertVisual(plan);
+  if (type === "burn") return renderBurnVisual(plan);
+  if (type === "wbs") return renderWbsVisual(plan);
+  if (type === "flowchart") return renderFlowchartVisual(plan);
+  return renderGanttVisual(plan);
+}
+
+function renderProjectVisuals() {
+  const root = document.querySelector("#projectVisuals");
+  if (!root) return;
+
+  let update;
+  try {
+    update = createProjectScheduleStateDagUpdate(projectSchedule, { managedTaskId: "entwurf" });
+  } catch (error) {
+    root.replaceChildren(
+      el("article", { className: "visual-card schedule-error" }, [
+        bookTop("Projektvisualisierungen", conciseProjectRef()),
+        el("h3", { text: "Visualisierung blockiert" }),
+        el("p", { text: error.message }),
+      ]),
+    );
+    return;
+  }
+
+  const plan = update.schedule;
+  root.replaceChildren(
+    el("article", { className: "visual-card" }, [
+      projectVisualHeader("Projektvisualisierungen", conciseProjectRef(), "Generische Komponenten für Planung, Steuerung und Fortschritt."),
+      renderActiveProjectVisual(plan),
+    ]),
+  );
+}
+
+function formatEditorContentKind(kind) {
+  const labels = {
+    "agent-draft": "Assistenzentwurf",
+    brief: "Vorlage",
+    document: "Dokument",
+    knowledge: "Projektwissen",
+    outline: "Gliederung",
+    proposal: "Angebot",
+    schedule: "Terminstand",
+  };
+  return labels[kind] || kind;
+}
+
+function renderEditorBoard() {
+  const root = document.querySelector("#editorBoard");
+  if (!root) return;
+
+  let workbench;
+  try {
+    workbench = createProjectEditorWorkbench(demoProject.id || "project");
+  } catch (error) {
+    root.replaceChildren(
+      el("article", { className: "editor-card editor-error" }, [
+        bookTop("Inhalte erstellen", conciseProjectRef()),
+        el("h3", { text: "Editoren nicht bereit" }),
+        el("p", { text: error.message }),
+      ]),
+    );
+    return;
+  }
+
+  root.replaceChildren(
+    el("article", { className: "editor-card editor-summary" }, [
+      bookTop("Inhalte erstellen", conciseProjectRef()),
+      el("h3", { text: "Projektunterlagen aus Struktur und Quellen" }),
+      el("p", { text: "Reaktor strukturiert Entscheidungen und offene Punkte; VGER setzt daraus quellengebundene Unterlagen zusammen." }),
+      el("ul", { className: "object-list compact-list" }, [
+        el("li", {}, [el("span", { text: "Editoren" }), el("strong", { text: `${workbench.registry.editors.length}` })]),
+        el("li", {}, [el("span", { text: "Übergaben" }), el("strong", { text: `${workbench.handoffs.length}` })]),
+        el("li", {}, [el("span", { text: "Gemeinsame Kerne" }), el("strong", { text: `${workbench.alignmentModules.length}` })]),
+      ]),
+    ]),
+    ...workbench.registry.editors.map((editor) =>
+      el("article", { className: "editor-card" }, [
+        bookTop(editor.label, editor.workspace === "reaktor" ? "Gliederung" : "Dokumente"),
+        el("h3", { text: editor.purpose }),
+        el("ul", { className: "topic-list compact-list" }, [
+          el("li", {}, [
+            el("strong", { text: "Nimmt auf" }),
+            el("span", { text: editor.accepts.map(formatEditorContentKind).join(", ") }),
+          ]),
+          el("li", {}, [
+            el("strong", { text: "Erzeugt" }),
+            el("span", { text: editor.produces.map(formatEditorContentKind).join(", ") }),
+          ]),
+        ]),
+      ]),
+    ),
+    el("article", { className: "editor-card editor-handoffs" }, [
+      bookTop("Nächste Übergaben", "LP3 / LP4"),
+      el("ul", { className: "topic-list" }, workbench.handoffs.map((handoff) =>
         el("li", {}, [
-          el("strong", { text: `${step.ordinal}. ${step.status}` }),
-          el("span", { text: step.explanation || step.stateId }),
+          el("strong", { text: handoff.title }),
+          el("span", { text: `${handoff.phase || "Projekt"} · ${formatEditorContentKind(handoff.expectedOutput)}` }),
         ]),
       )),
     ]),
@@ -1689,6 +2072,48 @@ function renderData() {
     )),
     el("ul", { className: "object-list warning-list" }, exportBundleModel.warnings.map((warning) =>
       el("li", {}, [el("span", { text: warning }), el("strong", { text: "Hinweis" })]),
+    )),
+  );
+
+  renderDatasetCreatorBoard();
+}
+
+function renderDatasetCreatorBoard() {
+  const root = document.querySelector("#datasetCreatorBoard");
+  if (!root) return;
+
+  const activePlanId = demoDatasetCreator.plan?.id || datasetPlans[0]?.id;
+  const evidence = demoDatasetCreator.plannerEvidence;
+  const skill = demoDatasetCreator.skill || DEMO_DATASET_CREATOR_SKILL;
+
+  root.replaceChildren(
+    el("article", { className: "dataset-skill-card" }, [
+      bookTop("Skill", skill.skillId || "projektor.demo-dataset-creator"),
+      el("h3", { text: skill.label || "Demo Dataset Creator" }),
+      el("p", { text: "Erzeugt vollstaendige Projektgraphen mit Rollen, Trie-Wurzeln, Terminplan, Quellen, Assistenzlauf und Journal." }),
+      el("ul", { className: "object-list compact-list" }, [
+        el("li", {}, [el("span", { text: "Status" }), el("strong", { text: state.datasetCreatorStatus })]),
+        el("li", {}, [el("span", { text: "Plan" }), el("strong", { text: demoDatasetCreator.plan?.label || "-" })]),
+        el("li", {}, [el("span", { text: "SkillContracts" }), el("strong", { text: evidence?.skillContracts?.join(", ") || skill.capability?.capabilityId || "-" })]),
+        el("li", {}, [el("span", { text: "Kritischer Pfad" }), el("strong", { text: evidence?.criticalPath?.length ? `${evidence.criticalPath.length} Aufgaben` : "validiert" })]),
+      ]),
+    ]),
+    el("div", { className: "dataset-plan-grid" }, datasetPlans.map((plan) =>
+      el("article", { className: `dataset-plan-card ${activePlanId === plan.id ? "active" : ""}` }, [
+        bookTop(plan.density, plan.id),
+        el("h3", { text: plan.label }),
+        el("p", { text: plan.scenario }),
+        el("ul", { className: "object-list compact-list" }, [
+          el("li", {}, [el("span", { text: "Kontakte" }), el("strong", { text: String(plan.scale.contacts) })]),
+          el("li", {}, [el("span", { text: "Trie-Wurzeln" }), el("strong", { text: String(plan.scale.trieRoots) })]),
+          el("li", {}, [el("span", { text: "Aufgaben" }), el("strong", { text: String(plan.scale.tasks) })]),
+          el("li", {}, [el("span", { text: "Risiko" }), el("strong", { text: plan.risk })]),
+        ]),
+        el("div", { className: "settings-actions dataset-actions" }, [
+          el("button", { className: "primary-action", type: "button", "data-dataset-plan": plan.id, text: "Plan anwenden" }),
+          el("button", { className: "secondary-action", type: "button", "data-dataset-export": plan.id, text: "Plan exportieren" }),
+        ]),
+      ]),
     )),
   );
 }
@@ -2243,6 +2668,27 @@ function simulateDataImport() {
   renderJournal();
 }
 
+function applyDatasetPlan(planId) {
+  const dataset = createDemoDatasetProject(planId);
+  installProjectDatatype(dataset, { persist: true });
+  state.datasetCreatorStatus = "angewendet";
+  state.importStatus = "imported";
+  state.importFileName = `${dataset.creator?.plan?.label || planId}.project.json`;
+  state.activePanel = "data";
+  render();
+}
+
+function exportDatasetPlan(planId) {
+  const dataset = createDemoDatasetProject(planId);
+  state.datasetCreatorStatus = "exportiert";
+  renderDatasetCreatorBoard();
+  downloadTextFile(
+    `projektor-one-${dataset.project.id}.project.json`,
+    "application/vnd.projektor.project+json",
+    JSON.stringify(dataset, null, 2),
+  );
+}
+
 async function importProjectFile(file) {
   state.importFileName = file?.name || "";
   if (!file) {
@@ -2396,6 +2842,16 @@ function bindActions() {
     if (event.target.closest("#runnerRunProtocol")) void runIntegratedProtocol();
     if (event.target.closest("#runnerStop")) stopIntegratedProtocol();
     if (event.target.closest("#runnerClear")) clearRunnerInstances();
+    const datasetPlanButton = event.target.closest("[data-dataset-plan]");
+    if (datasetPlanButton) {
+      applyDatasetPlan(datasetPlanButton.dataset.datasetPlan);
+      return;
+    }
+    const datasetExportButton = event.target.closest("[data-dataset-export]");
+    if (datasetExportButton) {
+      exportDatasetPlan(datasetExportButton.dataset.datasetExport);
+      return;
+    }
   });
 
   document.querySelector("#themeSwitch").addEventListener("click", () => {
@@ -2454,6 +2910,8 @@ function render() {
   renderPhases();
   renderFlows();
   renderScheduleBoard();
+  renderProjectVisuals();
+  renderEditorBoard();
   renderData();
   renderAI();
   renderJournal();
