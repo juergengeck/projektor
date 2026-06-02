@@ -668,9 +668,11 @@
           contactEmailPlaceholder: "ihre@email.de",
           contactPhonePlaceholder: "+49...",
           consentYes: "Ja",
+          contactSummaryPrefix: "Kontakt",
           summaryTitle: "projektor.one - Fragebogen Auswertung",
           dateLocale: "de-DE",
           source: "projektor.one Einstellungen > Feedback",
+          httpError: (status) => `refinio.one antwortete mit HTTP ${status}`,
           sending: "Sende Antworten an refinio.one...",
           sent: (id) => `Gesendet an refinio.one. 42 sieht die Antwort unter projektor.one (${id}).`,
           sendError: (message) => `Nicht gesendet: ${message}`
@@ -697,9 +699,11 @@
           contactEmailPlaceholder: "your@email.com",
           contactPhonePlaceholder: "+1...",
           consentYes: "Yes",
+          contactSummaryPrefix: "Contact",
           summaryTitle: "projektor.one - Questionnaire evaluation",
           dateLocale: "en-US",
           source: "projektor.one Settings > Feedback",
+          httpError: (status) => `refinio.one responded with HTTP ${status}`,
           sending: "Sending answers to refinio.one...",
           sent: (id) => `Sent to refinio.one. 42 sees the response in projektor.one (${id}).`,
           sendError: (message) => `Not sent: ${message}`
@@ -726,9 +730,11 @@
           contactEmailPlaceholder: "votre@email.fr",
           contactPhonePlaceholder: "+33...",
           consentYes: "Oui",
+          contactSummaryPrefix: "Contact",
           summaryTitle: "projektor.one - Évaluation du questionnaire",
           dateLocale: "fr-FR",
           source: "projektor.one Paramètres > Feedback",
+          httpError: (status) => `refinio.one a répondu avec HTTP ${status}`,
           sending: "Envoi des réponses à refinio.one...",
           sent: (id) => `Envoyé à refinio.one. 42 voit la réponse dans projektor.one (${id}).`,
           sendError: (message) => `Non envoyé : ${message}`
@@ -755,9 +761,11 @@
           contactEmailPlaceholder: "tu@email.es",
           contactPhonePlaceholder: "+34...",
           consentYes: "Sí",
+          contactSummaryPrefix: "Contacto",
           summaryTitle: "projektor.one - Evaluación del cuestionario",
           dateLocale: "es-ES",
           source: "projektor.one Ajustes > Feedback",
+          httpError: (status) => `refinio.one respondió con HTTP ${status}`,
           sending: "Enviando respuestas a refinio.one...",
           sent: (id) => `Enviado a refinio.one. 42 ve la respuesta en projektor.one (${id}).`,
           sendError: (message) => `No enviado: ${message}`
@@ -885,7 +893,273 @@
           ]
         }
       ];
-      const sections = baseSections;
+      const sectionTranslations = {};
+
+      sectionTranslations.en = {
+        sections: {
+          A: { title: "Your role & context", desc: "So we can interpret your answers correctly." },
+          B: { title: "Quantified pain", desc: "Concrete numbers help us understand what the status quo really costs." },
+          C: { title: "Current software, costs & contracts", desc: "What is used, what it costs - and who pays." },
+          D: { title: "Decision process", desc: "Who can introduce it - who blocks it?" },
+          E: {
+            title: "All participants - from client to tradesperson",
+            desc: "projektor.one takes inclusion seriously.",
+            info: {
+              title: "Concept: radical inclusion",
+              body: "projektor.one gives access not only to architects and clients, but to every participant: from the foreman to the electrician to the painter. Everyone sees only what they are allowed to see. Everyone can document work, receive tasks and give feedback."
+            }
+          },
+          F: {
+            title: "Federated architecture & compliance",
+            desc: "Data sovereignty, GDPR, self-hosting.",
+            info: {
+              title: "What does federated mean?",
+              body: "With common cloud solutions, all your project data sits on third-party servers - beyond your control, often in the US. projektor.one is different: every participant keeps their own data. Like email - everyone has their own server, yet everyone can communicate with everyone else."
+            }
+          },
+          G: {
+            title: "AI as an additional trade",
+            desc: "Not a gadget - an active project participant inside your data sphere.",
+            info: {
+              title: "Concept: AI as an active trade",
+              body: "The internal AI in projektor.one reads and indexes all project content - documents, chats, minutes, photos. It runs inside your own data sphere and sends nothing to external services. It can find past decisions, detect contradictions, report schedule risks and onboard new members automatically."
+            }
+          },
+          H: { title: "Functions & integration needs", desc: "What must projektor.one be able to do - and what must it work with?" },
+          I: { title: "Pilot readiness & market", desc: "Concrete next steps." },
+          J: { title: "Contact & consent", desc: "Optional - only if you want." }
+        },
+        questions: {
+          q01: { label: "What role do you have in the construction process?", options: ["Architect / planning office", "Project controller", "Client / investor / municipality", "General contractor / construction company", "Craft / trade", "Other"] },
+          q02: { label: "How many projects do you manage at the same time?", options: ["1-2 projects", "3-5 projects", "6-10 projects", "More than 10 projects"] },
+          q03: { label: "How large are your typical projects?", options: ["Under EUR 2 million", "EUR 2-10 million", "EUR 10-50 million", "Over EUR 50 million"] },
+          q04a: { label: "How many companies / direct contacts do you typically coordinate per project?", options: ["Up to 10", "10-25", "25-50", "Over 50"] },
+          q04b: { label: "How many people in total - from client to worker on site?", options: ["Up to 20 people", "20-50 people", "50-150 people", "Over 150 people"] },
+          q05: { label: "How many hours per week do you lose to poor project communication, information searches or switching systems?", options: ["Under 2 hours", "2-5 hours", "5-10 hours", "Over 10 hours"] },
+          q06: { label: "What share of project costs do you estimate is caused by communication problems, rework or missing information?", options: ["Under 2%", "2-5%", "5-10%", "Over 10%", "I cannot estimate it"] },
+          q07: { label: "How many disputes or change-order proceedings have you had in the last 12 months where missing documentation played a role?", options: ["None", "1-2", "3-5", "More than 5"] },
+          q08: { label: "How often do project delays arise because information is missing or late?", options: ["In almost every project", "In about half of projects", "Occasionally", "Rarely"] },
+          q09: { label: "Briefly describe your biggest concrete frustration with the current situation.", placeholder: "E.g.: every project uses a different platform, data loss when companies change, tradespeople cannot be reached..." },
+          q10: { label: "Which software do you currently use?", hint: "Multiple selections possible", options: ["Autodesk Construction Cloud", "Procore", "MS Teams / SharePoint", "Email", "WhatsApp / messenger", "PlanRadar", "BIM 360", "Own solution / Excel", "No unified solution"] },
+          q11: { label: "What do you currently pay per month for project software (all tools together, your office)?", options: ["Nothing / only free tools", "Under EUR 100 / month", "EUR 100-500 / month", "EUR 500-2,000 / month", "Over EUR 2,000 / month", "I do not know exactly"] },
+          q12: { label: "Who bears the cost of the project software?", options: ["The prescribing party (client / project controller)", "Each participant pays for their own access", "Our office bears the cost", "It is allocated to project costs", "Unclear / not regulated"] },
+          q13: { label: "Who prescribed the software?", options: ["We did / our office", "The client", "The project controller", "The general contractor", "Changes depending on the project"] },
+          q14: { label: "How long are your current software contracts typically?", options: ["Can be cancelled monthly", "1 year", "2-3 years", "Over 3 years", "No formal contracts"] },
+          q15: { label: "What are the biggest obstacles when you want to switch software?", hint: "Multiple selections possible", options: ["Contract lock-in", "Data migration", "Training effort", "Client prescribes the software", "Participants' habits", "No decision authority", "I do not want to switch"] },
+          q16: { label: "How often are there problems with the software in use?", options: ["Regularly - a constant topic", "Occasionally", "Rarely", "No significant problems"] },
+          q16b: { label: "What concrete problems occur?", placeholder: "E.g.: data loss, missing functions, acceptance problems..." },
+          q17: { label: "Who in your organization can approve the introduction of new project software?", options: ["I can", "Management", "IT department", "Joint decision by several people", "No one internally - the client decides"] },
+          q18: { label: "Who typically blocks the switch to a new solution?", hint: "Multiple selections possible", options: ["Client / commissioning party", "Own management", "IT department", "Crafts / subcontractors", "Nobody actively blocks it", "General inertia / habit"] },
+          q19: { label: "How is software typically procured in your company?", options: ["Individual decision by specialist / project manager", "Formal budget process / annual planning", "Public tender (e.g. procurement law)", "Through existing framework agreements", "Prescribed by the client"] },
+          q20: { label: "Do all project participants currently have access to the project software in use?", options: ["Yes - everyone active", "Offices yes, site rather not", "Foremen yes, workers no", "Only planning and control participants", "No unified solution for everyone"] },
+          q21: { label: "Are there differences in access depending on the software used?", options: ["Yes, clearly - some tools exclude the site", "Yes, somewhat - cost or complexity is a hurdle", "Hardly", "Not an issue for us"] },
+          q22: { label: "Who should manage roles & rights?", options: ["The architect", "The project controller", "The client", "Each company for its own people", "Combined: central + decentralized", "Other"] },
+          q22b: { label: "If other or addition:", placeholder: "Brief addition..." },
+          q23: { label: "How relevant is it to you that project data is not stored with a US provider?", min: "Not relevant", max: "Very relevant" },
+          q24: { label: "Which security and compliance requirements apply to you?", hint: "Multiple selections possible", options: ["GDPR compliance", "Data location Germany / EU", "Self-hosting / own server", "ISO 27001", "Municipal procurement requirements", "No special requirements"] },
+          q25: { label: "Would you have concerns if your client knew that project data is stored on US servers?", options: ["Yes, significant - this is already an issue", "Yes, possibly for certain clients", "Rather not", "No - not an issue"] },
+          q26: { label: "For municipal projects: would a GDPR-compliant, federated solution improve award chances?", options: ["Yes, significantly", "Possibly", "Does not matter", "We do not do municipal projects"] },
+          q27: { label: "How often do you lose time finding earlier decisions or documents again?", options: ["Daily - serious problem", "Several times per week", "Occasionally", "Rarely"] },
+          q28: { label: "Which AI functions would be most valuable? Choose your top 3.", hint: "Click the options in order of importance (1 = most important).", options: ["Find earlier decisions instantly", "Automatic risk warnings", "Detect schedule delays early", "Onboard new members automatically", "Summarize meetings automatically", "Detect contradictions in documents", "Detect change orders from communication", "Cost warnings for deviations"] },
+          q29: { label: "Would you trust an AI that runs exclusively inside your own data sphere - sending no data to external services?", options: ["Yes - that is even a requirement for me", "Probably yes", "I am unsure", "I am generally skeptical about AI"] },
+          q30: { label: "Concrete use case: where would AI immediately change something in your daily work?", placeholder: "Describe a concrete situation..." },
+          q31: { label: "Which functions are absolutely indispensable? Choose your top 3.", hint: "Click in order of importance.", options: ["Document management & versioning", "Task & schedule tracking", "Internal chat / communication", "Email integration", "Role & rights management", "Complete change history", "Calendar & milestones", "Photo documentation on site", "Defect tracking & acceptance", "Cost control & change orders", "Offline function on site", "AI support"] },
+          q32: { label: "Which integrations are indispensable for you?", hint: "Multiple selections possible", options: ["MS 365 / Office", "Email (IMAP/SMTP)", "Calendar (Google / Outlook)", "BIM / IFC / BCF", "Accounting / ERP", "Document storage (SharePoint, Dropbox)", "No integrations needed"] },
+          q33: { label: "The one feature that would convince you immediately:", placeholder: "The one feature that decides everything for you..." },
+          q34: { label: "Assuming you could choose freely - would you introduce projektor.one?", options: ["Yes, immediately", "Yes, if value for money is right", "Only after a successful pilot project", "Rather not", "No"] },
+          q35: { label: "Do you currently have an ongoing or planned project that would be suitable for a pilot test?", options: ["Yes - an ongoing project", "Yes - a planned project (start in 3-6 months)", "Possibly - I would need to check", "No, not currently"] },
+          q36: { label: "Would you have access to the relevant participants for a pilot project (client, trades)?", options: ["Yes - completely", "Partly", "Client would need to agree first", "Rather not"] },
+          q37: { label: "What would be a fair monthly price per user?", options: ["Under EUR 20 / month / user", "EUR 20-50 / month / user", "EUR 50-100 / month / user", "Over EUR 100 / month / user", "Prefer project-based billing"] },
+          q38: { label: "projektor.one is looking for practice partners - would you join?", hint: "No obligation, no risk - but a real chance to shape the platform and participate in its success.", options: ["Yes, very interested - please contact me", "Interesting - I would like more information", "Pilot project yes - partnership rather not", "I prefer to observe first", "No, thank you"] },
+          q39: { label: "What would be your dream - what would projektor.one need to offer to truly change something?", placeholder: "My dream would be software that..." },
+          kontakt: { label: "Your contact details (optional)" },
+          q41_consent: { label: "Consent to be contacted", text: "I agree that the projektor.one team may contact me based on my information - for follow-up questions, further information or to arrange a meeting. I can withdraw this consent at any time." }
+        }
+      };
+
+      sectionTranslations.fr = {
+        sections: {
+          A: { title: "Votre rôle & votre contexte", desc: "Pour que nous puissions bien interpréter vos réponses." },
+          B: { title: "Douleur quantifiée", desc: "Des chiffres concrets nous aident à comprendre le coût réel du statu quo." },
+          C: { title: "Logiciels actuels, coûts & contrats", desc: "Ce qui est utilisé, ce que cela coûte - et qui paie." },
+          D: { title: "Processus de décision", desc: "Qui peut introduire - qui bloque ?" },
+          E: {
+            title: "Tous les participants - du maître d'ouvrage à l'artisan",
+            desc: "projektor.one pense l'inclusion de manière radicale.",
+            info: {
+              title: "Concept : inclusion radicale",
+              body: "projektor.one donne accès non seulement aux architectes et aux maîtres d'ouvrage, mais à chaque participant : du chef de chantier à l'électricien jusqu'au peintre. Chacun ne voit que ce qu'il est autorisé à voir. Chacun peut documenter son travail, recevoir des tâches et donner un retour."
+            }
+          },
+          F: {
+            title: "Architecture fédérée & conformité",
+            desc: "Souveraineté des données, RGPD, auto-hébergement.",
+            info: {
+              title: "Que signifie fédéré ?",
+              body: "Avec les solutions cloud courantes, toutes vos données projet se trouvent sur des serveurs tiers - hors de votre contrôle, souvent aux États-Unis. projektor.one est différent : chaque participant conserve ses propres données. Comme avec l'e-mail - chacun a son propre serveur, tout en pouvant communiquer avec tous les autres."
+            }
+          },
+          G: {
+            title: "L'IA comme corps de métier supplémentaire",
+            desc: "Pas un gadget - un participant actif au projet dans votre sphère de données.",
+            info: {
+              title: "Concept : l'IA comme corps de métier actif",
+              body: "L'IA interne de projektor.one lit et indexe tous les contenus du projet - documents, chats, comptes rendus, photos. Elle fonctionne dans votre propre sphère de données et n'envoie rien à des services externes. Elle peut retrouver des décisions passées, détecter des contradictions, signaler des risques de planning et intégrer automatiquement de nouveaux membres."
+            }
+          },
+          H: { title: "Fonctions & besoins d'intégration", desc: "Que doit savoir faire projektor.one - et avec quoi doit-il interagir ?" },
+          I: { title: "Disposition au pilote & marché", desc: "Prochaines étapes concrètes." },
+          J: { title: "Contact & consentement", desc: "Facultatif - seulement si vous le souhaitez." }
+        },
+        questions: {
+          q01: { label: "Quel rôle avez-vous dans le processus de construction ?", options: ["Architecte / agence de planification", "Pilote de projet", "Maître d'ouvrage / investisseur / collectivité", "Entreprise générale / entreprise de construction", "Artisanat / corps de métier", "Autre"] },
+          q02: { label: "Combien de projets suivez-vous en même temps ?", options: ["1-2 projets", "3-5 projets", "6-10 projets", "Plus de 10 projets"] },
+          q03: { label: "Quelle est la taille habituelle de vos projets ?", options: ["Moins de 2 mio. EUR", "2-10 mio. EUR", "10-50 mio. EUR", "Plus de 50 mio. EUR"] },
+          q04a: { label: "Combien d'entreprises / interlocuteurs directs coordonnez-vous typiquement par projet ?", options: ["Jusqu'à 10", "10-25", "25-50", "Plus de 50"] },
+          q04b: { label: "Combien de personnes au total - du maître d'ouvrage à l'ouvrier sur chantier ?", options: ["Jusqu'à 20 personnes", "20-50 personnes", "50-150 personnes", "Plus de 150 personnes"] },
+          q05: { label: "Combien d'heures par semaine perdez-vous à cause d'une mauvaise communication projet, de recherches d'information ou de changements de système ?", options: ["Moins de 2 heures", "2-5 heures", "5-10 heures", "Plus de 10 heures"] },
+          q06: { label: "Quelle part des coûts de projet estimez-vous due aux problèmes de communication, reprises ou informations manquantes ?", options: ["Moins de 2 %", "2-5 %", "5-10 %", "Plus de 10 %", "Je ne peux pas l'estimer"] },
+          q07: { label: "Combien de litiges ou procédures d'avenants avez-vous eus ces 12 derniers mois où une documentation manquante a joué un rôle ?", options: ["Aucun", "1-2", "3-5", "Plus de 5"] },
+          q08: { label: "À quelle fréquence les retards de projet sont-ils dus à des informations manquantes ou tardives ?", options: ["Dans presque chaque projet", "Dans environ la moitié des projets", "Occasionnellement", "Rarement"] },
+          q09: { label: "Décrivez brièvement votre plus grande frustration concrète avec la situation actuelle.", placeholder: "P. ex. : chaque projet utilise une autre plateforme, perte de données lors d'un changement d'entreprise, artisans injoignables..." },
+          q10: { label: "Quels logiciels utilisez-vous actuellement ?", hint: "Plusieurs choix possibles", options: ["Autodesk Construction Cloud", "Procore", "MS Teams / SharePoint", "E-mail", "WhatsApp / messagerie", "PlanRadar", "BIM 360", "Solution propre / Excel", "Aucune solution unifiée"] },
+          q11: { label: "Combien payez-vous actuellement par mois pour les logiciels de projet (tous outils confondus, votre bureau) ?", options: ["Rien / seulement des outils gratuits", "Moins de 100 EUR / mois", "100-500 EUR / mois", "500-2 000 EUR / mois", "Plus de 2 000 EUR / mois", "Je ne sais pas exactement"] },
+          q12: { label: "Qui prend en charge les coûts du logiciel de projet ?", options: ["L'instance prescriptrice (maître d'ouvrage / pilote)", "Chaque participant paie son propre accès", "Notre bureau prend en charge les coûts", "C'est imputé aux coûts du projet", "Flou / non réglé"] },
+          q13: { label: "Qui a imposé le logiciel ?", options: ["Nous-mêmes / notre bureau", "Le maître d'ouvrage", "Le pilote de projet", "L'entreprise générale", "Cela change selon le projet"] },
+          q14: { label: "Quelle est généralement la durée de vos contrats logiciels actuels ?", options: ["Résiliable mensuellement", "1 an", "2-3 ans", "Plus de 3 ans", "Pas de contrats formels"] },
+          q15: { label: "Quels sont les plus grands obstacles si vous voulez changer de logiciel ?", hint: "Plusieurs choix possibles", options: ["Engagement contractuel", "Migration des données", "Effort de formation", "Le maître d'ouvrage impose le logiciel", "Habitudes des participants", "Pas de pouvoir de décision", "Je ne veux pas changer"] },
+          q16: { label: "À quelle fréquence y a-t-il des problèmes avec le logiciel utilisé ?", options: ["Régulièrement - sujet permanent", "Occasionnellement", "Rarement", "Pas de problèmes notables"] },
+          q16b: { label: "Quels problèmes concrets apparaissent ?", placeholder: "P. ex. : perte de données, fonctions manquantes, problèmes d'acceptation..." },
+          q17: { label: "Qui dans votre organisation peut valider l'introduction d'un nouveau logiciel de projet ?", options: ["Moi-même", "La direction", "Le service informatique", "Décision commune de plusieurs personnes", "Personne en interne - le donneur d'ordre décide"] },
+          q18: { label: "Qui bloque typiquement le passage à une nouvelle solution ?", hint: "Plusieurs choix possibles", options: ["Maître d'ouvrage / donneur d'ordre", "Notre direction", "Service informatique", "Artisanat / sous-traitants", "Personne ne bloque activement", "Inertie générale / habitude"] },
+          q19: { label: "Comment les logiciels sont-ils généralement achetés dans votre entreprise ?", options: ["Décision individuelle par spécialiste / chef de projet", "Processus budgétaire formel / planification annuelle", "Appel d'offres public (p. ex. droit des marchés)", "Via des contrats-cadres existants", "Imposé par le donneur d'ordre"] },
+          q20: { label: "Tous les participants au projet ont-ils actuellement accès au logiciel utilisé ?", options: ["Oui - tous actifs", "Bureaux oui, chantier plutôt non", "Chefs de chantier oui, ouvriers non", "Seulement les participants à la planification et au pilotage", "Aucune solution unifiée pour tous"] },
+          q21: { label: "Y a-t-il des différences d'accès selon le logiciel utilisé ?", options: ["Oui, nettement - certains outils excluent le chantier", "Oui, un peu - coût ou complexité comme obstacle", "À peine", "Pas un sujet chez nous"] },
+          q22: { label: "Qui devrait gérer les rôles & droits ?", options: ["L'architecte", "Le pilote de projet", "Le maître d'ouvrage", "Chaque entreprise pour ses propres personnes", "Combiné : central + décentralisé", "Autre"] },
+          q22b: { label: "Si autre ou complément :", placeholder: "Court complément..." },
+          q23: { label: "Dans quelle mesure est-il important pour vous que les données projet ne soient pas chez un fournisseur américain ?", min: "Pas pertinent", max: "Très pertinent" },
+          q24: { label: "Quelles exigences de sécurité et de conformité s'appliquent à vous ?", hint: "Plusieurs choix possibles", options: ["Conformité RGPD", "Localisation des données Allemagne / UE", "Auto-hébergement / serveur propre", "ISO 27001", "Exigences des marchés publics communaux", "Aucune exigence particulière"] },
+          q25: { label: "Auriez-vous des réserves si votre client savait que les données projet sont sur des serveurs américains ?", options: ["Oui, fortes - c'est déjà un sujet", "Oui, peut-être pour certains clients", "Plutôt non", "Non - pas un sujet"] },
+          q26: { label: "Pour les projets communaux : une solution fédérée conforme au RGPD améliorerait-elle les chances d'attribution ?", options: ["Oui, nettement", "Possiblement", "Ne joue aucun rôle", "Nous ne faisons pas de projets communaux"] },
+          q27: { label: "À quelle fréquence perdez-vous du temps à retrouver d'anciennes décisions ou documents ?", options: ["Tous les jours - problème sérieux", "Plusieurs fois par semaine", "Occasionnellement", "Rarement"] },
+          q28: { label: "Quelles fonctions d'IA seraient les plus précieuses ? Choisissez votre top 3.", hint: "Cliquez les options dans l'ordre d'importance (1 = la plus importante).", options: ["Retrouver immédiatement d'anciennes décisions", "Alertes de risque automatiques", "Détecter tôt les retards de planning", "Intégrer automatiquement de nouveaux membres", "Résumer automatiquement les réunions", "Détecter les contradictions dans les documents", "Détecter les avenants dans la communication", "Alertes de coûts en cas d'écarts"] },
+          q29: { label: "Feriez-vous confiance à une IA qui fonctionne exclusivement dans votre propre sphère de données - sans envoyer aucune donnée à des services externes ?", options: ["Oui - c'est même une condition pour moi", "Probablement oui", "Je ne suis pas sûr", "Je suis généralement sceptique envers l'IA"] },
+          q30: { label: "Cas d'usage concret : où l'IA changerait-elle immédiatement quelque chose dans votre quotidien ?", placeholder: "Décrivez une situation concrète..." },
+          q31: { label: "Quelles fonctions sont absolument indispensables ? Choisissez votre top 3.", hint: "Cliquez dans l'ordre d'importance.", options: ["Gestion documentaire & versioning", "Suivi des tâches & délais", "Chat interne / communication", "Intégration e-mail", "Gestion des rôles & droits", "Historique complet des modifications", "Calendrier & jalons", "Documentation photo chantier", "Suivi des défauts & réception", "Contrôle des coûts & avenants", "Fonction hors ligne chantier", "Assistance IA"] },
+          q32: { label: "Quelles intégrations sont indispensables pour vous ?", hint: "Plusieurs choix possibles", options: ["MS 365 / Office", "E-mail (IMAP/SMTP)", "Calendrier (Google / Outlook)", "BIM / IFC / BCF", "Comptabilité / ERP", "Stockage documentaire (SharePoint, Dropbox)", "Aucune intégration nécessaire"] },
+          q33: { label: "La fonctionnalité unique qui vous convaincrait immédiatement :", placeholder: "La fonctionnalité qui déciderait tout pour vous..." },
+          q34: { label: "En supposant que vous puissiez choisir librement - introduiriez-vous projektor.one ?", options: ["Oui, immédiatement", "Oui, si le rapport qualité-prix convient", "Seulement après un projet pilote réussi", "Plutôt non", "Non"] },
+          q35: { label: "Avez-vous actuellement un projet en cours ou prévu qui conviendrait à un test pilote ?", options: ["Oui - un projet en cours", "Oui - un projet prévu (début dans 3-6 mois)", "Possiblement - je devrais vérifier", "Non, pas actuellement"] },
+          q36: { label: "Auriez-vous accès aux participants pertinents pour un projet pilote (maître d'ouvrage, corps de métier) ?", options: ["Oui - complètement", "Partiellement", "Le maître d'ouvrage devrait d'abord accepter", "Plutôt non"] },
+          q37: { label: "Quel serait un prix mensuel équitable par utilisateur ?", options: ["Moins de 20 EUR / mois / utilisateur", "20-50 EUR / mois / utilisateur", "50-100 EUR / mois / utilisateur", "Plus de 100 EUR / mois / utilisateur", "Je préfère une facturation par projet"] },
+          q38: { label: "projektor.one cherche des partenaires de terrain - en feriez-vous partie ?", hint: "Aucune obligation, aucun risque - mais une vraie chance de façonner la plateforme et de participer à son succès.", options: ["Oui, très intéressé - veuillez me contacter", "Intéressant - je souhaite plus d'informations", "Projet pilote oui - partenariat plutôt non", "Je préfère observer d'abord", "Non, merci"] },
+          q39: { label: "Quel serait votre rêve - que devrait offrir projektor.one pour vraiment changer quelque chose ?", placeholder: "Mon rêve serait un logiciel qui..." },
+          kontakt: { label: "Vos coordonnées (facultatif)" },
+          q41_consent: { label: "Consentement à la prise de contact", text: "J'accepte que l'équipe projektor.one me contacte sur la base de mes indications - pour des questions de suivi, des informations complémentaires ou la prise d'un rendez-vous. Je peux retirer ce consentement à tout moment." }
+        }
+      };
+
+      sectionTranslations.es = {
+        sections: {
+          A: { title: "Tu rol y contexto", desc: "Para que podamos interpretar correctamente tus respuestas." },
+          B: { title: "Dolor cuantificado", desc: "Las cifras concretas nos ayudan a entender lo que realmente cuesta el statu quo." },
+          C: { title: "Software actual, costes y contratos", desc: "Qué se usa, cuánto cuesta y quién paga." },
+          D: { title: "Proceso de decisión", desc: "Quién puede introducirlo y quién bloquea." },
+          E: {
+            title: "Todos los participantes: del cliente al operario",
+            desc: "projektor.one piensa la inclusión de forma radical.",
+            info: {
+              title: "Concepto: inclusión radical",
+              body: "projektor.one da acceso no solo a arquitectos y clientes, sino a cada participante: desde el encargado hasta el electricista y el pintor. Cada persona ve solo lo que tiene permiso para ver. Cada persona puede documentar su trabajo, recibir tareas y dar respuesta."
+            }
+          },
+          F: {
+            title: "Arquitectura federada y cumplimiento",
+            desc: "Soberanía de datos, RGPD, alojamiento propio.",
+            info: {
+              title: "¿Qué significa federado?",
+              body: "Con las soluciones cloud habituales, todos tus datos de proyecto están en servidores de terceros, fuera de tu control y a menudo en EE. UU. projektor.one es diferente: cada participante conserva sus propios datos. Como el correo electrónico: cada uno tiene su propio servidor, pero todos pueden comunicarse entre sí."
+            }
+          },
+          G: {
+            title: "La IA como un oficio adicional",
+            desc: "No es un gadget: es un participante activo del proyecto dentro de tu esfera de datos.",
+            info: {
+              title: "Concepto: IA como oficio activo",
+              body: "La IA interna de projektor.one lee e indexa todos los contenidos del proyecto: documentos, chats, actas y fotos. Se ejecuta dentro de tu propia esfera de datos y no envía nada a servicios externos. Puede encontrar decisiones anteriores, detectar contradicciones, avisar de riesgos de plazo e incorporar automáticamente a nuevos miembros."
+            }
+          },
+          H: { title: "Funciones y necesidades de integración", desc: "Qué debe poder hacer projektor.one y con qué debe funcionar." },
+          I: { title: "Disposición a piloto y mercado", desc: "Próximos pasos concretos." },
+          J: { title: "Contacto y consentimiento", desc: "Opcional, solo si quieres." }
+        },
+        questions: {
+          q01: { label: "¿Qué rol tienes en el proceso de construcción?", options: ["Arquitecto / estudio de planificación", "Project manager", "Cliente / inversor / administración", "Contratista general / constructora", "Oficio / gremio", "Otro"] },
+          q02: { label: "¿Cuántos proyectos gestionas al mismo tiempo?", options: ["1-2 proyectos", "3-5 proyectos", "6-10 proyectos", "Más de 10 proyectos"] },
+          q03: { label: "¿Qué tamaño tienen tus proyectos típicos?", options: ["Menos de 2 mill. EUR", "2-10 mill. EUR", "10-50 mill. EUR", "Más de 50 mill. EUR"] },
+          q04a: { label: "¿Cuántas empresas / contactos directos coordinas normalmente por proyecto?", options: ["Hasta 10", "10-25", "25-50", "Más de 50"] },
+          q04b: { label: "¿Cuántas personas en total, desde el cliente hasta el operario en obra?", options: ["Hasta 20 personas", "20-50 personas", "50-150 personas", "Más de 150 personas"] },
+          q05: { label: "¿Cuántas horas por semana pierdes por mala comunicación de proyecto, búsqueda de información o cambios de sistema?", options: ["Menos de 2 horas", "2-5 horas", "5-10 horas", "Más de 10 horas"] },
+          q06: { label: "¿Qué parte de los costes del proyecto estimas que se debe a problemas de comunicación, retrabajo o información faltante?", options: ["Menos del 2 %", "2-5 %", "5-10 %", "Más del 10 %", "No puedo estimarlo"] },
+          q07: { label: "¿Cuántos conflictos o procedimientos de modificados has tenido en los últimos 12 meses en los que faltaba documentación?", options: ["Ninguno", "1-2", "3-5", "Más de 5"] },
+          q08: { label: "¿Con qué frecuencia se producen retrasos de proyecto por información faltante o tardía?", options: ["En casi todos los proyectos", "En aproximadamente la mitad de los proyectos", "Ocasionalmente", "Rara vez"] },
+          q09: { label: "Describe brevemente tu mayor frustración concreta con la situación actual.", placeholder: "P. ej.: cada proyecto usa otra plataforma, pérdida de datos al cambiar de empresa, operarios ilocalizables..." },
+          q10: { label: "¿Qué software usas actualmente?", hint: "Selección múltiple posible", options: ["Autodesk Construction Cloud", "Procore", "MS Teams / SharePoint", "Correo electrónico", "WhatsApp / mensajería", "PlanRadar", "BIM 360", "Solución propia / Excel", "Ninguna solución uniforme"] },
+          q11: { label: "¿Cuánto pagas actualmente al mes por software de proyecto (todas las herramientas juntas, tu oficina)?", options: ["Nada / solo herramientas gratuitas", "Menos de 100 EUR / mes", "100-500 EUR / mes", "500-2.000 EUR / mes", "Más de 2.000 EUR / mes", "No lo sé exactamente"] },
+          q12: { label: "¿Quién asume los costes del software de proyecto?", options: ["La instancia que lo prescribe (cliente / project manager)", "Cada participante paga su propio acceso", "Nuestra oficina asume los costes", "Se repercute en los costes del proyecto", "No está claro / no está regulado"] },
+          q13: { label: "¿Quién impuso el software?", options: ["Nosotros mismos / nuestra oficina", "El cliente", "El project manager", "El contratista general", "Cambia según el proyecto"] },
+          q14: { label: "¿Cuánto duran normalmente tus contratos de software actuales?", options: ["Cancelables mensualmente", "1 año", "2-3 años", "Más de 3 años", "Sin contratos formales"] },
+          q15: { label: "¿Cuáles son los mayores obstáculos si quieres cambiar de software?", hint: "Selección múltiple posible", options: ["Vinculación contractual", "Migración de datos", "Esfuerzo de formación", "El cliente impone el software", "Costumbre de los participantes", "Sin autoridad de decisión", "No quiero cambiar"] },
+          q16: { label: "¿Con qué frecuencia hay problemas con el software utilizado?", options: ["Regularmente, tema constante", "Ocasionalmente", "Rara vez", "Sin problemas relevantes"] },
+          q16b: { label: "¿Qué problemas concretos aparecen?", placeholder: "P. ej.: pérdida de datos, funciones faltantes, problemas de aceptación..." },
+          q17: { label: "¿Quién puede aprobar en tu organización la introducción de un nuevo software de proyecto?", options: ["Yo mismo", "La dirección", "El departamento de IT", "Decisión conjunta de varias personas", "Nadie internamente: decide el cliente"] },
+          q18: { label: "¿Quién bloquea normalmente el cambio a una nueva solución?", hint: "Selección múltiple posible", options: ["Cliente / promotor", "Nuestra dirección", "Departamento de IT", "Oficios / subcontratistas", "Nadie bloquea activamente", "Inercia general / costumbre"] },
+          q19: { label: "¿Cómo se compra normalmente software en tu empresa?", options: ["Decisión individual por especialista / jefe de proyecto", "Proceso formal de presupuesto / planificación anual", "Licitación pública (p. ej. normativa de contratación)", "A través de acuerdos marco existentes", "Impuesto por el cliente"] },
+          q20: { label: "¿Todos los participantes del proyecto tienen actualmente acceso al software utilizado?", options: ["Sí, todos activos", "Oficinas sí, obra más bien no", "Encargados sí, trabajadores no", "Solo participantes de planificación y control", "Ninguna solución uniforme para todos"] },
+          q21: { label: "¿Hay diferencias de acceso según el software utilizado?", options: ["Sí, claramente: algunas herramientas excluyen la obra", "Sí, algo: coste o complejidad como barrera", "Apenas", "No es un tema para nosotros"] },
+          q22: { label: "¿Quién debería gestionar roles y permisos?", options: ["El arquitecto", "El project manager", "El cliente", "Cada empresa para su propia gente", "Combinado: central + descentralizado", "Otro"] },
+          q22b: { label: "Si otro o complemento:", placeholder: "Breve complemento..." },
+          q23: { label: "¿Qué relevancia tiene para ti que los datos de proyecto no estén en un proveedor estadounidense?", min: "No relevante", max: "Muy relevante" },
+          q24: { label: "¿Qué requisitos de seguridad y cumplimiento aplican para ti?", hint: "Selección múltiple posible", options: ["Cumplimiento RGPD", "Ubicación de datos Alemania / UE", "Alojamiento propio / servidor propio", "ISO 27001", "Requisitos de contratación municipal", "Sin requisitos especiales"] },
+          q25: { label: "¿Tendrías reservas si tu cliente supiera que los datos de proyecto están en servidores de EE. UU.?", options: ["Sí, importantes: ya es un tema", "Sí, posiblemente con determinados clientes", "Más bien no", "No, no es un tema"] },
+          q26: { label: "En proyectos municipales: ¿una solución federada y conforme al RGPD mejoraría las posibilidades de adjudicación?", options: ["Sí, significativamente", "Posiblemente", "No influye", "No hacemos proyectos municipales"] },
+          q27: { label: "¿Con qué frecuencia pierdes tiempo buscando decisiones o documentos anteriores?", options: ["A diario, problema serio", "Varias veces por semana", "Ocasionalmente", "Rara vez"] },
+          q28: { label: "¿Qué funciones de IA serían más valiosas? Elige tu top 3.", hint: "Haz clic en las opciones por orden de importancia (1 = más importante).", options: ["Encontrar decisiones anteriores al instante", "Avisos automáticos de riesgo", "Detectar retrasos de plazo temprano", "Incorporar nuevos miembros automáticamente", "Resumir reuniones automáticamente", "Detectar contradicciones en documentos", "Detectar modificados a partir de la comunicación", "Avisos de coste ante desviaciones"] },
+          q29: { label: "¿Confiarías en una IA que funcione exclusivamente dentro de tu propia esfera de datos, sin enviar datos a servicios externos?", options: ["Sí, incluso es un requisito para mí", "Probablemente sí", "No estoy seguro", "Soy escéptico con la IA en general"] },
+          q30: { label: "Caso de uso concreto: ¿dónde cambiaría la IA algo inmediatamente en tu día a día?", placeholder: "Describe una situación concreta..." },
+          q31: { label: "¿Qué funciones son absolutamente indispensables? Elige tu top 3.", hint: "Haz clic por orden de importancia.", options: ["Gestión documental y versiones", "Seguimiento de tareas y plazos", "Chat interno / comunicación", "Integración de correo", "Gestión de roles y permisos", "Historial completo de cambios", "Calendario e hitos", "Documentación fotográfica de obra", "Seguimiento de defectos y recepción", "Control de costes y modificados", "Función offline en obra", "Soporte de IA"] },
+          q32: { label: "¿Qué integraciones son indispensables para ti?", hint: "Selección múltiple posible", options: ["MS 365 / Office", "Correo (IMAP/SMTP)", "Calendario (Google / Outlook)", "BIM / IFC / BCF", "Contabilidad / ERP", "Archivo documental (SharePoint, Dropbox)", "No se necesitan integraciones"] },
+          q33: { label: "La única función que te convencería de inmediato:", placeholder: "La función que lo decidiría todo para ti..." },
+          q34: { label: "Suponiendo que pudieras elegir libremente, ¿introducirías projektor.one?", options: ["Sí, de inmediato", "Sí, si la relación precio-valor encaja", "Solo tras un piloto exitoso", "Más bien no", "No"] },
+          q35: { label: "¿Tienes actualmente un proyecto en curso o planificado que sería adecuado para una prueba piloto?", options: ["Sí, un proyecto en curso", "Sí, un proyecto planificado (inicio en 3-6 meses)", "Posiblemente, tendría que comprobarlo", "No, actualmente no"] },
+          q36: { label: "¿Tendrías acceso a los participantes relevantes para un piloto (cliente, oficios)?", options: ["Sí, completamente", "Parcialmente", "El cliente tendría que aceptar primero", "Más bien no"] },
+          q37: { label: "¿Cuál sería un precio mensual justo por usuario?", options: ["Menos de 20 EUR / mes / usuario", "20-50 EUR / mes / usuario", "50-100 EUR / mes / usuario", "Más de 100 EUR / mes / usuario", "Prefiero facturación por proyecto"] },
+          q38: { label: "projektor.one busca socios prácticos: ¿participarías?", hint: "Sin obligación, sin riesgo, pero una oportunidad real de dar forma a la plataforma y participar en su éxito.", options: ["Sí, muy interesado: por favor contactadme", "Interesante: quiero más información", "Piloto sí, colaboración más bien no", "Prefiero observar primero", "No, gracias"] },
+          q39: { label: "¿Cuál sería tu sueño: qué tendría que ofrecer projektor.one para cambiar algo de verdad?", placeholder: "Mi sueño sería un software que..." },
+          kontakt: { label: "Tus datos de contacto (opcional)" },
+          q41_consent: { label: "Consentimiento de contacto", text: "Acepto que el equipo de projektor.one pueda contactarme en base a mis datos para preguntas de seguimiento, más información o concertar una reunión. Puedo revocar este consentimiento en cualquier momento." }
+        }
+      };
+
+      function localizeSections(language) {
+        const translations = sectionTranslations[language];
+        if (!translations) return baseSections;
+
+        return baseSections.map((section) => {
+          const sectionCopy = translations.sections[section.id] || {};
+          return {
+            ...section,
+            ...sectionCopy,
+            info: sectionCopy.info || section.info,
+            questions: section.questions.map((question) => ({
+              ...question,
+              ...(translations.questions[question.id] || {})
+            }))
+          };
+        });
+      }
+
+      const sections = localizeSections(activeLanguage);
 
       const top3State = {};
       const labels = new Map();
@@ -972,10 +1246,10 @@
         }
 
         if (question.type === "contact") {
-          labels.set("kontakt_name", "Kontakt - Name");
-          labels.set("kontakt_firma", "Kontakt - Firma");
-          labels.set("kontakt_email", "Kontakt - E-Mail");
-          labels.set("kontakt_tel", "Kontakt - Telefon");
+          labels.set("kontakt_name", `${copy.contactSummaryPrefix} - ${copy.contactName}`);
+          labels.set("kontakt_firma", `${copy.contactSummaryPrefix} - ${copy.contactCompany}`);
+          labels.set("kontakt_email", `${copy.contactSummaryPrefix} - ${copy.contactEmail}`);
+          labels.set("kontakt_tel", `${copy.contactSummaryPrefix} - ${copy.contactPhone}`);
           return `
             <div class="question">
               ${label}
@@ -1177,7 +1451,7 @@
         });
         const body = await response.json().catch(() => ({}));
         if (!response.ok || body.success === false) {
-          throw new Error(body.error || `refinio.one antwortete mit HTTP ${response.status}`);
+          throw new Error(body.error || copy.httpError(response.status));
         }
         return body.data;
       }
