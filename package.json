@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "build": "./deploy.sh --build-only",
-    "deploy": "./deploy.sh"
+    "deploy": "./deploy.sh",
+    "test": "node ./project.core.test.js && node ./hoai.core.test.js"
   },
   "repository": {
     "type": "git",
@@ -14,6 +15,7 @@
   },
   "license": "UNLICENSED",
   "devDependencies": {
+    "esbuild": "^0.27.2",
     "wrangler": "^4.95.0"
   }
 }
