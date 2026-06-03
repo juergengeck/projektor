@@ -77,6 +77,7 @@ const state = {
   donorOnlyOpen: false,
   ngoMetricFilter: null,
   activeNgoDonorId: "",
+  activeNgoParticipantId: "",
   participantSearch: "",
   participantSort: "visa",
 };
@@ -420,6 +421,12 @@ const i18n = {
     ngoEyebrow: "NGO Capability",
     ngoTitle: "Spender und Teilnehmerinnen-Programm",
     roleAllowed: "erlaubt",
+    accessArea: "Bereich",
+    accessContents: "Inhalte",
+    accessFull: "voll",
+    accessFiltered: "gefiltert",
+    accessNone: "kein Zugriff",
+    accessCycle: "Zugriff ändern",
     status: "Status",
     parser: "Dateityp",
     importSource: "Quelle",
@@ -492,6 +499,12 @@ const i18n = {
     ngoEyebrow: "NGO capability",
     ngoTitle: "Donors and participant program",
     roleAllowed: "allowed",
+    accessArea: "Area",
+    accessContents: "Contents",
+    accessFull: "full",
+    accessFiltered: "filtered",
+    accessNone: "no access",
+    accessCycle: "Change access",
     status: "Status",
     parser: "File type",
     importSource: "Source",
@@ -564,6 +577,12 @@ const i18n = {
     ngoEyebrow: "Capability NGO",
     ngoTitle: "Donateurs et programme participantes",
     roleAllowed: "autorisé",
+    accessArea: "Espace",
+    accessContents: "Contenu",
+    accessFull: "complet",
+    accessFiltered: "filtré",
+    accessNone: "aucun accès",
+    accessCycle: "Modifier l'accès",
     status: "Statut",
     parser: "Type de fichier",
     importSource: "Source import",
@@ -636,6 +655,12 @@ const i18n = {
     ngoEyebrow: "Capacidad NGO",
     ngoTitle: "Donantes y programa de participantes",
     roleAllowed: "permitido",
+    accessArea: "Área",
+    accessContents: "Contenido",
+    accessFull: "completo",
+    accessFiltered: "filtrado",
+    accessNone: "sin acceso",
+    accessCycle: "Cambiar acceso",
     status: "Estado",
     parser: "Tipo de archivo",
     importSource: "Fuente import",
@@ -1150,6 +1175,141 @@ function projectRef() {
 function conciseProjectRef() {
   const ref = projectRef();
   return ref.split(" - ")[0] || ref;
+}
+
+const roleAccessCycle = ["none", "filtered", "full"];
+
+const projectAreaLabels = {
+  de: {
+    "authority-questions": "Behördenrückfragen",
+    "cluster-a": "Cluster A",
+    "costs-din276": "Kosten DIN 276",
+    "energy-audit": "Energienachweise",
+    "fire-safety": "Brandschutz",
+    "funding": "Förderung",
+    hygiene: "Hygiene",
+    imap: "IMAP-Projektmail",
+    journal: "Journal",
+    "night-work": "Nachtarbeiten",
+    participants: "Teilnehmerinnen",
+    "permit-documents": "Genehmigungsunterlagen",
+    planstand: "Planstand",
+    "project-mail": "Projektmail",
+    retention: "Bindung und Aufbewahrung",
+    safeguarding: "Safeguarding",
+    site: "Baustelle",
+    donations: "Spenden",
+    donors: "Unterstützerinnen",
+    visa: "Visa-Fristen",
+    windows: "Bauzeitenfenster",
+  },
+  en: {
+    "authority-questions": "Authority questions",
+    "cluster-a": "Cluster A",
+    "costs-din276": "Costs DIN 276",
+    "energy-audit": "Energy evidence",
+    "fire-safety": "Fire safety",
+    funding: "Funding",
+    hygiene: "Hygiene",
+    imap: "IMAP project mail",
+    journal: "Journal",
+    "night-work": "Night work",
+    participants: "Participants",
+    "permit-documents": "Permit documents",
+    planstand: "Plan status",
+    "project-mail": "Project mail",
+    retention: "Retention",
+    safeguarding: "Safeguarding",
+    site: "Construction site",
+    donations: "Donations",
+    donors: "Supporters",
+    visa: "Visa deadlines",
+    windows: "Work windows",
+  },
+};
+
+const projectContentLabels = {
+  de: {
+    NgoDonorTrieRoot: "Unterstützerprofile",
+    NgoDonationTrieRoot: "Spendeneingänge",
+    NgoParticipantTrieRoot: "Teilnehmerinnendaten",
+    NgoVisaDeadlineTrieRoot: "Visa und Fristen",
+    NgoSafeguardingTrieRoot: "Schutz und Meldungen",
+    NgoRetentionTrieRoot: "Aufbewahrung",
+    ProjectJournalTrieRoot: "Projektjournal",
+    ProjectMailTrieRoot: "Projektmail",
+    SourceEntryTrieRoot: "Importquelle",
+    ProjectDocumentTrieRoot: "Dokumente",
+    CostControlTrieRoot: "Kostenkontrolle",
+    ConstructionSiteTrieRoot: "Baustelle",
+    ProjectQuestionTrieRoot: "Rückfragen",
+    PlanStateTrieRoot: "Planfreigaben",
+    OperationWindowTrieRoot: "Betriebsfenster",
+    HygieneEvidenceTrieRoot: "Hygienenachweise",
+    FireSafetyTrieRoot: "Brandschutznachweise",
+    ProjectClusterTrieRoot: "Projektcluster",
+    TenantNoticeTrieRoot: "Mieterinformationen",
+    FundingTrieRoot: "Fördermittel",
+    EnergyEvidenceTrieRoot: "Energienachweise",
+    ConstructionWindowTrieRoot: "Bauzeitenfenster",
+  },
+  en: {
+    NgoDonorTrieRoot: "Supporter profiles",
+    NgoDonationTrieRoot: "Donation records",
+    NgoParticipantTrieRoot: "Participant data",
+    NgoVisaDeadlineTrieRoot: "Visa deadlines",
+    NgoSafeguardingTrieRoot: "Safeguarding",
+    NgoRetentionTrieRoot: "Retention",
+    ProjectJournalTrieRoot: "Project journal",
+    ProjectMailTrieRoot: "Project mail",
+    SourceEntryTrieRoot: "Import source",
+    ProjectDocumentTrieRoot: "Documents",
+    CostControlTrieRoot: "Cost control",
+    ConstructionSiteTrieRoot: "Construction site",
+    ProjectQuestionTrieRoot: "Questions",
+    PlanStateTrieRoot: "Plan approvals",
+    OperationWindowTrieRoot: "Operation windows",
+    HygieneEvidenceTrieRoot: "Hygiene evidence",
+    FireSafetyTrieRoot: "Fire safety evidence",
+    ProjectClusterTrieRoot: "Project cluster",
+    TenantNoticeTrieRoot: "Tenant notices",
+    FundingTrieRoot: "Funding",
+    EnergyEvidenceTrieRoot: "Energy evidence",
+    ConstructionWindowTrieRoot: "Work windows",
+  },
+};
+
+function humanizeSlug(value) {
+  return String(value || "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function projectAreaLabel(root) {
+  const segments = String(root?.path || "").split("/").filter(Boolean);
+  const areaKey = segments.at(-1) || root?.owner || "project";
+  return projectAreaLabels[state.language]?.[areaKey] || projectAreaLabels.de[areaKey] || humanizeSlug(areaKey);
+}
+
+function projectContentLabel(root) {
+  return projectContentLabels[state.language]?.[root?.object] || projectContentLabels.de[root?.object] || projectAreaLabel(root);
+}
+
+function accessLabel(access) {
+  if (access === "full") return tr("accessFull");
+  if (access === "filtered") return tr("accessFiltered");
+  return tr("accessNone");
+}
+
+function cycleRoleAccess(rootIndex, roleKey) {
+  const root = sharedTrieRoots[rootIndex];
+  if (!root || !roles[roleKey]) return;
+  root.visibility = root.visibility || {};
+  const current = root.visibility[roleKey] || "none";
+  const next = roleAccessCycle[(roleAccessCycle.indexOf(current) + 1) % roleAccessCycle.length] || roleAccessCycle[0];
+  root.visibility[roleKey] = next;
+  persistActiveProjectDatatype();
+  renderRoles();
 }
 
 function slugifySectionTitle(title, fallback = "section") {
@@ -1730,7 +1890,7 @@ function renderRoles() {
     el("ul", { className: "role-permissions" }, role.permissions.map((permission) => el("li", {}, [el("span", { text: permission }), el("strong", { text: tr("roleAllowed") })]))),
     el("ul", { className: "object-list" }, [
       el("li", {}, [el("span", { text: "Zuordnung" }), el("strong", { text: "Projekt, Rolle, Person" })]),
-        el("li", {}, [el("span", { text: "Grenze" }), el("strong", { text: "Trust + Kontext filtern Trie-Export" })]),
+        el("li", {}, [el("span", { text: "Grenze" }), el("strong", { text: "Vertrauen + Kontext begrenzen Export" })]),
         el("li", {}, [el("span", { text: "Entzug" }), el("strong", { text: "Policy-Änderung mit Assembly-Spur" })]),
     ]),
   );
@@ -1740,19 +1900,26 @@ function renderRoles() {
   table.append(
     el("thead", {}, [
       el("tr", {}, [
-        el("th", { text: "Trie-Pfad" }),
-        el("th", { text: "Root-Objekt" }),
+        el("th", { text: tr("accessArea") }),
+        el("th", { text: tr("accessContents") }),
         ...roleKeys.map((key) => el("th", { text: roles[key].label })),
       ]),
     ]),
-    el("tbody", {}, sharedTrieRoots.map((root) =>
+    el("tbody", {}, sharedTrieRoots.map((root, rootIndex) =>
       el("tr", {}, [
-        el("td", { text: root.path }),
-        el("td", { text: root.object }),
+        el("td", { text: projectAreaLabel(root) }),
+        el("td", { text: projectContentLabel(root) }),
         ...roleKeys.map((key) => {
           const access = root.visibility[key] || "none";
-          const label = access === "full" ? "voll" : access === "filtered" ? "gefiltert" : "-";
-          return el("td", {}, [el("span", { className: `access-chip ${access}`, text: label })]);
+          const label = accessLabel(access);
+          const button = el("button", {
+            className: `access-chip ${access}`,
+            type: "button",
+            "aria-label": `${tr("accessCycle")}: ${roles[key].label}, ${projectAreaLabel(root)} (${label})`,
+            text: label,
+          });
+          button.addEventListener("click", () => cycleRoleAccess(rootIndex, key));
+          return el("td", {}, [button]);
         }),
       ]),
     )),
@@ -2912,7 +3079,7 @@ function renderNgoParticipantControls() {
   ]);
 }
 
-function renderNgoParticipantTable(rows) {
+function renderNgoParticipantTable(rows, selectedParticipantId = "") {
   const table = el("table", { className: "matrix-table ngo-table" });
   table.append(
     el("thead", {}, [
@@ -2927,8 +3094,16 @@ function renderNgoParticipantTable(rows) {
       ]),
     ]),
     el("tbody", {}, rows.map((participant, index) =>
-      el("tr", { className: index === 0 ? "selected-row" : "" }, [
-        el("td", {}, [el("strong", { text: participant.name }), el("span", { text: participant.idNumber || "ohne ID" })]),
+      el("tr", {
+        className: participant.id === selectedParticipantId || (!selectedParticipantId && index === 0) ? "selected-row selectable-row" : "selectable-row",
+        "data-ngo-participant-select": participant.id,
+      }, [
+        el("td", {}, [
+          el("button", { className: "link-action", type: "button", "data-ngo-participant-select": participant.id }, [
+            el("strong", { text: participant.name }),
+            el("span", { text: participant.idNumber || "ohne ID" }),
+          ]),
+        ]),
         el("td", { text: participant.age == null ? "-" : String(participant.age) }),
         el("td", { text: participant.currentStage }),
         el("td", { text: participant.hasChildren ? `ja (${participant.childCount})` : "-" }),
@@ -3014,14 +3189,16 @@ function renderNgoParticipants() {
     search: state.participantSearch,
     sort: state.participantSort,
   }));
+  const selectedParticipant = rows.find((participant) => participant.id === state.activeNgoParticipantId) || rows[0];
+  const selectedParticipantId = selectedParticipant?.id || "";
   return el("div", { className: "ngo-board-grid" }, [
     el("article", { className: "ngo-list-card" }, [
       bookTop("Teilnehmerinnen-Programm", "Status, Fristen, Pflicht-Abläufe"),
       renderNgoParticipantControls(),
       ...(activeNgoMetricFilterLabel("participants") ? [renderNgoMetricEvidence("participants")] : []),
-      renderNgoParticipantTable(rows),
+      renderNgoParticipantTable(rows, selectedParticipantId),
     ]),
-    renderParticipantMask(rows[0], participantMetrics(ngoWorkspace).participants),
+    renderParticipantMask(selectedParticipant, participantMetrics(ngoWorkspace).participants),
   ]);
 }
 
@@ -3801,7 +3978,9 @@ function addParticipantFromQuickEntry() {
       firstName,
       lastName,
     });
+    const createdParticipant = ngoWorkspace.participants.at(-1);
     state.activeNgoView = "participants";
+    state.activeNgoParticipantId = createdParticipant?.id || "";
     state.participantSearch = `${firstName} ${lastName}`.trim();
     state.participantSort = "name";
     clearNgoMetricFilter();
@@ -3997,6 +4176,13 @@ function bindActions() {
       state.activeNgoDonorId = donorId;
       renderNgo();
       window.setTimeout(() => document.getElementById(`ngoDonationAmount-${donorId}`)?.focus(), 0);
+      return;
+    }
+
+    const ngoParticipantSelectButton = event.target.closest("[data-ngo-participant-select]");
+    if (ngoParticipantSelectButton) {
+      state.activeNgoParticipantId = ngoParticipantSelectButton.dataset.ngoParticipantSelect;
+      renderNgo();
       return;
     }
 

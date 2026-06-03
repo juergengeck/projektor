@@ -45,7 +45,7 @@ body {
   min-height: 100vh;
   color: var(--ink);
   background: var(--bg);
-  font-size: 15px;
+  font-size: 14px;
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
@@ -57,7 +57,7 @@ button {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 250px minmax(0, 1fr);
+  grid-template-columns: 220px minmax(0, 1fr);
   min-height: 100vh;
 }
 
@@ -259,7 +259,7 @@ button {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  padding: 20px 16px;
+  padding: 16px 12px;
   border-right: 1px solid var(--line);
   background: var(--rail);
 }
@@ -267,15 +267,15 @@ button {
 .brand {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 22px;
+  gap: 10px;
+  margin-bottom: 18px;
 }
 
 .brand-mark {
   display: grid;
   place-items: center;
-  width: 42px;
-  height: 42px;
+  width: 38px;
+  height: 38px;
   overflow: hidden;
   padding: 6px;
   border: 1px solid var(--line);
@@ -318,16 +318,16 @@ button {
 
 .nav {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .nav button {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 9px;
   width: 100%;
-  min-height: 40px;
-  padding: 8px 10px;
+  min-height: 36px;
+  padding: 6px 8px;
   border: 1px solid transparent;
   border-radius: 8px;
   color: var(--muted);
@@ -346,8 +346,8 @@ button {
 .nav-icon {
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   border-radius: 8px;
   color: #fff;
   background: var(--accent);
@@ -357,7 +357,7 @@ button {
 
 .rail-note {
   margin-top: auto;
-  padding: 14px;
+  padding: 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--soft);
@@ -371,7 +371,7 @@ button {
 
 .workspace {
   min-width: 0;
-  padding: 20px clamp(16px, 2.4vw, 34px) 34px;
+  padding: 14px clamp(12px, 1.6vw, 24px) 24px;
 }
 
 .topbar {
@@ -397,7 +397,7 @@ p {
 h1 {
   max-width: 960px;
   margin-bottom: 0;
-  font-size: clamp(1.8rem, 3vw, 3.35rem);
+  font-size: clamp(1.55rem, 2.45vw, 2.7rem);
   line-height: 1.04;
   font-weight: 730;
 }
@@ -430,7 +430,7 @@ h1 {
 
 h2 {
   margin-bottom: 0;
-  font-size: clamp(1.3rem, 1.8vw, 1.8rem);
+  font-size: clamp(1.16rem, 1.45vw, 1.48rem);
   line-height: 1.12;
 }
 
@@ -468,7 +468,7 @@ h3 {
 
 .panel {
   display: none;
-  padding: clamp(16px, 2vw, 24px);
+  padding: clamp(12px, 1.3vw, 18px);
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel-glass);
@@ -484,7 +484,7 @@ h3 {
   align-items: flex-start;
   justify-content: space-between;
   gap: 18px;
-  margin-bottom: 18px;
+  margin-bottom: 14px;
 }
 
 .primary-action,
@@ -724,13 +724,13 @@ h3 {
 }
 
 .metric {
-  min-height: 132px;
-  padding: 14px;
+  min-height: 108px;
+  padding: 12px;
 }
 
 .metric strong {
   display: block;
-  margin: 8px 0 5px;
+  margin: 6px 0 4px;
   font-size: clamp(1.6rem, 2.3vw, 2.45rem);
   line-height: 1;
 }
@@ -941,10 +941,22 @@ h3 {
   display: inline-block;
   min-width: 72px;
   padding: 5px 8px;
+  border: 1px solid transparent;
   border-radius: 8px;
+  font: inherit;
   text-align: center;
   color: var(--muted);
   background: var(--subtle);
+}
+
+.matrix-table button.access-chip {
+  cursor: pointer;
+}
+
+.matrix-table button.access-chip:hover,
+.matrix-table button.access-chip:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(109, 128, 165, 0.14);
 }
 
 .access-chip.full {
@@ -2047,13 +2059,14 @@ h3 {
 
 .ngo-metrics {
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  margin-bottom: 16px;
+  gap: 8px;
+  margin-bottom: 12px;
 }
 
 .ngo-metric {
   display: grid;
   width: 100%;
-  min-height: 118px;
+  min-height: 90px;
   cursor: pointer;
   color: inherit;
   text-align: left;
@@ -2077,12 +2090,18 @@ h3 {
 }
 
 .ngo-metric strong {
-  font-size: clamp(1.3rem, 1.75vw, 2rem);
+  font-size: clamp(1.15rem, 1.35vw, 1.55rem);
+}
+
+.ngo-metric p {
+  margin-bottom: 0;
+  font-size: 0.78rem;
+  line-height: 1.28;
 }
 
 .ngo-board {
   display: grid;
-  gap: 16px;
+  gap: 12px;
 }
 
 .ngo-board-head {
@@ -2138,8 +2157,8 @@ h3 {
 
 .ngo-board-grid {
   display: grid;
-  grid-template-columns: minmax(360px, 1.05fr) minmax(360px, 0.95fr);
-  gap: 16px;
+  grid-template-columns: minmax(420px, 1.15fr) minmax(420px, 0.85fr);
+  gap: 12px;
   align-items: start;
 }
 
@@ -2148,7 +2167,7 @@ h3 {
 .ngo-activation-card,
 .ngo-compliance-card {
   min-width: 0;
-  padding: 16px;
+  padding: 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
@@ -2183,16 +2202,16 @@ h3 {
 .ngo-controls {
   display: grid;
   grid-template-columns: minmax(170px, 1fr) minmax(150px, 0.6fr) auto;
-  gap: 10px;
+  gap: 8px;
   align-items: end;
 }
 
 .ngo-controls label,
 .ngo-quick-entry {
   display: grid;
-  gap: 6px;
+  gap: 5px;
   color: var(--muted);
-  font-size: 0.88rem;
+  font-size: 0.82rem;
 }
 
 .ngo-controls input:not([type="checkbox"]),
@@ -2201,8 +2220,8 @@ h3 {
 .ngo-donation-entry input:not([type="checkbox"]),
 .ngo-donation-entry select {
   width: 100%;
-  min-height: 40px;
-  padding: 9px 10px;
+  min-height: 34px;
+  padding: 7px 9px;
   border: 1px solid var(--line);
   border-radius: 8px;
   color: var(--ink);
@@ -2214,8 +2233,8 @@ h3 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 40px;
-  padding: 9px 10px;
+  min-height: 34px;
+  padding: 7px 9px;
   border: 1px solid var(--line);
   border-radius: 8px;
   color: var(--ink);
@@ -2235,7 +2254,7 @@ h3 {
 .ngo-quick-entry {
   grid-template-columns: 120px minmax(160px, 1fr) auto auto;
   align-items: center;
-  padding: 10px;
+  padding: 8px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--subtle);
@@ -2290,7 +2309,7 @@ h3 {
 }
 
 .ngo-table-wrap {
-  max-height: 440px;
+  max-height: 380px;
   border: 1px solid var(--line);
   border-radius: 8px;
 }
@@ -2310,27 +2329,54 @@ h3 {
   background: var(--soft);
 }
 
+.ngo-table .selectable-row {
+  cursor: pointer;
+}
+
+.ngo-table .selectable-row:hover {
+  background: var(--subtle);
+}
+
+.ngo-table .selectable-row.selected-row:hover {
+  background: var(--soft);
+}
+
 .ngo-section-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: 8px;
 }
 
 .ngo-object-section {
   min-width: 0;
-  padding: 12px;
+  padding: 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--subtle);
 }
 
 .ngo-object-section h4 {
-  margin: 0 0 8px;
-  font-size: 0.9rem;
+  margin: 0 0 7px;
+  font-size: 0.84rem;
 }
 
 .ngo-object-section .object-list {
   margin: 0;
+  gap: 6px;
+}
+
+.ngo-object-section .object-list li {
+  display: grid;
+  grid-template-columns: minmax(92px, 0.78fr) minmax(108px, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding: 7px 8px;
+  font-size: 0.84rem;
+  line-height: 1.18;
+}
+
+.ngo-object-section .object-list strong {
+  text-align: right;
 }
 
 .ngo-contribution-list {
@@ -2436,7 +2482,15 @@ h3 {
 }
 
 .warning-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: start;
   border-color: rgba(181, 106, 25, 0.35);
+}
+
+.warning-list strong {
+  white-space: nowrap;
+  overflow-wrap: normal;
 }
 
 .book-top {
