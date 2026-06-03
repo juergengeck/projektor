@@ -7,6 +7,7 @@ import {
   listDemoDatasetPlans,
 } from "./demo-dataset.creator.js";
 import { createProjectScheduleStateDagUpdate } from "./packages/project.core/index.js";
+import { summarizeProjectFileIndex } from "./packages/project-source.core/index.js";
 
 const plans = listDemoDatasetPlans();
 
@@ -24,6 +25,10 @@ for (const plan of plans) {
   assert.ok(dataset.roleModel.sharedTrieRoots.length >= 5);
   assert.equal(dataset.planning.schedule.tasks.length, plan.scale.tasks);
   assert.ok(dataset.assistant.goal.criteria.length >= 3);
+  assert.equal(dataset.projectSource.source.adapter, "source.git");
+  assert.equal(dataset.projectSource.index.projectId, dataset.project.id);
+  assert.ok(dataset.exportModel.sections.some(([section]) => section === "Git-Quelle"));
+  assert.ok(summarizeProjectFileIndex(dataset.projectSource).totalFiles >= 3);
   assert.ok(dataset.importModel.previewRows.length >= 4);
 
   const update = createProjectScheduleStateDagUpdate(dataset.planning.schedule, {

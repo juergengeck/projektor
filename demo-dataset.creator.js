@@ -2,6 +2,7 @@ import { createMatchingSupply } from "../one/packages/matching.core/dist/index.j
 import { createHoaiPlanningDefaults } from "./hoai.core.js";
 import { NGO_CAPABILITY, createNgoDemoProjectData } from "./packages/ngo.core/index.js";
 import { createProjectPlan, createProjectScheduleStateDagUpdate } from "./packages/project.core/index.js";
+import { createProjectSourceBundle, createProjectSourceExportSection } from "./packages/project-source.core/index.js";
 
 export const PROJECT_DATATYPE_KIND = "projektor.one/project";
 export const PROJECT_DATATYPE_VERSION = 1;
@@ -13,8 +14,8 @@ export const DEMO_DATASET_CREATOR_SKILL = {
     capabilityId: "projektor.demo-dataset-creator",
     kind: "project-demo-dataset",
     domains: ["project.dataset", "project.schedule", "project.roles", "project.assistant", "ngo.donors", "ngo.participants"],
-    inputShapes: ["demo-dataset-plan"],
-    outputShapes: ["projektor-project-datatype", "ngo-project-datatype"],
+    inputShapes: ["demo-dataset-plan", "source.git"],
+    outputShapes: ["projektor-project-datatype", "ngo-project-datatype", "project-source-bundle"],
     effects: ["generate", "replace-active-project", "export"],
     tags: ["local-first", "scenario-fixture", "planner-ready"],
   },
@@ -238,6 +239,35 @@ function createExportModel(projectLabel, sections) {
   };
 }
 
+function createSourceBundle(projectId, plan, files = []) {
+  return createProjectSourceBundle({
+    source: {
+      projectId,
+      repoUrl: "https://github.com/juergengeck/projektor.git",
+      defaultBranch: "main",
+      rootPath: ".",
+      detachedWorktreeRoot: "../vger-worktrees/projektor",
+      trackedPathGlobs: [
+        `projects/${projectId}/**`,
+        "docs/**",
+        "packages/**",
+        "*.project.js",
+      ],
+    },
+    branch: `project/${projectId}`,
+    head: "working-tree",
+    status: "dirty",
+    generatedAt: "2026-06-03T09:30:00.000Z",
+    ignoredPaths: ["dist", ".wrangler", "node_modules", ".env"],
+    files: [
+      { path: `projects/${projectId}/project.json`, kind: "project-graph", owner: "Projektleitung", phase: "LP1-LP9", status: "tracked" },
+      { path: `projects/${projectId}/schedule.json`, kind: "schedule", owner: "Projektsteuerung", phase: plan.projectStart, status: "tracked" },
+      { path: `projects/${projectId}/journal.ndjson`, kind: "journal", owner: "Projektleitung", phase: "laufend", status: "modified" },
+      ...files,
+    ],
+  });
+}
+
 function runtimeFor(roles, phases, flowDomains) {
   return {
     activeRole: roles.architect ? "architect" : Object.keys(roles)[0],
@@ -285,6 +315,7 @@ function assertValidDataset(dataset) {
 
 function composeDataset(plan, parts) {
   const planning = enrichHoaiPlanning(createProjectPlan(parts.schedule));
+  const projectSource = parts.projectSource || createSourceBundle(parts.project.id, plan);
   const dataset = {
     kind: PROJECT_DATATYPE_KIND,
     schemaVersion: PROJECT_DATATYPE_VERSION,
@@ -299,10 +330,17 @@ function composeDataset(plan, parts) {
     planning,
     assistant: parts.assistant,
     settings: parts.settings,
+    projectSource,
     ngo: parts.ngo,
     mailPreview: parts.mailPreview,
     importModel: parts.importModel,
-    exportModel: parts.exportModel,
+    exportModel: {
+      ...parts.exportModel,
+      sections: [
+        ...(parts.exportModel?.sections || []),
+        createProjectSourceExportSection(projectSource),
+      ],
+    },
     journal: parts.journal,
     runtime: runtimeFor(parts.roleModel.roles, planning.phases, planning.flowDomains),
   };
