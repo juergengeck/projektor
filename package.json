@@ -7,7 +7,8 @@
   "scripts": {
     "build": "./deploy.sh --build-only",
     "deploy": "./deploy.sh",
-    "test": "node ./packages/project.core/index.test.js && node ./packages/table.core/index.test.js && node ./packages/ngo.core/index.test.js && node ./hoai.core.test.js && node ./demo-dataset.creator.test.js"
+    "source:git": "node ./scripts/project-source-from-git.mjs --project-id demo-kita-2028",
+    "test": "node ./packages/project.core/index.test.js && node ./packages/table.core/index.test.js && node ./packages/project-source.core/index.test.js && node ./packages/ngo.core/index.test.js && node ./hoai.core.test.js && node ./demo-dataset.creator.test.js"
   },
   "repository": {
     "type": "git",
