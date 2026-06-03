@@ -26,13 +26,15 @@ Domain core is everything that is neither app chrome nor a single project:
 
 - `HOAI.core` owns HOAI phases, cross-cutting topics and workflow templates.
 - `project.core` owns project schedule validation, CPM calculation and planner/updater adapters.
+- `table.core` owns reusable Excel-compatible projections over planner/updater state-DAG outputs.
 - `planner.core`, `updater.core`, `one.core` and `one.models` stay in `../one` and are consumed directly by the browser bundle.
 
 ## Current Implementation
 
 The schedule split is now explicit:
 
-- [project.core.js](/Users/gecko/src/projektor/project.core.js) owns reusable scheduling behavior and delegates state-DAG semantics to `../one/packages/planner.core` and `../one/packages/updater.core`.
+- [packages/project.core/index.js](/Users/gecko/src/projektor/packages/project.core/index.js) owns reusable scheduling behavior and delegates state-DAG semantics to `../one/packages/planner.core` and `../one/packages/updater.core`.
+- [packages/table.core/index.js](/Users/gecko/src/projektor/packages/table.core/index.js) owns Excel-compatible sheet projections for project progress, DAG edges, planner steps, workload scope, responsibilities and participants.
 - [hoai.core.js](/Users/gecko/src/projektor/hoai.core.js) owns reusable HOAI phases, cross-cutting topics and flow templates.
 - [demo-kita-2028.project.js](/Users/gecko/src/projektor/demo-kita-2028.project.js) owns the Kita-specific schedule graph and a boundary manifest used by the UI.
 - [app.js](/Users/gecko/src/projektor/app.js) loads the active project schedule, asks `project.core` for the planner/updater-backed schedule update, and renders the result.

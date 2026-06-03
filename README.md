@@ -70,3 +70,4 @@ This is not a live ONE.core runtime yet. The current code intentionally keeps th
 
 - [Onboarding MRD](./docs/projektor-onboarding-mrd.md)
 - [Onboarding PRD](./docs/projektor-onboarding-prd.md)
+- [admin.cube PRD](./docs/projektor-admin-cube-prd.md)
