@@ -907,7 +907,7 @@ h3 {
 .topic-list li,
 .run-steps li {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) max-content;
+  grid-template-columns: minmax(8rem, 0.38fr) minmax(0, 1fr);
   align-items: start;
   gap: 14px;
   padding: 10px;
@@ -1985,7 +1985,7 @@ h3 {
 }
 
 .data-grid {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
   align-items: start;
 }
 
@@ -2517,12 +2517,16 @@ h3 {
 
 .file-drop span,
 .object-list strong,
-.object-list span,
-.topic-list strong,
 .topic-list span,
 .run-steps span {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.object-list span,
+.topic-list strong {
+  min-width: 0;
+  overflow-wrap: normal;
 }
 
 .run-steps strong {
