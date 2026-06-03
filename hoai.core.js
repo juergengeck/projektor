@@ -70,6 +70,15 @@ export const HOAI_CROSS_CUTTING_TOPICS = [
   ["Nachhaltigkeit", "GEG, BNB-Optionen, Energie- und Materialnachweise"],
 ];
 
+export const HOAI_PLANNING_LABELS = {
+  eyebrow: "HOAI Leistungsphasen",
+  title: "Phasen, Querschnittsthemen und offene Entscheidungen",
+  phaseLabel: "Projektphase",
+  riskLabel: "Aktuelles Risiko",
+  statusPhasePrefix: "LP",
+  topicTitle: "Kontinuierliche Projektkontrolle",
+};
+
 export const HOAI_FLOW_TEMPLATES = [
   {
     id: "invoices",
@@ -187,6 +196,7 @@ export const HOAI_FLOW_TEMPLATES = [
 
 export function createHoaiPlanningDefaults() {
   return {
+    labels: clone(HOAI_PLANNING_LABELS),
     phases: clone(HOAI_PHASES),
     topics: clone(HOAI_CROSS_CUTTING_TOPICS),
     flowDomains: clone(HOAI_FLOW_TEMPLATES),
@@ -196,6 +206,7 @@ export function createHoaiPlanningDefaults() {
 export function normalizeHoaiPlanning(input = {}) {
   const defaults = createHoaiPlanningDefaults();
   const planning = {
+    labels: input.labels || defaults.labels,
     phases: input.phases || defaults.phases,
     topics: input.topics || defaults.topics,
     flowDomains: input.flowDomains || defaults.flowDomains,
@@ -215,6 +226,7 @@ export function normalizeHoaiPlanning(input = {}) {
   }
 
   return {
+    labels: { ...defaults.labels, ...(planning.labels || {}) },
     phases,
     topics: planning.topics.map(([title, text]) => [normalizeId(title, "topic.title"), String(text || "")]),
     flowDomains: planning.flowDomains.map((flow) => ({

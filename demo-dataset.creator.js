@@ -278,13 +278,126 @@ function runtimeFor(roles, phases, flowDomains) {
   };
 }
 
-function enrichHoaiPlanning(schedule) {
+function enrichHoaiPlanning(schedule, overrides = {}) {
   const planning = createHoaiPlanningDefaults();
   return {
-    phases: planning.phases,
-    topics: planning.topics,
-    flowDomains: planning.flowDomains,
+    labels: { ...planning.labels, ...(overrides.labels || {}) },
+    phases: overrides.phases || planning.phases,
+    topics: overrides.topics || planning.topics,
+    flowDomains: overrides.flowDomains || planning.flowDomains,
     schedule,
+  };
+}
+
+function createNgoPlanningOverrides() {
+  return {
+    labels: {
+      eyebrow: "NGO Programmphasen",
+      title: "Programm, Pflichtspuren und offene Entscheidungen",
+      phaseLabel: "Programmphase",
+      riskLabel: "Aktuelles Risiko",
+      statusPhasePrefix: "Programm",
+      topicTitle: "Kontinuierliche Programmsteuerung",
+    },
+    phases: [
+      {
+        id: "programm",
+        short: "PR",
+        title: "Programmaufnahme",
+        decision: "Erstkontakt, Aufnahmeentscheidung, Stammdaten und Betreuungszuordnung belastbar machen.",
+        risk: "Visa-Fristen, Einwilligungen und Safeguarding-Hinweise laufen auseinander.",
+      },
+      {
+        id: "bildung",
+        short: "BI",
+        title: "Bildung und Qualifizierung",
+        decision: "Deutschkurs, Bildungsplanung, Ausbildungspfad und Fortschritt synchron halten.",
+        risk: "Bildungsnachweise und naechste Schritte sind nicht aktuell genug fuer Foerderberichte.",
+      },
+      {
+        id: "arbeit",
+        short: "AR",
+        title: "Uebergang in Arbeit",
+        decision: "Bewerbungsphase, Praktikum, Vertrag und Betreuung bis zur Aufnahme nachverfolgbar machen.",
+        risk: "Offene Wiedervorlagen blockieren den Uebergang in Arbeit.",
+      },
+      {
+        id: "austritt",
+        short: "AU",
+        title: "Austritt und Ehemalige",
+        decision: "Wohnung, Einkommen, Ehemaligenstatus, Loeschung und Aufbewahrung sauber abschliessen.",
+        risk: "Aufbewahrung, Einwilligungen und ehemalige Kontakte bleiben unklar.",
+      },
+    ],
+    topics: [
+      ["Budget und Spenden", "Spendeneingaenge, Mitgliedsbeitraege, Zweckbindung, Dank und Quittungen"],
+      ["Fristen", "Visa-Vorlauf, Wiedervorlagen, Termine, Austritt und Aufbewahrung"],
+      ["Teilnehmerinnen", "Programmstatus, Betreuung, Bildung, Gesundheit und naechste Schritte"],
+      ["Safeguarding", "Minderjaehrige, Vormundschaft, Meldewege und getrennte Verantwortlichkeiten"],
+      ["Kommunikation", "Projektmail, Betreuungsgespraeche, Aufgaben und Eskalationen"],
+    ],
+    flowDomains: [
+      {
+        id: "donations",
+        label: "Spenden",
+        object: "NgoDonationFlow",
+        trigger: "Spende, Mitgliedsbeitrag, Dauerspende oder Quittungsfrage wird erfasst.",
+        owners: ["Fundraising", "Programmleitung"],
+        steps: [
+          "Unterstuetzerin, Betrag, Datum, Zweckbindung und Einwilligung erfassen.",
+          "Dankstatus, Quittungsschwelle und offene Rueckfragen pruefen.",
+          "Zahlung dem passenden Programmbezug und Journalereignis zuordnen.",
+          "Offene Dank- oder Quittungsaufgaben als Wiedervorlage markieren.",
+        ],
+        checks: ["Einwilligung", "Zweckbindung", "Dank", "Quittung", "Journalspur"],
+        output: "Nachvollziehbarer Spendenfall mit Dankstatus, Zweckbindung und Exportfaehigkeit.",
+      },
+      {
+        id: "participants",
+        label: "Teilnehmerinnen",
+        object: "NgoParticipantFlow",
+        trigger: "Aufnahme, Statuswechsel, Bildungsplanung oder Betreuungsnotiz entsteht.",
+        owners: ["Programmleitung", "Betreuerin", "Bildungsbegleitung"],
+        steps: [
+          "Stammdaten, Programmstatus, Betreuung und betroffene Fristen erfassen.",
+          "Bildung, Gesundheit, Visum und naechste Schritte rollenbezogen sichtbar machen.",
+          "Wiedervorlagen und offene Nachweise mit Verantwortlichkeit markieren.",
+          "Statuswechsel im Journal und Exportmodell aktualisieren.",
+        ],
+        checks: ["Status", "Frist", "Betreuung", "Bildung", "Naechster Schritt"],
+        output: "Teilnehmerinnenakte mit Programmstatus, Fristen und naechstem verantwortlichem Schritt.",
+      },
+      {
+        id: "safeguarding",
+        label: "Safeguarding",
+        object: "NgoSafeguardingFlow",
+        trigger: "Minderjaehrigkeit, Schutznotiz, Vormundschaft oder Eskalation wird sichtbar.",
+        owners: ["Safeguarding", "Programmleitung", "Betreuerin"],
+        steps: [
+          "Schutzbedarf, Vormundschaft, Meldeweg und getrennte Verantwortlichkeiten einordnen.",
+          "Nur notwendige Rollen mit gefiltertem Kontext beteiligen.",
+          "Entscheidung, Eskalation oder Entwarnung nachvollziehbar journalisieren.",
+          "Aufbewahrung und Wiedervorlage an den Teilnehmerinnenstatus koppeln.",
+        ],
+        checks: ["Minderjaehrigkeit", "Vormundschaft", "Meldeweg", "Rollenfilter", "Aufbewahrung"],
+        output: "Safeguarding-Spur mit geklaerter Verantwortlichkeit und minimaler Sichtbarkeit.",
+      },
+      {
+        id: "retention",
+        label: "Austritt und Aufbewahrung",
+        object: "NgoRetentionFlow",
+        trigger: "Teilnehmerin tritt aus, wird ehemalige Teilnehmerin oder Einwilligung aendert sich.",
+        owners: ["Programmleitung", "Fundraising"],
+        steps: [
+          "Austrittsgrund, Ehemaligenstatus, Einwilligung und laufende Pflichten erfassen.",
+          "Loesch- und Aufbewahrungsregel auf Teilnehmerinnen- und Spendendaten anwenden.",
+          "Export- und Kontaktlisten nach Status aktualisieren.",
+          "Abschluss und verbleibende Fristen im Journal dokumentieren.",
+        ],
+        checks: ["Einwilligung", "Aufbewahrung", "Kontaktstatus", "Export", "Frist"],
+        output: "Abgeschlossener Austritt mit klarer Aufbewahrung und bereinigter Sichtbarkeit.",
+      },
+    ],
   };
 }
 
@@ -314,7 +427,7 @@ function assertValidDataset(dataset) {
 }
 
 function composeDataset(plan, parts) {
-  const planning = enrichHoaiPlanning(createProjectPlan(parts.schedule));
+  const planning = enrichHoaiPlanning(createProjectPlan(parts.schedule), parts.planning);
   const projectSource = parts.projectSource || createSourceBundle(parts.project.id, plan);
   const dataset = {
     kind: PROJECT_DATATYPE_KIND,
@@ -452,6 +565,7 @@ function buildNgoDataset(plan) {
       ],
     },
     schedule,
+    planning: createNgoPlanningOverrides(),
     assistant: createAssistant({
       projectId,
       label: "NGO Unterstützerinnen",

@@ -42,4 +42,18 @@ for (const plan of plans) {
   assert.ok(dataset.creator.plannerEvidence.skillContracts.includes("projektor.demo-dataset-creator"));
 }
 
+const ngoDataset = createDemoDatasetProject("ngo-supporter-program");
+assert.equal(ngoDataset.planning.labels.eyebrow, "NGO Programmphasen");
+assert.equal(ngoDataset.planning.phases[0].id, "programm");
+assert.equal(
+  ngoDataset.planning.topics.some(([, text]) => text.includes("DIN 276")),
+  false,
+);
+
+const kitaDataset = createDemoDatasetProject("kita-2028-expanded");
+assert.equal(
+  kitaDataset.planning.topics.some(([, text]) => text.includes("DIN 276")),
+  true,
+);
+
 assert.equal(createDemoDatasetProject("missing-plan").creator.plan.id, plans[0].id);

@@ -853,7 +853,7 @@ let sharedTrieRoots = [
   },
 ];
 
-let { phases, topics, flowDomains } = createHoaiPlanningDefaults();
+let { labels: planningLabels, phases, topics, flowDomains } = createHoaiPlanningDefaults();
 
 let projectSchedule = createDemoProjectSchedule();
 
@@ -1064,6 +1064,7 @@ function createProjectDatatype() {
       sharedTrieRoots: deepClone(sharedTrieRoots),
     },
     planning: {
+      labels: deepClone(planningLabels),
       phases: deepClone(phases),
       topics: deepClone(topics),
       flowDomains: deepClone(flowDomains),
@@ -1316,7 +1317,7 @@ function installProjectDatatype(projectData, { persist = false } = {}) {
   runnerRoleWindowLayout = deepClone(normalized.roleModel?.runnerRoleWindowLayout || runnerRoleWindowLayout);
   runnerProtocolSteps = deepClone(normalized.roleModel?.runnerProtocolSteps || []);
   sharedTrieRoots = deepClone(normalized.roleModel?.sharedTrieRoots || []);
-  ({ phases, topics, flowDomains } = normalizeHoaiPlanning(normalized.planning || {}));
+  ({ labels: planningLabels, phases, topics, flowDomains } = normalizeHoaiPlanning(normalized.planning || {}));
   projectSchedule = createProjectPlan(normalized.planning?.schedule || projectSchedule);
   ai = deepClone(normalized.assistant || ai);
   settingsModel = sanitizeProjectSettings(normalized.settings || settingsModel);
@@ -1619,7 +1620,7 @@ function renderStaticText() {
   setText("mapNodeD", nodes[3]);
   const phaseLabel = demoProject.phase?.[state.language] ?? demoProject.phase?.de ?? state.activePhase;
   const riskLabel = demoProject.risk?.[state.language] ?? demoProject.risk?.de ?? "-";
-  document.querySelector("#statusPhase").innerHTML = `<strong>LP</strong> ${phaseLabel}`;
+  document.querySelector("#statusPhase").innerHTML = `<strong>${planningLabels.statusPhasePrefix || "LP"}</strong> ${phaseLabel}`;
   document.querySelector("#statusRisk").innerHTML = `<strong>${tr("statusRiskLabel")}</strong> ${riskLabel}`;
   document.querySelector("#statusSync").innerHTML = `<strong>${tr("statusSync")}</strong> ${state.syncCount} min`;
 
@@ -1628,8 +1629,8 @@ function renderStaticText() {
   setText("simulateSync", tr("simulateSync"));
   setText("rolesEyebrow", tr("rolesEyebrow"));
   setText("roles-title", tr("rolesTitle"));
-  setText("phasesEyebrow", tr("phasesEyebrow"));
-  setText("phases-title", tr("phasesTitle"));
+  setText("phasesEyebrow", planningLabels.eyebrow || tr("phasesEyebrow"));
+  setText("phases-title", planningLabels.title || tr("phasesTitle"));
   setText("flowsEyebrow", tr("flowsEyebrow"));
   setText("flows-title", tr("flowsTitle"));
   setText("dataEyebrow", tr("dataEyebrow"));
@@ -1782,15 +1783,15 @@ function renderPhases() {
     el("h3", { text: phase.title }),
     el("p", { text: phase.decision }),
     el("ul", { className: "object-list" }, [
-      el("li", {}, [el("span", { text: "Projektphase" }), el("strong", { text: phase.short })]),
-      el("li", {}, [el("span", { text: "Aktuelles Risiko" }), el("strong", { text: phase.risk })]),
+      el("li", {}, [el("span", { text: planningLabels.phaseLabel || "Projektphase" }), el("strong", { text: phase.short })]),
+      el("li", {}, [el("span", { text: planningLabels.riskLabel || "Aktuelles Risiko" }), el("strong", { text: phase.risk })]),
       el("li", {}, [el("span", { text: "Assistenz" }), el("strong", { text: "nur Hinweise, keine Freigabe" })]),
     ]),
   );
 
   document.querySelector("#topicBoard").replaceChildren(
     el("span", { className: "card-kicker", text: "Querschnittsthemen" }),
-    el("h3", { text: "Kontinuierliche Projektkontrolle" }),
+    el("h3", { text: planningLabels.topicTitle || "Kontinuierliche Projektkontrolle" }),
     el("ul", { className: "topic-list" }, topics.map(([title, text]) => el("li", {}, [el("strong", { text: title }), el("span", { text })]))),
   );
 }
