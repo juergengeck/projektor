@@ -1747,7 +1747,8 @@ h3 {
 }
 
 .data-grid {
-  grid-template-columns: minmax(280px, 0.8fr) minmax(340px, 1.1fr) minmax(340px, 1.1fr);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  align-items: start;
 }
 
 .cockpit-grid > *,

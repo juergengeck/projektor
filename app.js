@@ -30,6 +30,11 @@ import {
   queryNgoParticipants,
   restoreNgoBackup,
 } from "./packages/ngo.core/index.js";
+import {
+  createProjectSourceBundle,
+  normalizeProjectSourceBundle,
+  summarizeProjectFileIndex,
+} from "./packages/project-source.core/index.js";
 
 const state = {
   activePanel: "cockpit",
@@ -397,6 +402,14 @@ const i18n = {
     simulateImport: "Import simulieren",
     dataPreviewTitle: "Vorschau vor Schreibzugriff",
     dataPreviewText: "Projektor prüft die Datei zuerst und zeigt Änderungen an, bevor Daten übernommen werden.",
+    sourceBundleTitle: "Git-Quelle",
+    sourceBundleText: "Projektdateien, offene Änderungen und ignorierte Laufzeitpfade.",
+    sourceAdapter: "Adapter",
+    sourceBranch: "Branch",
+    sourceHead: "Head",
+    sourceFiles: "Dateien",
+    sourceDirty: "Offen",
+    sourceIgnored: "Ignoriert",
     exportBundleTitle: "Export-Bundle",
     exportBundleText: "Der Export sammelt Kontakte, Rollen, Termine, Dokumente, Mailbezug und Journal in einer nachvollziehbaren Projektdatei.",
     ngoEyebrow: "NGO Capability",
@@ -461,6 +474,14 @@ const i18n = {
     simulateImport: "Simulate import",
     dataPreviewTitle: "Preview before write access",
     dataPreviewText: "Projektor checks the file first and previews changes before anything is imported.",
+    sourceBundleTitle: "Git source",
+    sourceBundleText: "Project files, open changes and ignored runtime paths.",
+    sourceAdapter: "Adapter",
+    sourceBranch: "Branch",
+    sourceHead: "Head",
+    sourceFiles: "Files",
+    sourceDirty: "Open",
+    sourceIgnored: "Ignored",
     exportBundleTitle: "Export bundle",
     exportBundleText: "The export collects contacts, roles, dates, documents, mail references and journal entries in one traceable project file.",
     ngoEyebrow: "NGO capability",
@@ -525,6 +546,14 @@ const i18n = {
     simulateImport: "Simuler l'import",
     dataPreviewTitle: "Aperçu avant écriture",
     dataPreviewText: "Projektor vérifie d'abord le fichier et affiche les changements avant toute importation.",
+    sourceBundleTitle: "Source git",
+    sourceBundleText: "Fichiers projet, changements ouverts et chemins d'exécution ignorés.",
+    sourceAdapter: "Adaptateur",
+    sourceBranch: "Branche",
+    sourceHead: "Head",
+    sourceFiles: "Fichiers",
+    sourceDirty: "Ouverts",
+    sourceIgnored: "Ignorés",
     exportBundleTitle: "Bundle d'export",
     exportBundleText: "L'export rassemble contacts, rôles, dates, documents, références mail et journal dans un fichier projet traçable.",
     ngoEyebrow: "Capability NGO",
@@ -589,6 +618,14 @@ const i18n = {
     simulateImport: "Simular importación",
     dataPreviewTitle: "Vista previa antes de escribir",
     dataPreviewText: "Projektor revisa primero el archivo y muestra los cambios antes de importar datos.",
+    sourceBundleTitle: "Fuente git",
+    sourceBundleText: "Archivos del proyecto, cambios abiertos y rutas de ejecución ignoradas.",
+    sourceAdapter: "Adaptador",
+    sourceBranch: "Rama",
+    sourceHead: "Head",
+    sourceFiles: "Archivos",
+    sourceDirty: "Abiertos",
+    sourceIgnored: "Ignorados",
     exportBundleTitle: "Paquete de exportación",
     exportBundleText: "La exportación reúne contactos, roles, fechas, documentos, referencias de correo y diario en un archivo trazable.",
     ngoEyebrow: "Capacidad NGO",
@@ -897,6 +934,27 @@ let exportBundleModel = {
   ],
 };
 
+let projectSource = createProjectSourceBundle({
+  source: {
+    projectId: "demo-kita-2028",
+    repoUrl: "https://github.com/juergengeck/projektor.git",
+    defaultBranch: "main",
+    rootPath: ".",
+    detachedWorktreeRoot: "../vger-worktrees/projektor",
+    trackedPathGlobs: ["projects/demo-kita-2028/**", "docs/**", "packages/**", "*.project.js"],
+  },
+  branch: "main",
+  head: "working-tree",
+  status: "dirty",
+  generatedAt: "2026-06-03T09:30:00.000Z",
+  ignoredPaths: ["dist", ".wrangler", "node_modules", ".env"],
+  files: [
+    { path: "projects/demo-kita-2028/project.json", kind: "project-graph", owner: "Architekt", phase: "LP1-LP9", status: "tracked" },
+    { path: "projects/demo-kita-2028/schedule.json", kind: "schedule", owner: "Projektsteuerer", phase: "LP3", status: "tracked" },
+    { path: "projects/demo-kita-2028/journal.ndjson", kind: "journal", owner: "Architekt", phase: "laufend", status: "modified" },
+  ],
+});
+
 let journalBase = [
   ["2026-05-27 09:12", "Rolle vergeben", "Architekt lädt Bauherr per Link ein.", "Journal 001"],
   ["2026-05-27 10:35", "Dokument freigegeben", "Entwurf LP3 Version 14 im Dokumentenbereich freigegeben.", "Journal 002"],
@@ -925,6 +983,29 @@ function deepClone(value) {
 
 function isPlainObject(value) {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function createDefaultProjectSourceBundle(projectId = demoProject.id || "project") {
+  return createProjectSourceBundle({
+    source: {
+      projectId,
+      repoUrl: "https://github.com/juergengeck/projektor.git",
+      defaultBranch: "main",
+      rootPath: ".",
+      detachedWorktreeRoot: "../vger-worktrees/projektor",
+      trackedPathGlobs: [`projects/${projectId}/**`, "docs/**", "packages/**", "*.project.js"],
+    },
+    branch: "main",
+    head: "working-tree",
+    status: "dirty",
+    generatedAt: "2026-06-03T09:30:00.000Z",
+    ignoredPaths: ["dist", ".wrangler", "node_modules", ".env"],
+    files: [
+      { path: `projects/${projectId}/project.json`, kind: "project-graph", owner: "Projektleitung", phase: "LP1-LP9", status: "tracked" },
+      { path: `projects/${projectId}/schedule.json`, kind: "schedule", owner: "Projektsteuerung", phase: "laufend", status: "tracked" },
+      { path: `projects/${projectId}/journal.ndjson`, kind: "journal", owner: "Projektleitung", phase: "laufend", status: "modified" },
+    ],
+  });
 }
 
 function sanitizeProjectSettings(settings) {
@@ -974,6 +1055,7 @@ function createProjectDatatype() {
     },
     assistant: deepClone(ai),
     settings: sanitizeProjectSettings(settingsModel),
+    projectSource: deepClone(projectSource),
     ngo: normalizeNgoProjectData(ngoWorkspace),
     mailPreview: deepClone(mailPreview),
     importModel: deepClone(dataImportModel),
@@ -1006,6 +1088,9 @@ function projectFromLegacyExport(payload) {
           imap: payload.settings.sourceImap || payload.settings.imap || fallback.settings.imap,
         }
       : fallback.settings,
+    projectSource: isPlainObject(payload.projectSource)
+      ? payload.projectSource
+      : createDefaultProjectSourceBundle(payload.project.id || fallback.project.id),
     importModel: isPlainObject(payload.importModel) ? payload.importModel : fallback.importModel,
     assistant: isPlainObject(payload.ai) ? payload.ai : fallback.assistant,
     runtime: {
@@ -1065,6 +1150,9 @@ function installProjectDatatype(projectData, { persist = false } = {}) {
   projectSchedule = createProjectPlan(normalized.planning?.schedule || projectSchedule);
   ai = deepClone(normalized.assistant || ai);
   settingsModel = sanitizeProjectSettings(normalized.settings || settingsModel);
+  projectSource = normalizeProjectSourceBundle(
+    normalized.projectSource || createDefaultProjectSourceBundle(normalized.project?.id || demoProject.id),
+  );
   ngoWorkspace = normalizeNgoProjectData(normalized.ngo || {});
   mailPreview = deepClone(normalized.mailPreview || []);
   dataImportModel = deepClone(normalized.importModel || dataImportModel);
@@ -2080,6 +2168,34 @@ function renderAI() {
   );
 }
 
+function renderProjectSourceSummary() {
+  const root = document.querySelector("#projectSourceSummary");
+  if (!root) return;
+
+  const summary = summarizeProjectFileIndex(projectSource);
+  const files = projectSource.index.files.slice(0, 4);
+
+  root.replaceChildren(
+    bookTop(projectSource.source.$type$, `${summary.branch}@${summary.head}`),
+    el("h3", { text: tr("sourceBundleTitle") }),
+    el("p", { text: tr("sourceBundleText") }),
+    el("ul", { className: "object-list compact-list" }, [
+      el("li", {}, [el("span", { text: tr("sourceAdapter") }), el("strong", { text: summary.adapter })]),
+      el("li", {}, [el("span", { text: tr("sourceBranch") }), el("strong", { text: summary.branch })]),
+      el("li", {}, [el("span", { text: tr("sourceHead") }), el("strong", { text: summary.head })]),
+      el("li", {}, [el("span", { text: tr("sourceFiles") }), el("strong", { text: String(summary.totalFiles) })]),
+      el("li", {}, [el("span", { text: tr("sourceDirty") }), el("strong", { text: String(summary.dirtyFiles) })]),
+      el("li", {}, [el("span", { text: tr("sourceIgnored") }), el("strong", { text: String(summary.ignoredPaths) })]),
+    ]),
+    el("ul", { className: "topic-list" }, files.map((file) =>
+      el("li", {}, [
+        el("strong", { text: file.label || file.path }),
+        el("span", { text: `${file.status} · ${file.kind}` }),
+      ]),
+    )),
+  );
+}
+
 function renderData() {
   const fileDrop = document.querySelector(".file-drop");
   fileDrop.querySelector("strong").textContent = tr("importPick");
@@ -2127,6 +2243,7 @@ function renderData() {
     )),
   );
 
+  renderProjectSourceSummary();
   renderProjectTableBoard();
   renderDatasetCreatorBoard();
 }
