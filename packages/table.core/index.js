@@ -84,7 +84,7 @@ const COLUMN_DEFS = {
     ["type", "Typ", "text"],
     ["responsibility", "Verantwortung", "text"],
     ["permissions", "Berechtigungen", "text"],
-    ["visible_roots", "Sichtbare Trie-Roots", "number"],
+    ["visible_roots", "Sichtbare Datenbereiche", "number"],
     ["access_scope", "Zugriff", "text"],
     ["handoff", "Uebergabe", "text"],
   ],

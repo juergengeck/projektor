@@ -67,4 +67,8 @@ const csv = csvFromProjectDagExcelSheet(participants);
 assert.match(csv, /^"Beteiligter","Rolle","E-Mail"/);
 assert.match(csv, /"'=Bauherr"/);
 
+const responsibilities = getProjectDagExcelSheet(projection, "responsibilities");
+assert.equal(responsibilities.columns.some(([, label]) => label === "Sichtbare Datenbereiche"), true);
+assert.equal(JSON.stringify(responsibilities.columns).includes("Trie"), false);
+
 assert.equal(getProjectDagExcelSheet(projection, "missing").sheetId, "schedule");
