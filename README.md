@@ -18,6 +18,27 @@ python3 -m http.server 4173
 
 Then open `http://localhost:4173`.
 
+## Headless HTTP And MCP Service Offering
+
+Projektor has a VGER-style local HTTP wrapper for the public operation surface:
+
+```bash
+node scripts/projektor-http-server.mjs
+```
+
+It serves:
+
+- `GET /health`
+- `GET /api`
+- `GET /api/status`
+- `GET /.well-known/projektor`
+- `POST /api/:operation/:method`
+
+The wrapper registers an outbound `mcp` operation. Use `mcp.createSupply` to offer
+Projektor tools to a topic, `mcp.handleDemand` to issue a credential for a peer,
+and `mcp.handleRequest` to execute credentialed `operation:plan:method` tool
+requests with audit entries.
+
 ## Deploy
 
 Build a clean static bundle:
