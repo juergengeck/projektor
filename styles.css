@@ -588,12 +588,13 @@ h3 {
 
 .cockpit-grid {
   grid-template-columns: minmax(320px, 1.05fr) minmax(280px, 0.95fr);
-  align-items: stretch;
+  align-items: start;
 }
 
 .project-map {
   position: relative;
-  min-height: 340px;
+  height: clamp(280px, 30vw, 380px);
+  min-height: 280px;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -619,8 +620,8 @@ h3 {
 .map-center {
   left: 50%;
   top: 50%;
-  width: 220px;
-  min-height: 112px;
+  width: min(300px, calc(100% - 48px));
+  min-height: 104px;
   transform: translate(-50%, -50%);
   padding: 12px;
 }
@@ -634,22 +635,25 @@ h3 {
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   max-width: 100%;
-  font-size: clamp(1.04rem, 1.4vw, 1.35rem);
+  font-size: clamp(1rem, 1.2vw, 1.22rem);
   line-height: 1.12;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
 }
 
 .map-center small {
+  display: block;
   max-width: 100%;
-  overflow-wrap: anywhere;
-  font-size: 0.78rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.74rem;
 }
 
 .map-node {
-  width: 116px;
-  height: 66px;
+  width: 124px;
+  height: 58px;
   padding: 8px;
   font-weight: 700;
 }

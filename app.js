@@ -6,6 +6,7 @@ import {
   PROJECT_DATATYPE_KIND,
   PROJECT_DATATYPE_VERSION,
   createDemoDatasetProject,
+  createNgoPlanningOverrides,
   listDemoDatasetPlans,
 } from "./demo-dataset.creator.js";
 import { createHoaiPlanningDefaults, normalizeHoaiPlanning, phaseById } from "./hoai.core.js";
@@ -1466,8 +1467,28 @@ function renderCockpitSummary(section) {
   ]);
 }
 
+function planningForProject(projectData) {
+  const planning = projectData.planning || {};
+  if (projectData.project?.projectType !== "ngo") return planning;
+
+  const ngoPlanning = createNgoPlanningOverrides();
+  const phaseIds = new Set((planning.phases || []).map((phase) => phase.id));
+  const hasHoaiPhases = phaseIds.has("lp3") || phaseIds.has("lp4");
+  const hasNgoLabels = planning.labels?.eyebrow === ngoPlanning.labels.eyebrow;
+  if (hasNgoLabels && !hasHoaiPhases) return planning;
+
+  return {
+    ...planning,
+    labels: ngoPlanning.labels,
+    phases: ngoPlanning.phases,
+    topics: ngoPlanning.topics,
+    flowDomains: ngoPlanning.flowDomains,
+  };
+}
+
 function installProjectDatatype(projectData, { persist = false } = {}) {
   const normalized = normalizeProjectDatatype(projectData);
+  const normalizedPlanning = planningForProject(normalized);
   demoDatasetCreator = deepClone(normalized.creator || demoDatasetCreator);
   demoProject = deepClone(normalized.project);
   metrics = deepClone(normalized.cockpit?.metrics || []);
@@ -1477,8 +1498,8 @@ function installProjectDatatype(projectData, { persist = false } = {}) {
   runnerRoleWindowLayout = deepClone(normalized.roleModel?.runnerRoleWindowLayout || runnerRoleWindowLayout);
   runnerProtocolSteps = deepClone(normalized.roleModel?.runnerProtocolSteps || []);
   sharedTrieRoots = deepClone(normalized.roleModel?.sharedTrieRoots || []);
-  ({ labels: planningLabels, phases, topics, flowDomains } = normalizeHoaiPlanning(normalized.planning || {}));
-  projectSchedule = createProjectPlan(normalized.planning?.schedule || projectSchedule);
+  ({ labels: planningLabels, phases, topics, flowDomains } = normalizeHoaiPlanning(normalizedPlanning));
+  projectSchedule = createProjectPlan(normalizedPlanning.schedule || projectSchedule);
   ai = deepClone(normalized.assistant || ai);
   settingsModel = sanitizeProjectSettings(normalized.settings || settingsModel);
   projectSource = normalizeProjectSourceBundle(
@@ -1772,7 +1793,9 @@ function renderStaticText() {
   setText("mapProjectLabel", projectText("mapLabel"));
   document.querySelector(".map-center strong").textContent = conciseProjectRef();
   document.querySelector(".map-center").title = projectText("subtitles");
-  setText("mapProjectId", `${demoProject.objectType || "Project ID"} ${demoProject.id}`);
+  const mapProjectId = `${demoProject.objectType || "Project ID"} ${demoProject.id}`;
+  setText("mapProjectId", mapProjectId);
+  document.querySelector("#mapProjectId").title = mapProjectId;
   const nodes = [...(demoProject.nodes?.[state.language] ?? demoProject.nodes?.de ?? [])];
   setText("mapNodeA", nodes[0]);
   setText("mapNodeB", nodes[1]);
@@ -1780,7 +1803,10 @@ function renderStaticText() {
   setText("mapNodeD", nodes[3]);
   const phaseLabel = demoProject.phase?.[state.language] ?? demoProject.phase?.de ?? state.activePhase;
   const riskLabel = demoProject.risk?.[state.language] ?? demoProject.risk?.de ?? "-";
-  document.querySelector("#statusPhase").innerHTML = `<strong>${planningLabels.statusPhasePrefix || "LP"}</strong> ${phaseLabel}`;
+  const phasePrefix = planningLabels.statusPhasePrefix ?? "LP";
+  document.querySelector("#statusPhase").innerHTML = phasePrefix
+    ? `<strong>${phasePrefix}</strong> ${phaseLabel}`
+    : phaseLabel;
   document.querySelector("#statusRisk").innerHTML = `<strong>${tr("statusRiskLabel")}</strong> ${riskLabel}`;
   document.querySelector("#statusSync").innerHTML = `<strong>${tr("statusSync")}</strong> ${state.syncCount} min`;
 

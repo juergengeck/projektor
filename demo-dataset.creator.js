@@ -289,14 +289,14 @@ function enrichHoaiPlanning(schedule, overrides = {}) {
   };
 }
 
-function createNgoPlanningOverrides() {
+export function createNgoPlanningOverrides() {
   return {
     labels: {
       eyebrow: "NGO Programmphasen",
       title: "Programm, Pflichtspuren und offene Entscheidungen",
       phaseLabel: "Programmphase",
       riskLabel: "Aktuelles Risiko",
-      statusPhasePrefix: "Programm",
+      statusPhasePrefix: "",
       topicTitle: "Kontinuierliche Programmsteuerung",
     },
     phases: [
