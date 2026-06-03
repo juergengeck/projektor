@@ -16,7 +16,9 @@ import {
   getProjectDagExcelSheet,
 } from "./packages/table.core/index.js";
 import {
+  DONATION_TYPES,
   addNgoDonor,
+  addNgoDonation,
   addNgoParticipant,
   createNgoBackup,
   createNgoProjectData,
@@ -38,6 +40,7 @@ import {
 
 const state = {
   activePanel: "cockpit",
+  activeCockpitSummary: null,
   activeRole: "architect",
   activePhase: "lp3",
   activeFlow: "invoices",
@@ -72,6 +75,8 @@ const state = {
   donorSearch: "",
   donorSort: "open",
   donorOnlyOpen: false,
+  ngoMetricFilter: null,
+  activeNgoDonorId: "",
   participantSearch: "",
   participantSort: "visa",
 };
@@ -658,12 +663,16 @@ function normalizeRouteHash(hash = window.location.hash) {
 }
 
 function applyRouteFromLocation() {
-  const [panel, settingsView] = normalizeRouteHash();
+  const [panel, view, routeParam] = normalizeRouteHash();
   if (panel && navItems.some(([id]) => id === panel)) {
     state.activePanel = panel;
   }
-  if (state.activePanel === "settings" && settingsViews.includes(settingsView)) {
-    state.settingsView = settingsView;
+  state.activeCockpitSummary = null;
+  if (state.activePanel === "cockpit" && view === "summary" && routeParam) {
+    state.activeCockpitSummary = routeParam;
+  }
+  if (state.activePanel === "settings" && settingsViews.includes(view)) {
+    state.settingsView = view;
   }
 }
 
@@ -671,8 +680,15 @@ function routeHash(panel = state.activePanel, settingsView = state.settingsView)
   return `#/${panel}${panel === "settings" ? `/${settingsView}` : ""}`;
 }
 
+function cockpitSummaryHash(sectionId) {
+  return `#/cockpit/summary/${sectionId}`;
+}
+
 function navigateTo(panel, settingsView = state.settingsView) {
   state.activePanel = panel;
+  if (panel !== "cockpit") {
+    state.activeCockpitSummary = null;
+  }
   if (panel === "settings" && settingsViews.includes(settingsView)) {
     state.settingsView = settingsView;
   }
@@ -1135,6 +1151,160 @@ function conciseProjectRef() {
   return ref.split(" - ")[0] || ref;
 }
 
+function slugifySectionTitle(title, fallback = "section") {
+  const slug = String(title || fallback)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/ß/g, "ss")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug || fallback;
+}
+
+function cockpitSectionId(lane, index) {
+  return lane.id || lane.sectionId || slugifySectionTitle(lane.title, `section-${index + 1}`);
+}
+
+function cockpitSections() {
+  return lanes.map((lane, index) => ({
+    ...lane,
+    id: cockpitSectionId(lane, index),
+    index,
+  }));
+}
+
+function activeCockpitSection() {
+  if (!state.activeCockpitSummary) return null;
+  return cockpitSections().find((section) => section.id === state.activeCockpitSummary) || null;
+}
+
+function lowerSectionTitle(section) {
+  return String(section?.title || "").toLowerCase();
+}
+
+function cockpitSectionTarget(section) {
+  const title = lowerSectionTitle(section);
+  if (demoProject.projectType === "ngo") {
+    if (title.includes("spenden")) {
+      return { panel: "ngo", ngoView: "donors", label: "Spenderdetails öffnen" };
+    }
+    if (title.includes("teilnehmer")) {
+      return { panel: "ngo", ngoView: "participants", label: "Teilnehmerinnen öffnen" };
+    }
+    return { panel: "ngo", label: "Pflicht-Abläufe prüfen" };
+  }
+  if (title.includes("kommunikation")) return { panel: "flows", label: "Flows öffnen" };
+  if (title.includes("dokument")) return { panel: "data", label: "Datenansicht öffnen" };
+  if (title.includes("entscheidung")) return { panel: "journal", label: "Journal öffnen" };
+  return { panel: "data", label: "Projektbereich öffnen" };
+}
+
+function cockpitSummaryRows(section) {
+  const title = lowerSectionTitle(section);
+  const rows = [
+    ["Projektbereich", section.title],
+    ["Fortschritt", `${section.progress || 0}%`],
+    ["Trie-Pfad", `${projectRootPath()}/${section.id}`],
+  ];
+  if (demoProject.projectType === "ngo" && title.includes("spenden")) {
+    const stats = donorMetrics(ngoWorkspace);
+    return [
+      ...rows,
+      ["Unterstützer", stats.supporterCount],
+      ["Gesamt", formatEuro(stats.totalReceived)],
+      ["Offene Fälle", stats.openThanks],
+    ];
+  }
+  if (demoProject.projectType === "ngo" && title.includes("teilnehmer")) {
+    const stats = participantMetrics(ngoWorkspace);
+    return [
+      ...rows,
+      ["Teilnehmerinnen", stats.participantCount],
+      ["Ø Alter", stats.averageAge],
+      ["Visum-Fristen", stats.openVisaDeadlines],
+    ];
+  }
+  if (demoProject.projectType === "ngo" && title.includes("pflicht")) {
+    const donorStats = donorMetrics(ngoWorkspace);
+    const participantStats = participantMetrics(ngoWorkspace);
+    return [
+      ...rows,
+      ["Safeguarding", "aktiv"],
+      ["Visum-Fristen", participantStats.openVisaDeadlines],
+      ["Dank/Quittung", donorStats.openThanks],
+    ];
+  }
+  return [
+    ...rows,
+    ["Rollen", Object.keys(roles).length],
+    ["Flows", flowDomains.length],
+    ["Journal", journalBase.length + state.journalExtra],
+  ];
+}
+
+function cockpitSummaryEvidence(section) {
+  const title = lowerSectionTitle(section);
+  if (demoProject.projectType === "ngo" && title.includes("spenden")) {
+    return queryNgoDonors(ngoWorkspace, { sort: "open" }).slice(0, 3).map((donor) => [
+      donor.name,
+      `${formatEuro(donor.totalAmount)} · ${donor.needsThanks ? "Dank offen" : donor.receiptNeeded ? "Quittung offen" : "ok"}`,
+    ]);
+  }
+  if (demoProject.projectType === "ngo" && title.includes("teilnehmer")) {
+    return queryNgoParticipants(ngoWorkspace, { sort: "visa" }).slice(0, 3).map((participant) => [
+      participant.name,
+      `${participant.currentStage} · Visum ${participant.visaDeadline || "nicht relevant"}`,
+    ]);
+  }
+  if (demoProject.projectType === "ngo" && title.includes("pflicht")) {
+    return [
+      ["Kinderschutz und Safeguarding", "Meldewege, Eskalation und Minderjährigen-Regeln bleiben als Pflichtspur sichtbar."],
+      ["Visumsfristen", "Wiedervorlage/Frist löst einen Vorlauf-Alarm aus."],
+      ["Austritt zu Ehemalige", ngoWorkspace.settings.retentionPolicy || "Lösch- und Aufbewahrungsregel festlegen."],
+    ];
+  }
+  return [
+    ...flowDomains.slice(0, 2).map((flow) => [flow.label, flow.trigger]),
+    ...sharedTrieRoots.slice(0, 2).map((root) => [root.object, root.path]),
+  ].slice(0, 4);
+}
+
+function renderCockpitSummary(section) {
+  const target = cockpitSectionTarget(section);
+  const action = el("a", {
+    className: "secondary-action cockpit-summary-action",
+    href: routeHash(target.panel),
+    "data-cockpit-target": target.panel,
+    text: target.label,
+  });
+  if (target.ngoView) {
+    action.setAttribute("data-ngo-jump", target.ngoView);
+  }
+
+  return el("article", { className: "cockpit-summary-card", id: "cockpit-section-summary" }, [
+    el("div", { className: "book-top" }, [
+      el("span", { className: "card-kicker", text: "Bereichszusammenfassung" }),
+      el("code", { className: "book-ref", text: `${projectRootPath()}/${section.id}` }),
+    ]),
+    el("div", { className: "cockpit-summary-head" }, [
+      el("div", {}, [
+        el("h3", { text: section.title }),
+        el("p", { text: section.text }),
+      ]),
+      action,
+    ]),
+    el("div", { className: "cockpit-summary-grid" }, [
+      el("ul", { className: "object-list compact-list" }, cockpitSummaryRows(section).map(([label, value]) =>
+        el("li", {}, [el("span", { text: label }), el("strong", { text: String(value) })]),
+      )),
+      el("ul", { className: "topic-list" }, cockpitSummaryEvidence(section).map(([label, text]) =>
+        el("li", {}, [el("strong", { text: label }), el("span", { text })]),
+      )),
+    ]),
+  ]);
+}
+
 function installProjectDatatype(projectData, { persist = false } = {}) {
   const normalized = normalizeProjectDatatype(projectData);
   demoDatasetCreator = deepClone(normalized.creator || demoDatasetCreator);
@@ -1415,6 +1585,12 @@ function renderBreadcrumbs() {
     breadcrumbLink("projektor.one", "#/cockpit"),
     breadcrumbLink(tr(panelLabelKey), routeHash(state.activePanel), state.activePanel !== "settings"),
   ];
+  const cockpitSection = activeCockpitSection();
+
+  if (state.activePanel === "cockpit" && cockpitSection) {
+    crumbs[1] = breadcrumbLink(tr(panelLabelKey), routeHash("cockpit"));
+    crumbs.push(breadcrumbLink(cockpitSection.title, cockpitSummaryHash(cockpitSection.id), true));
+  }
 
   if (state.activePanel === "settings") {
     crumbs.push(breadcrumbLink(tr(state.settingsView === "feedback" ? "settingsFeedback" : "settingsConfig"), routeHash("settings", state.settingsView), true));
@@ -1433,7 +1609,8 @@ function renderStaticText() {
   setText("mainTitle", projectText("titles"));
   setText("brandSubtitle", tr("brandSubtitle"));
   setText("mapProjectLabel", projectText("mapLabel"));
-  document.querySelector(".map-center strong").textContent = projectText("subtitles");
+  document.querySelector(".map-center strong").textContent = conciseProjectRef();
+  document.querySelector(".map-center").title = projectText("subtitles");
   setText("mapProjectId", `${demoProject.objectType || "Project ID"} ${demoProject.id}`);
   const nodes = [...(demoProject.nodes?.[state.language] ?? demoProject.nodes?.de ?? [])];
   setText("mapNodeA", nodes[0]);
@@ -1494,6 +1671,8 @@ function renderPanels() {
 }
 
 function renderCockpit() {
+  const sections = cockpitSections();
+  const activeSection = activeCockpitSection();
   document.querySelector("#metrics").replaceChildren(
     ...metrics.map(([value, label, text]) =>
       el("div", { className: "metric" }, [
@@ -1505,15 +1684,22 @@ function renderCockpit() {
   );
 
   document.querySelector("#workLanes").replaceChildren(
-    ...lanes.map((lane) =>
-      el("article", { className: "lane" }, [
+    ...sections.map((section) =>
+      el("a", {
+        className: `lane lane-link${section.id === state.activeCockpitSummary ? " active" : ""}`,
+        href: cockpitSummaryHash(section.id),
+        "aria-current": section.id === state.activeCockpitSummary ? "page" : "false",
+      }, [
         el("span", { className: "card-kicker", text: "Projektbereich" }),
-        el("h3", { text: lane.title }),
-        el("p", { text: lane.text }),
-        el("div", { className: "lane-progress" }, [el("span", { style: `width: ${lane.progress}%` })]),
+        el("h3", { text: section.title }),
+        el("p", { text: section.text }),
+        el("div", { className: "lane-progress" }, [el("span", { style: `width: ${section.progress || 0}%` })]),
       ]),
     ),
   );
+
+  const summaryRoot = document.querySelector("#cockpitSummary");
+  summaryRoot.replaceChildren(...(activeSection ? [renderCockpitSummary(activeSection)] : []));
 }
 
 function renderRoles() {
@@ -2389,11 +2575,73 @@ function formatEuro(value) {
   return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(value || 0);
 }
 
-function renderNgoMetric(value, label, text) {
-  return el("div", { className: "metric ngo-metric" }, [
+function renderNgoMetric(value, label, text, metricId) {
+  return el("button", { className: "metric ngo-metric", type: "button", "data-ngo-metric": metricId }, [
     el("span", { className: "card-kicker", text: label }),
     el("strong", { text: value }),
     el("p", { text }),
+  ]);
+}
+
+const ngoMetricFilters = {
+  supporters: { view: "donors", label: "Unterstützer" },
+  received: { view: "donors", label: "Gesamt eingenommen", donorSort: "sum" },
+  openThanks: { view: "donors", label: "Noch zu bedanken", donorOnlyOpen: true },
+  members: { view: "donors", label: "Mitglieder", donorFilter: "members" },
+  recurring: { view: "donors", label: "Dauerspender", donorFilter: "recurring" },
+  participants: { view: "participants", label: "Teilnehmerinnen" },
+  averageAge: { view: "participants", label: "Ø Alter" },
+  withChildren: { view: "participants", label: "Mit Kindern", participantFilter: "children" },
+  germanCourse: { view: "participants", label: "Im Deutschkurs", participantFilter: "germanCourse" },
+  visaOpen: { view: "participants", label: "Visum-Fristen offen", participantFilter: "visaOpen", participantSort: "visa" },
+};
+
+function applyNgoMetricFilter(metricId) {
+  const filter = ngoMetricFilters[metricId];
+  if (!filter) return;
+  state.ngoMetricFilter = { id: metricId, ...filter };
+  state.activeNgoView = filter.view;
+  state.donorSearch = "";
+  state.participantSearch = "";
+  state.donorOnlyOpen = Boolean(filter.donorOnlyOpen);
+  if (filter.donorSort) state.donorSort = filter.donorSort;
+  if (filter.participantSort) state.participantSort = filter.participantSort;
+  renderNgo();
+  document.querySelector("#ngoBoard")?.scrollIntoView({ block: "start", behavior: "smooth" });
+}
+
+function clearNgoMetricFilter() {
+  state.ngoMetricFilter = null;
+}
+
+function activeNgoMetricFilterLabel(view) {
+  const filter = state.ngoMetricFilter;
+  return filter?.view === view ? filter.label : "";
+}
+
+function filterNgoDonorRows(rows) {
+  const filter = state.ngoMetricFilter;
+  if (filter?.view !== "donors") return rows;
+  if (filter.donorFilter === "members") return rows.filter((donor) => donor.isMember);
+  if (filter.donorFilter === "recurring") return rows.filter((donor) => donor.recurringDonor);
+  return rows;
+}
+
+function filterNgoParticipantRows(rows) {
+  const filter = state.ngoMetricFilter;
+  if (filter?.view !== "participants") return rows;
+  if (filter.participantFilter === "children") return rows.filter((participant) => participant.hasChildren);
+  if (filter.participantFilter === "germanCourse") return rows.filter((participant) => participant.germanCourseStatus === "läuft");
+  if (filter.participantFilter === "visaOpen") return rows.filter((participant) => participant.visaWarning);
+  return rows;
+}
+
+function renderNgoMetricEvidence(view) {
+  const label = activeNgoMetricFilterLabel(view);
+  if (!label) return null;
+  return el("div", { className: "ngo-active-filter" }, [
+    el("span", { text: `Herkunft: ${label}` }),
+    el("button", { className: "secondary-action", type: "button", "data-ngo-action": "clear-metric-filter", text: "Alle anzeigen" }),
   ]);
 }
 
@@ -2457,11 +2705,12 @@ function renderNgoDonorControls() {
   ]);
 }
 
-function renderNgoDonorTable(rows) {
+function renderNgoDonorTable(rows, selectedDonorId = "") {
   const table = el("table", { className: "matrix-table ngo-table" });
   table.append(
     el("thead", {}, [
       el("tr", {}, [
+        el("th", { text: "" }),
         el("th", { text: "Name" }),
         el("th", { text: "Gesamt" }),
         el("th", { text: "Einträge" }),
@@ -2472,8 +2721,23 @@ function renderNgoDonorTable(rows) {
       ]),
     ]),
     el("tbody", {}, rows.map((donor, index) =>
-      el("tr", { className: index === 0 ? "selected-row" : "" }, [
-        el("td", {}, [el("strong", { text: donor.name }), el("span", { text: donor.isMember ? "Mitglied" : "Spender" })]),
+      el("tr", { className: donor.id === selectedDonorId || (!selectedDonorId && index === 0) ? "selected-row" : "" }, [
+        el("td", {}, [
+          el("button", {
+            className: "icon-action ngo-add-donation",
+            type: "button",
+            title: "Spende hinzufügen",
+            "aria-label": `Spende für ${donor.name} hinzufügen`,
+            "data-ngo-donor-add": donor.id,
+            text: "+",
+          }),
+        ]),
+        el("td", {}, [
+          el("button", { className: "link-action", type: "button", "data-ngo-donor-select": donor.id }, [
+            el("strong", { text: donor.name }),
+            el("span", { text: donor.isMember ? "Mitglied" : "Spender" }),
+          ]),
+        ]),
         el("td", { text: formatEuro(donor.totalAmount) }),
         el("td", { text: String(donor.entryCount) }),
         el("td", { text: donor.firstDonationDate || "-" }),
@@ -2491,6 +2755,50 @@ function renderNgoDonorTable(rows) {
   return el("div", { className: "preview-table-wrap ngo-table-wrap" }, [table]);
 }
 
+function todayInputValue() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function renderDonationQuickEntry(donor) {
+  const typeSelect = el("select", { id: `ngoDonationType-${donor.id}` }, DONATION_TYPES.map((type) => el("option", { value: type, text: type })));
+  const amountInput = el("input", {
+    id: `ngoDonationAmount-${donor.id}`,
+    type: "number",
+    min: "0",
+    step: "1",
+    inputmode: "decimal",
+    placeholder: "Betrag",
+  });
+  const dateInput = el("input", {
+    id: `ngoDonationDate-${donor.id}`,
+    type: "date",
+    value: todayInputValue(),
+  });
+  const purposeInput = el("input", {
+    id: `ngoDonationPurpose-${donor.id}`,
+    type: "text",
+    placeholder: "Zweck",
+    autocomplete: "off",
+  });
+  const thankedInput = el("input", { id: `ngoDonationThanked-${donor.id}`, type: "checkbox" });
+
+  return el("div", { className: "ngo-donation-entry" }, [
+    el("span", { className: "card-kicker", text: "Spende hinzufügen" }),
+    typeSelect,
+    amountInput,
+    dateInput,
+    purposeInput,
+    el("label", { className: "check-label ngo-check" }, [thankedInput, el("span", { text: "Gedankt" })]),
+    el("button", {
+      className: "secondary-action",
+      type: "button",
+      "data-ngo-action": "add-donation",
+      "data-ngo-donor-id": donor.id,
+      text: "Hinzufügen",
+    }),
+  ]);
+}
+
 function renderDonorMask(donor) {
   if (!donor) {
     return el("article", { className: "ngo-mask" }, [
@@ -2501,6 +2809,7 @@ function renderDonorMask(donor) {
   return el("article", { className: "ngo-mask" }, [
     bookTop("Spender-Maske", donor.id),
     el("h3", { text: donor.name }),
+    renderDonationQuickEntry(donor),
     el("div", { className: "ngo-section-grid" }, [
       renderObjectSection("Schnelleingabe", [["Name", donor.name], ["Ist Mitglied", donor.isMember ? "ja" : "nein"]]),
       renderObjectSection("Kennzahlen", [
@@ -2546,18 +2855,21 @@ function renderObjectSection(title, rows) {
 }
 
 function renderNgoDonors() {
-  const rows = queryNgoDonors(ngoWorkspace, {
+  const rows = filterNgoDonorRows(queryNgoDonors(ngoWorkspace, {
     search: state.donorSearch,
     sort: state.donorSort,
     onlyOpen: state.donorOnlyOpen,
-  });
+  }));
+  const selectedDonor = rows.find((donor) => donor.id === state.activeNgoDonorId) || rows[0];
+  const selectedDonorId = selectedDonor?.id || "";
   return el("div", { className: "ngo-board-grid" }, [
     el("article", { className: "ngo-list-card" }, [
       bookTop("Spenderverwaltung", "Suchen, Sortieren, Filter"),
       renderNgoDonorControls(),
-      renderNgoDonorTable(rows),
+      ...(activeNgoMetricFilterLabel("donors") ? [renderNgoMetricEvidence("donors")] : []),
+      renderNgoDonorTable(rows, selectedDonorId),
     ]),
-    renderDonorMask(rows[0]),
+    renderDonorMask(selectedDonor),
   ]);
 }
 
@@ -2697,14 +3009,15 @@ function renderParticipantMask(participant, allParticipants) {
 }
 
 function renderNgoParticipants() {
-  const rows = queryNgoParticipants(ngoWorkspace, {
+  const rows = filterNgoParticipantRows(queryNgoParticipants(ngoWorkspace, {
     search: state.participantSearch,
     sort: state.participantSort,
-  });
+  }));
   return el("div", { className: "ngo-board-grid" }, [
     el("article", { className: "ngo-list-card" }, [
       bookTop("Teilnehmerinnen-Programm", "Status, Fristen, Pflicht-Abläufe"),
       renderNgoParticipantControls(),
+      ...(activeNgoMetricFilterLabel("participants") ? [renderNgoMetricEvidence("participants")] : []),
       renderNgoParticipantTable(rows),
     ]),
     renderParticipantMask(rows[0], participantMetrics(ngoWorkspace).participants),
@@ -2721,6 +3034,26 @@ function renderNgoBackupActions() {
   ]);
 }
 
+function hasNgoWorkspaceData(donorStats, participantStats) {
+  return donorStats.supporterCount > 0 || participantStats.participantCount > 0;
+}
+
+function renderNgoActivationCard() {
+  return el("article", { className: "ngo-activation-card" }, [
+    bookTop("Aktives Projekt ersetzen", demoProject.projectType === "ngo" ? "NGO leer" : projectRef()),
+    el("h3", { text: "NGO-Projekt laden" }),
+    el("p", {
+      text: demoProject.projectType === "ngo"
+        ? "Dieses NGO-Projekt hat noch keine Spender- oder Teilnehmerinnen-Daten. Lade den Demo-Datensatz oder stelle ein NGO-Backup wieder her."
+        : "Du bist im NGO-Bereich, aber aktiv ist noch das Kita-Projekt. Lade den NGO-Datensatz, um Kita als aktives Projekt zu ersetzen.",
+    }),
+    el("div", { className: "ngo-activation-actions" }, [
+      el("button", { className: "primary-action", type: "button", "data-ngo-action": "apply-demo", text: "NGO Demo laden" }),
+      el("a", { className: "secondary-action", href: "#/data", text: "Datensätze ansehen" }),
+    ]),
+  ]);
+}
+
 function renderNgo() {
   const donorStats = donorMetrics(ngoWorkspace);
   const participantStats = participantMetrics(ngoWorkspace);
@@ -2729,19 +3062,20 @@ function renderNgo() {
   if (!root || !metricsRoot) return;
 
   metricsRoot.replaceChildren(
-    renderNgoMetric(String(donorStats.supporterCount), "Unterstützer", "Personen mit Spenden-, Mitglieds- oder Dankstatus."),
-    renderNgoMetric(formatEuro(donorStats.totalReceived), "gesamt eingenommen", "Summe aller Beiträge und Spenden im NGO-Datenblock."),
-    renderNgoMetric(String(donorStats.openThanks), "noch zu bedanken", "Offene Dank- oder Spendenquittungsfälle."),
-    renderNgoMetric(String(donorStats.members), "Mitglieder", "Personen mit aktivem Mitgliedsstatus."),
-    renderNgoMetric(String(donorStats.recurringDonors), "Dauerspender", "Regelmäßige Unterstützerinnen."),
-    renderNgoMetric(String(participantStats.participantCount), "Teilnehmerinnen", "Personen im Teilnehmerinnen-Programm."),
-    renderNgoMetric(String(participantStats.averageAge), "Ø Alter", "Automatisch aus Geburtsdatum berechnet."),
-    renderNgoMetric(String(participantStats.withChildren), "mit Kindern", "Teilnehmerinnen mit Kinder-Markierung."),
-    renderNgoMetric(String(participantStats.inGermanCourse), "im Deutschkurs", "Parallele Deutschkurs-Spur läuft."),
-    renderNgoMetric(String(participantStats.openVisaDeadlines), "Visum-Fristen offen", "Fristen im Vorlauf-Alarm oder überfällig."),
+    renderNgoMetric(String(donorStats.supporterCount), "Unterstützer", "Personen mit Spenden-, Mitglieds- oder Dankstatus.", "supporters"),
+    renderNgoMetric(formatEuro(donorStats.totalReceived), "gesamt eingenommen", "Summe aller Beiträge und Spenden im NGO-Datenblock.", "received"),
+    renderNgoMetric(String(donorStats.openThanks), "noch zu bedanken", "Offene Dank- oder Spendenquittungsfälle.", "openThanks"),
+    renderNgoMetric(String(donorStats.members), "Mitglieder", "Personen mit aktivem Mitgliedsstatus.", "members"),
+    renderNgoMetric(String(donorStats.recurringDonors), "Dauerspender", "Regelmäßige Unterstützerinnen.", "recurring"),
+    renderNgoMetric(String(participantStats.participantCount), "Teilnehmerinnen", "Personen im Teilnehmerinnen-Programm.", "participants"),
+    renderNgoMetric(String(participantStats.averageAge), "Ø Alter", "Automatisch aus Geburtsdatum berechnet.", "averageAge"),
+    renderNgoMetric(String(participantStats.withChildren), "mit Kindern", "Teilnehmerinnen mit Kinder-Markierung.", "withChildren"),
+    renderNgoMetric(String(participantStats.inGermanCourse), "im Deutschkurs", "Parallele Deutschkurs-Spur läuft.", "germanCourse"),
+    renderNgoMetric(String(participantStats.openVisaDeadlines), "Visum-Fristen offen", "Fristen im Vorlauf-Alarm oder überfällig.", "visaOpen"),
   );
 
   root.replaceChildren(
+    ...(!hasNgoWorkspaceData(donorStats, participantStats) ? [renderNgoActivationCard()] : []),
     el("div", { className: "ngo-board-head" }, [
       renderNgoTabs(),
       renderNgoBackupActions(),
@@ -3404,12 +3738,17 @@ async function restoreNgoWorkspace(file) {
 function addDonorFromQuickEntry() {
   const nameInput = document.querySelector("#ngoDonorName");
   const memberInput = document.querySelector("#ngoDonorIsMember");
+  const name = nameInput?.value?.trim() || "";
   try {
     ngoWorkspace = addNgoDonor(ngoWorkspace, {
-      name: nameInput?.value,
+      name,
       isMember: Boolean(memberInput?.checked),
     });
-    state.donorSearch = "";
+    state.activeNgoView = "donors";
+    state.donorSearch = name;
+    state.donorSort = "name";
+    state.donorOnlyOpen = false;
+    clearNgoMetricFilter();
     state.journalExtra += 1;
     persistActiveProjectDatatype();
     renderNgo();
@@ -3419,15 +3758,52 @@ function addDonorFromQuickEntry() {
   }
 }
 
+function addDonationFromQuickEntry(donorId) {
+  const typeInput = document.getElementById(`ngoDonationType-${donorId}`);
+  const amountInput = document.getElementById(`ngoDonationAmount-${donorId}`);
+  const dateInput = document.getElementById(`ngoDonationDate-${donorId}`);
+  const purposeInput = document.getElementById(`ngoDonationPurpose-${donorId}`);
+  const thankedInput = document.getElementById(`ngoDonationThanked-${donorId}`);
+
+  try {
+    const result = addNgoDonation(ngoWorkspace, {
+      donorId,
+      type: typeInput?.value || DONATION_TYPES[0],
+      amount: Number(amountInput?.value || 0),
+      date: dateInput?.value || "",
+      purpose: purposeInput?.value?.trim() || "",
+      thanked: Boolean(thankedInput?.checked),
+    });
+    ngoWorkspace = result.data;
+    state.activeNgoView = "donors";
+    state.activeNgoDonorId = donorId;
+    state.donorSearch = result.donor.name;
+    state.donorSort = "name";
+    state.donorOnlyOpen = false;
+    clearNgoMetricFilter();
+    state.journalExtra += 1;
+    persistActiveProjectDatatype();
+    renderNgo();
+    renderJournal();
+  } catch (error) {
+    window.alert(error.message || "Spende konnte nicht hinzugefügt werden.");
+  }
+}
+
 function addParticipantFromQuickEntry() {
   const firstNameInput = document.querySelector("#ngoParticipantFirstName");
   const lastNameInput = document.querySelector("#ngoParticipantLastName");
+  const firstName = firstNameInput?.value?.trim() || "";
+  const lastName = lastNameInput?.value?.trim() || "";
   try {
     ngoWorkspace = addNgoParticipant(ngoWorkspace, {
-      firstName: firstNameInput?.value,
-      lastName: lastNameInput?.value,
+      firstName,
+      lastName,
     });
-    state.participantSearch = "";
+    state.activeNgoView = "participants";
+    state.participantSearch = `${firstName} ${lastName}`.trim();
+    state.participantSort = "name";
+    clearNgoMetricFilter();
     state.journalExtra += 1;
     persistActiveProjectDatatype();
     renderNgo();
@@ -3534,10 +3910,12 @@ function bindActions() {
   document.querySelector("#onboardingRoot").addEventListener("input", syncOnboardingInputs);
   document.addEventListener("input", (event) => {
     if (event.target.id === "ngoDonorSearch") {
+      clearNgoMetricFilter();
       state.donorSearch = event.target.value;
       renderNgo();
     }
     if (event.target.id === "ngoParticipantSearch") {
+      clearNgoMetricFilter();
       state.participantSearch = event.target.value;
       renderNgo();
     }
@@ -3559,6 +3937,7 @@ function bindActions() {
       renderNgo();
     }
     if (event.target.id === "ngoDonorOnlyOpen") {
+      clearNgoMetricFilter();
       state.donorOnlyOpen = event.target.checked;
       renderNgo();
     }
@@ -3581,10 +3960,42 @@ function bindActions() {
   });
 
   document.addEventListener("click", (event) => {
+    const ngoMetricButton = event.target.closest("[data-ngo-metric]");
+    if (ngoMetricButton) {
+      applyNgoMetricFilter(ngoMetricButton.dataset.ngoMetric);
+      return;
+    }
+
+    const cockpitTarget = event.target.closest("[data-cockpit-target]");
+    if (cockpitTarget) {
+      if (cockpitTarget.dataset.ngoJump) {
+        state.activeNgoView = cockpitTarget.dataset.ngoJump;
+      }
+      navigateTo(cockpitTarget.dataset.cockpitTarget);
+      return;
+    }
+
     const ngoViewButton = event.target.closest("[data-ngo-view]");
     if (ngoViewButton) {
+      clearNgoMetricFilter();
       state.activeNgoView = ngoViewButton.dataset.ngoView;
       renderNgo();
+      return;
+    }
+
+    const ngoDonorSelectButton = event.target.closest("[data-ngo-donor-select]");
+    if (ngoDonorSelectButton) {
+      state.activeNgoDonorId = ngoDonorSelectButton.dataset.ngoDonorSelect;
+      renderNgo();
+      return;
+    }
+
+    const ngoDonorAddButton = event.target.closest("[data-ngo-donor-add]");
+    if (ngoDonorAddButton) {
+      const donorId = ngoDonorAddButton.dataset.ngoDonorAdd;
+      state.activeNgoDonorId = donorId;
+      renderNgo();
+      window.setTimeout(() => document.getElementById(`ngoDonationAmount-${donorId}`)?.focus(), 0);
       return;
     }
 
@@ -3592,11 +4003,18 @@ function bindActions() {
     if (ngoActionButton) {
       const action = ngoActionButton.dataset.ngoAction;
       if (action === "add-donor") addDonorFromQuickEntry();
+      if (action === "add-donation") addDonationFromQuickEntry(ngoActionButton.dataset.ngoDonorId);
       if (action === "add-participant") addParticipantFromQuickEntry();
       if (action === "export-people") exportNgoPeople();
       if (action === "export-donations") exportNgoDonations();
       if (action === "export-participants") exportNgoParticipants();
       if (action === "backup") backupNgoWorkspace();
+      if (action === "apply-demo") applyDatasetPlan("ngo-supporter-program");
+      if (action === "clear-metric-filter") {
+        clearNgoMetricFilter();
+        state.donorOnlyOpen = false;
+        renderNgo();
+      }
       return;
     }
 

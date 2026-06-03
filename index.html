@@ -74,6 +74,7 @@
           </div>
 
           <div class="work-lanes" id="workLanes"></div>
+          <div class="cockpit-summary" id="cockpitSummary"></div>
         </section>
 
         <section class="panel" id="roles" aria-labelledby="roles-title">
@@ -270,6 +271,12 @@
       </main>
     </div>
 
-    <script type="module" src="./app.js?v=git-source-20260603"></script>
+    <script type="module">
+      const script = document.createElement("script");
+      const directFileOpen = window.location.protocol === "file:" && !window.location.pathname.includes("/dist/");
+      script.type = "module";
+      script.src = directFileOpen ? "./dist/app.js?v=git-source-20260603" : "./app.js?v=git-source-20260603";
+      document.body.append(script);
+    </script>
   </body>
 </html>

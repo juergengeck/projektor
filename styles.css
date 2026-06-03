@@ -382,6 +382,11 @@ button {
   margin-bottom: 18px;
 }
 
+.topbar > div:first-child {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
 h1,
 h2,
 h3,
@@ -442,8 +447,10 @@ h3 {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
+  align-content: flex-start;
   gap: 8px;
-  min-width: min(100%, 330px);
+  flex: 0 0 min(100%, 520px);
+  max-width: 520px;
 }
 
 .status-strip span,
@@ -511,6 +518,45 @@ h3 {
   background: var(--panel);
 }
 
+.icon-action {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--panel);
+  cursor: pointer;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.icon-action:hover,
+.icon-action:focus-visible,
+.link-action:hover,
+.link-action:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent-2);
+}
+
+.link-action {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.link-action span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
 .theme-switch {
   min-height: 34px;
   padding: 7px 12px;
@@ -573,8 +619,8 @@ h3 {
 .map-center {
   left: 50%;
   top: 50%;
-  width: 172px;
-  min-height: 98px;
+  width: 220px;
+  min-height: 112px;
   transform: translate(-50%, -50%);
   padding: 12px;
 }
@@ -585,7 +631,20 @@ h3 {
 }
 
 .map-center strong {
-  font-size: 1.25rem;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  max-width: 100%;
+  font-size: clamp(1.04rem, 1.4vw, 1.35rem);
+  line-height: 1.12;
+  overflow-wrap: anywhere;
+}
+
+.map-center small {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  font-size: 0.78rem;
 }
 
 .map-node {
@@ -699,6 +758,29 @@ h3 {
   padding: 14px;
 }
 
+.lane-link {
+  display: grid;
+  color: inherit;
+  text-decoration: none;
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.16s ease;
+}
+
+.lane-link:hover,
+.lane-link:focus-visible,
+.lane-link.active {
+  border-color: var(--accent);
+  box-shadow: 0 12px 32px rgba(44, 52, 69, 0.12);
+  transform: translateY(-1px);
+}
+
+.lane-link:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  outline-offset: 3px;
+}
+
 .lane-progress {
   height: 8px;
   margin-top: 14px;
@@ -711,6 +793,52 @@ h3 {
   display: block;
   height: 100%;
   background: var(--accent);
+}
+
+.cockpit-summary {
+  margin-top: 14px;
+}
+
+.cockpit-summary-card {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.cockpit-summary-head {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-top: 12px;
+}
+
+.cockpit-summary-head h3 {
+  margin: 0 0 6px;
+}
+
+.cockpit-summary-head p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.48;
+}
+
+.cockpit-summary-action {
+  flex: 0 0 auto;
+  text-decoration: none;
+}
+
+.cockpit-summary-grid {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.42fr) minmax(0, 0.58fr);
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.cockpit-summary-grid .object-list,
+.cockpit-summary-grid .topic-list {
+  margin: 0;
 }
 
 .segmented,
@@ -1923,7 +2051,29 @@ h3 {
 }
 
 .ngo-metric {
+  display: grid;
+  width: 100%;
   min-height: 118px;
+  cursor: pointer;
+  color: inherit;
+  text-align: left;
+  appearance: none;
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.16s ease;
+}
+
+.ngo-metric:hover,
+.ngo-metric:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 12px 28px rgba(44, 52, 69, 0.12);
+  transform: translateY(-1px);
+}
+
+.ngo-metric:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  outline-offset: 3px;
 }
 
 .ngo-metric strong {
@@ -1995,12 +2145,39 @@ h3 {
 
 .ngo-list-card,
 .ngo-mask,
+.ngo-activation-card,
 .ngo-compliance-card {
   min-width: 0;
   padding: 16px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
+}
+
+.ngo-activation-card {
+  display: grid;
+  gap: 8px;
+  border-color: rgba(181, 106, 25, 0.35);
+  background: var(--soft);
+}
+
+.ngo-activation-card h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.ngo-activation-card p {
+  max-width: 860px;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.ngo-activation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
 }
 
 .ngo-controls {
@@ -2020,7 +2197,9 @@ h3 {
 
 .ngo-controls input:not([type="checkbox"]),
 .ngo-controls select,
-.ngo-quick-entry input:not([type="checkbox"]) {
+.ngo-quick-entry input:not([type="checkbox"]),
+.ngo-donation-entry input:not([type="checkbox"]),
+.ngo-donation-entry select {
   width: 100%;
   min-height: 40px;
   padding: 9px 10px;
@@ -2066,10 +2245,48 @@ h3 {
   grid-template-columns: 120px minmax(140px, 1fr) minmax(140px, 1fr) auto;
 }
 
+.ngo-donation-entry {
+  display: grid;
+  grid-template-columns: 120px minmax(140px, 0.9fr) minmax(110px, 0.55fr) minmax(130px, 0.65fr);
+  gap: 8px;
+  align-items: center;
+  margin: 0 0 12px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--subtle);
+}
+
+.ngo-donation-entry input[type="text"] {
+  grid-column: span 2;
+}
+
+.ngo-donation-entry .ngo-check {
+  min-width: 120px;
+}
+
 .ngo-export-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.ngo-active-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  background: var(--subtle);
+}
+
+.ngo-active-filter span {
+  color: var(--ink);
+  font-weight: 700;
 }
 
 .ngo-table-wrap {
@@ -2079,7 +2296,7 @@ h3 {
 }
 
 .ngo-table {
-  min-width: 880px;
+  min-width: 930px;
 }
 
 .ngo-table td:first-child span {
@@ -2316,7 +2533,8 @@ h3 {
   .topbar,
   .section-head,
   .visual-head,
-  .project-table-head {
+  .project-table-head,
+  .cockpit-summary-head {
     flex-direction: column;
   }
 
@@ -2344,6 +2562,7 @@ h3 {
   .ngo-section-grid,
   .sheet-summary,
   .sheet-summary .object-list,
+  .cockpit-summary-grid,
   .settings-grid,
   .runner-status-grid,
   .onboarding-info-grid,
@@ -2357,8 +2576,13 @@ h3 {
 
   .ngo-controls,
   .ngo-quick-entry,
+  .ngo-donation-entry,
   .participant-controls .ngo-quick-entry {
     grid-template-columns: 1fr;
+  }
+
+  .ngo-donation-entry input[type="text"] {
+    grid-column: auto;
   }
 
   .onboarding-progress {
