@@ -1473,9 +1473,12 @@ function planningForProject(projectData) {
 
   const ngoPlanning = createNgoPlanningOverrides();
   const phaseIds = new Set((planning.phases || []).map((phase) => phase.id));
+  const flowIds = new Set((planning.flowDomains || []).map((flow) => flow.id));
   const hasHoaiPhases = phaseIds.has("lp3") || phaseIds.has("lp4");
+  const hasHoaiFlows = flowIds.has("invoices") || flowIds.has("contracts") || flowIds.has("calendar");
   const hasNgoLabels = planning.labels?.eyebrow === ngoPlanning.labels.eyebrow;
-  if (hasNgoLabels && !hasHoaiPhases) return planning;
+  const hasNgoFlows = flowIds.has("donations") || flowIds.has("participants") || flowIds.has("safeguarding");
+  if (hasNgoLabels && !hasHoaiPhases && hasNgoFlows && !hasHoaiFlows) return planning;
 
   return {
     ...planning,
@@ -1817,8 +1820,8 @@ function renderStaticText() {
   setText("roles-title", tr("rolesTitle"));
   setText("phasesEyebrow", planningLabels.eyebrow || tr("phasesEyebrow"));
   setText("phases-title", planningLabels.title || tr("phasesTitle"));
-  setText("flowsEyebrow", tr("flowsEyebrow"));
-  setText("flows-title", tr("flowsTitle"));
+  setText("flowsEyebrow", planningLabels.flowsEyebrow || tr("flowsEyebrow"));
+  setText("flows-title", planningLabels.flowsTitle || tr("flowsTitle"));
   setText("dataEyebrow", tr("dataEyebrow"));
   setText("data-title", tr("dataTitle"));
   setText("downloadTemplate", tr("template"));
@@ -2034,7 +2037,7 @@ function renderFlows() {
     el("ul", { className: "topic-list" }, activeFlow.checks.map((check) =>
       el("li", {}, [
         el("strong", { text: check }),
-        el("span", { text: "muss vor Statuswechsel sichtbar sein" }),
+        el("span", { text: planningLabels.flowCheckText || "muss vor Statuswechsel sichtbar sein" }),
       ]),
     )),
   );

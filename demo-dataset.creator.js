@@ -298,6 +298,9 @@ export function createNgoPlanningOverrides() {
       riskLabel: "Aktuelles Risiko",
       statusPhasePrefix: "",
       topicTitle: "Kontinuierliche Programmsteuerung",
+      flowsEyebrow: "NGO Abläufe",
+      flowsTitle: "Verbindliche Abläufe für Spenden, Teilnehmerinnen und Pflichtspuren",
+      flowCheckText: "muss vor Statuswechsel geklärt sein",
     },
     phases: [
       {

@@ -45,7 +45,13 @@ for (const plan of plans) {
 const ngoDataset = createDemoDatasetProject("ngo-supporter-program");
 assert.equal(ngoDataset.planning.labels.eyebrow, "NGO Programmphasen");
 assert.equal(ngoDataset.planning.labels.statusPhasePrefix, "");
+assert.equal(ngoDataset.planning.labels.flowsEyebrow, "NGO Abläufe");
 assert.equal(ngoDataset.planning.phases[0].id, "programm");
+assert.equal(ngoDataset.planning.flowDomains[0].id, "donations");
+assert.equal(
+  ngoDataset.planning.flowDomains.some((flow) => flow.id === "invoices"),
+  false,
+);
 assert.equal(
   ngoDataset.planning.topics.some(([, text]) => text.includes("DIN 276")),
   false,

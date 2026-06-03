@@ -77,6 +77,9 @@ export const HOAI_PLANNING_LABELS = {
   riskLabel: "Aktuelles Risiko",
   statusPhasePrefix: "LP",
   topicTitle: "Kontinuierliche Projektkontrolle",
+  flowsEyebrow: "Projektflows",
+  flowsTitle: "Verbindliche Abläufe für Dokumente, Termine und Änderungen",
+  flowCheckText: "muss vor Statuswechsel sichtbar sein",
 };
 
 export const HOAI_FLOW_TEMPLATES = [
