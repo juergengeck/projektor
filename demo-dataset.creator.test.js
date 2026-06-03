@@ -10,6 +10,7 @@ import { createProjectScheduleStateDagUpdate } from "./packages/project.core/ind
 import { summarizeProjectFileIndex } from "./packages/project-source.core/index.js";
 
 const plans = listDemoDatasetPlans();
+const userFacingInternalVocabulary = /Trie|Leseast|Kostentrie|Trie-Pfad|Trie-Wurzeln|Trie-Ast|Projektast|Baustellenast|Ausfuehrungsast|Zugangsast|Nachweis- und Abnahmeast|LP4-Ast/;
 
 assert.equal(DEMO_DATASET_CREATOR_SKILL.skillId, "projektor.demo-dataset-creator");
 assert.ok(plans.length >= 3);
@@ -30,6 +31,13 @@ for (const plan of plans) {
   assert.ok(dataset.exportModel.sections.some(([section]) => section === "Git-Quelle"));
   assert.ok(summarizeProjectFileIndex(dataset.projectSource).totalFiles >= 3);
   assert.ok(dataset.importModel.previewRows.length >= 4);
+  assert.equal(userFacingInternalVocabulary.test(JSON.stringify({
+    roles: dataset.roleModel.roles,
+    cockpit: dataset.cockpit,
+    assistant: dataset.assistant,
+    journal: dataset.journal,
+    importModel: dataset.importModel,
+  })), false);
 
   const update = createProjectScheduleStateDagUpdate(dataset.planning.schedule, {
     managedTaskId: dataset.planning.schedule.tasks[0].id,
@@ -56,6 +64,9 @@ assert.equal(
   ngoDataset.planning.topics.some(([, text]) => text.includes("DIN 276")),
   false,
 );
+assert.equal(JSON.stringify(ngoDataset.assistant).includes("HOAI-Kontext"), false);
+assert.equal(JSON.stringify(ngoDataset.assistant).includes("Kostenfreigaben"), false);
+assert.equal(JSON.stringify(ngoDataset.assistant).includes("Betreiberpflichten"), false);
 
 const kitaDataset = createDemoDatasetProject("kita-2028-expanded");
 assert.equal(

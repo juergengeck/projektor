@@ -6,6 +6,7 @@ import {
   PROJECT_DATATYPE_KIND,
   PROJECT_DATATYPE_VERSION,
   createDemoDatasetProject,
+  createNgoAssistant,
   createNgoPlanningOverrides,
   listDemoDatasetPlans,
 } from "./demo-dataset.creator.js";
@@ -778,7 +779,7 @@ let roles = {
     id: "Termine, Kosten und Berichtslagen",
     summary:
       "Koordiniert Termine, Kosten und Berichtslagen, falls diese Rolle im Projekt eingesetzt wird.",
-    permissions: ["Kostentrie", "Terminsteuerung", "Berichte", "Journal lesen"],
+    permissions: ["Kostenbereich", "Terminsteuerung", "Berichte", "Journal lesen"],
   },
   authority: {
     label: "Behörde",
@@ -823,8 +824,8 @@ let runnerProtocolSteps = [
   {
     from: "architect",
     to: "authority",
-    text: "Genehmigungsmappe LP4 ist vorbereitet. Rückfrage Stellplatznachweis bitte an den LP4-Ast hängen.",
-    journal: "Architekt teilt LP4-Trie-Ast mit Behörde.",
+    text: "Genehmigungsmappe LP4 ist vorbereitet. Rückfrage Stellplatznachweis bitte im LP4-Bereich ergänzen.",
+    journal: "Architekt gibt LP4-Unterlagen für Behörde frei.",
   },
   {
     from: "authority",
@@ -841,7 +842,7 @@ let runnerProtocolSteps = [
   {
     from: "trade",
     to: "architect",
-    text: "Verstanden. Baustellenast wartet auf freigegebenen Planstand.",
+    text: "Verstanden. Baustellenbereich wartet auf freigegebenen Planstand.",
     journal: "Gewerk bestätigt begrenzten Zugriff.",
   },
 ];
@@ -1367,7 +1368,7 @@ function cockpitSummaryRows(section) {
   const rows = [
     ["Projektbereich", section.title],
     ["Fortschritt", `${section.progress || 0}%`],
-    ["Trie-Pfad", `${projectRootPath()}/${section.id}`],
+    ["Bereichspfad", `${projectRootPath()}/${section.id}`],
   ];
   if (demoProject.projectType === "ngo" && title.includes("spenden")) {
     const stats = donorMetrics(ngoWorkspace);
@@ -1428,7 +1429,7 @@ function cockpitSummaryEvidence(section) {
   }
   return [
     ...flowDomains.slice(0, 2).map((flow) => [flow.label, flow.trigger]),
-    ...sharedTrieRoots.slice(0, 2).map((root) => [root.object, root.path]),
+    ...sharedTrieRoots.slice(0, 2).map((root) => [projectContentLabel(root), root.path]),
   ].slice(0, 4);
 }
 
@@ -1489,9 +1490,25 @@ function planningForProject(projectData) {
   };
 }
 
+function assistantForProject(projectData) {
+  const assistant = projectData.assistant || {};
+  if (projectData.project?.projectType !== "ngo") return assistant;
+
+  const assistantText = JSON.stringify(assistant);
+  const hasConstructionAssistantText =
+    assistantText.includes("HOAI-Kontext") ||
+    assistantText.includes("Kostenfreigaben") ||
+    assistantText.includes("Betreiberpflichten") ||
+    assistantText.includes("LP3") ||
+    assistantText.includes("Bauherr");
+
+  return hasConstructionAssistantText ? createNgoAssistant(projectData.project.id) : assistant;
+}
+
 function installProjectDatatype(projectData, { persist = false } = {}) {
   const normalized = normalizeProjectDatatype(projectData);
   const normalizedPlanning = planningForProject(normalized);
+  const normalizedAssistant = assistantForProject(normalized);
   demoDatasetCreator = deepClone(normalized.creator || demoDatasetCreator);
   demoProject = deepClone(normalized.project);
   metrics = deepClone(normalized.cockpit?.metrics || []);
@@ -1503,7 +1520,7 @@ function installProjectDatatype(projectData, { persist = false } = {}) {
   sharedTrieRoots = deepClone(normalized.roleModel?.sharedTrieRoots || []);
   ({ labels: planningLabels, phases, topics, flowDomains } = normalizeHoaiPlanning(normalizedPlanning));
   projectSchedule = createProjectPlan(normalizedPlanning.schedule || projectSchedule);
-  ai = deepClone(normalized.assistant || ai);
+  ai = deepClone(normalizedAssistant || ai);
   settingsModel = sanitizeProjectSettings(normalized.settings || settingsModel);
   projectSource = normalizeProjectSourceBundle(
     normalized.projectSource || createDefaultProjectSourceBundle(normalized.project?.id || demoProject.id),
@@ -2643,7 +2660,7 @@ function renderDatasetCreatorBoard() {
     el("article", { className: "dataset-skill-card" }, [
       bookTop("Skill", skill.skillId || "projektor.demo-dataset-creator"),
       el("h3", { text: skill.label || "Demo Dataset Creator" }),
-      el("p", { text: "Erzeugt vollstaendige Projektgraphen mit Rollen, Trie-Wurzeln, Terminplan, Quellen, Assistenzlauf und Journal." }),
+      el("p", { text: "Erzeugt vollstaendige Projektgraphen mit Rollen, Datenbereichen, Terminplan, Quellen, Assistenzlauf und Journal." }),
       el("ul", { className: "object-list compact-list" }, [
         el("li", {}, [el("span", { text: "Status" }), el("strong", { text: state.datasetCreatorStatus })]),
         el("li", {}, [el("span", { text: "Plan" }), el("strong", { text: demoDatasetCreator.plan?.label || "-" })]),
@@ -2658,7 +2675,7 @@ function renderDatasetCreatorBoard() {
         el("p", { text: plan.scenario }),
         el("ul", { className: "object-list compact-list" }, [
           el("li", {}, [el("span", { text: "Kontakte" }), el("strong", { text: String(plan.scale.contacts) })]),
-          el("li", {}, [el("span", { text: "Trie-Wurzeln" }), el("strong", { text: String(plan.scale.trieRoots) })]),
+          el("li", {}, [el("span", { text: "Datenbereiche" }), el("strong", { text: String(plan.scale.trieRoots) })]),
           el("li", {}, [el("span", { text: "Aufgaben" }), el("strong", { text: String(plan.scale.tasks) })]),
           el("li", {}, [el("span", { text: "Risiko" }), el("strong", { text: plan.risk })]),
         ]),
@@ -3306,7 +3323,7 @@ function renderPreviewTable() {
       el("tr", {}, [
         el("th", { text: "Name" }),
         el("th", { text: "Rolle" }),
-        el("th", { text: "Trie-Pfad" }),
+        el("th", { text: "Bereichspfad" }),
         el("th", { text: "Zugriff" }),
       ]),
     ]),
@@ -3518,7 +3535,7 @@ function handleRunnerEvent(event) {
       root: event.root,
       updatedAt: event.at,
     };
-    appendRunnerLog(`${roles[event.role]?.label || event.role} meldet Trie-Root bereit.`);
+    appendRunnerLog(`${roles[event.role]?.label || event.role} meldet Datenbereich bereit.`);
     renderCubeRunner();
   }
 
@@ -3554,7 +3571,7 @@ function bindRunnerEvents() {
     try {
       handleRunnerEvent(JSON.parse(event.newValue));
     } catch {
-      // Ignore malformed prototype events; real trie events will be typed objects.
+      // Ignore malformed prototype events; real runtime events will be typed objects.
     }
   });
 }
@@ -3564,7 +3581,7 @@ function openRunnerRoleWindows() {
   state.runnerStatus = "windows";
   state.runnerProtocolStep = 0;
   activeRunnerAbort = false;
-  appendRunnerLog("projektor.cube öffnet Rollenfenster mit geteilten Trie-Wurzeln.");
+  appendRunnerLog("projektor.cube öffnet Rollenfenster mit freigegebenen Datenbereichen.");
 
   runnerRoleKeys.forEach((roleKey) => {
     const layout = runnerRoleWindowLayout[roleKey];
@@ -3624,7 +3641,7 @@ async function runIntegratedProtocol() {
   state.runnerStatus = "running";
   state.runnerProtocolStep = 0;
   activeRunnerAbort = false;
-  appendRunnerLog("Trie-basierter Rollenlauf gestartet.");
+  appendRunnerLog("Rollenlauf gestartet.");
   renderCubeRunner();
 
   for (const [index, step] of runnerProtocolSteps.entries()) {
@@ -3694,10 +3711,10 @@ function renderCubeRunner() {
 
   root.replaceChildren(
     el("div", { className: "runner-dashboard", "data-testid": "settings-test-runner-dashboard" }, [
-      bookTop("projektor.cube", "integrated trie test runner"),
+      bookTop("projektor.cube", "integrierter Rollenlauf"),
       el("p", {
         text:
-          "Der Runner öffnet Projektrollen als eigene Browserfenster. Nachrichten werden als geteilte Trie-Äste modelliert; Trust und Kontext bestimmen, was jedes Fenster sieht.",
+          "Der Runner öffnet Projektrollen als eigene Browserfenster. Nachrichten werden als freigegebene Projektbereiche modelliert; Zugriff und Kontext bestimmen, was jedes Fenster sieht.",
       }),
       el("ul", { className: "object-list compact-list" }, [
         el("li", {}, [el("span", { text: "Status" }), el("strong", { text: statusText })]),
@@ -3706,7 +3723,7 @@ function renderCubeRunner() {
       ]),
       el("div", { className: "settings-actions" }, [
         el("button", { className: "secondary-action", id: "runnerStartWindows", type: "button", text: "Rollenfenster" }),
-        el("button", { className: "primary-action", id: "runnerRunProtocol", type: "button", text: "Trie-Lauf starten" }),
+        el("button", { className: "primary-action", id: "runnerRunProtocol", type: "button", text: "Rollenlauf starten" }),
         el("button", { className: "secondary-action", id: "runnerStop", type: "button", text: "Stop" }),
         el("button", { className: "secondary-action", id: "runnerClear", type: "button", text: "Instanzen leeren" }),
       ]),
@@ -3746,9 +3763,9 @@ function renderRunnerRoleWindow() {
       el("p", { text: role.summary }),
       el("ul", { className: "object-list" }, [
         el("li", {}, [el("span", { text: "Session" }), el("strong", { text: sessionId })]),
-        el("li", {}, [el("span", { text: "Sichtbarkeit" }), el("strong", { text: "Trust + Kontextfilter" })]),
+        el("li", {}, [el("span", { text: "Sichtbarkeit" }), el("strong", { text: "Zugriff + Kontextfilter" })]),
       ]),
-      el("h3", { text: "Eingehende Trie-Updates" }),
+      el("h3", { text: "Eingehende Updates" }),
       el("div", { className: "runner-inbox" }, state.runnerMessages.length
         ? state.runnerMessages.map((message) =>
           el("article", { className: "runner-message" }, [
@@ -3825,7 +3842,7 @@ function downloadActiveProjectTable() {
 }
 
 function downloadTemplate() {
-  const headers = ["Name", "Rolle", "Trie-Pfad", "Sichtbarkeit", "Leistungsphase", "E-Mail", "Hinweis"];
+  const headers = ["Name", "Rolle", "Bereichspfad", "Sichtbarkeit", "Leistungsphase", "E-Mail", "Hinweis"];
   const roleEntries = Object.entries(roles);
   const rows = sharedTrieRoots.slice(0, 3).map((root, index) => {
     const [roleKey, role] = roleEntries[index] || roleEntries[0] || ["role", { label: "Projektrolle" }];
@@ -3837,7 +3854,7 @@ function downloadTemplate() {
       access === "full" ? "voll" : access === "filtered" ? "gefiltert" : "kein Zugriff",
       root.phase || "LP1-LP9",
       `${roleKey}@example.org`,
-      root.object,
+      projectContentLabel(root),
     ];
   });
   const csv = [headers, ...rows].map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\n");

@@ -86,7 +86,7 @@ const ROLE_LIBRARY = {
     type: "Projektrolle",
     id: "Kosten, Termine und Berichtslagen",
     summary: "Fuehrt Termin-, Kosten- und Risikoberichte zusammen und bereitet Eskalationen fuer Freigaben vor.",
-    permissions: ["Kostentrie", "Terminsteuerung", "Berichte", "Journal lesen"],
+    permissions: ["Kostenbereich", "Terminsteuerung", "Berichte", "Journal lesen"],
   },
   authority: {
     label: "Behoerde",
@@ -164,13 +164,13 @@ function localizedProject({ id, title, subtitle, phase, risk, nodes, projectType
   };
 }
 
-function createAssistant({ projectId, label, ref, focus, context, mutable, findings }) {
+function createAssistant({ projectId, label, ref, focus, context, mutable, findings, why, handoff, steps }) {
   return {
     goal: {
       type: "Assistenzauftrag",
       ref,
       objective: `${label}: ${focus}`,
-      why: "Der Demo-Datensatz zeigt, wie Projektassistenz nur Luecken, Risiken und naechste Schritte vorbereitet; Freigaben bleiben bei Rollen mit Verantwortung.",
+      why: why || "Der Demo-Datensatz zeigt, wie Projektassistenz nur Luecken, Risiken und naechste Schritte vorbereitet; Freigaben bleiben bei Rollen mit Verantwortung.",
       criteria: findings,
     },
     workload: {
@@ -178,13 +178,13 @@ function createAssistant({ projectId, label, ref, focus, context, mutable, findi
       ref: `${projectId}/assistant/demo-check`,
       context,
       mutable,
-      handoff: "Wenn neue Rechte, Kostenfreigaben, Betreiberpflichten oder breitere Quellenzugriffe noetig sind, geht der Lauf an die verantwortliche Projektrolle zurueck.",
+      handoff: handoff || "Wenn neue Rechte, Kostenfreigaben, Betreiberpflichten oder breitere Quellenzugriffe noetig sind, geht der Lauf an die verantwortliche Projektrolle zurueck.",
     },
     run: {
       type: "Prueflauf",
       ref: "02.06.2026, 09:30",
-      steps: [
-        ["gelesen", "Projektrollen, Trie-Wurzeln und Terminplan gelesen"],
+      steps: steps || [
+        ["gelesen", "Projektrollen, Datenbereiche und Terminplan gelesen"],
         ["geplant", "Dataset-Plan gegen schedule.core und HOAI-Kontext geprueft"],
         ["gefunden", `${findings.length} sichtbare Pruefpunkte erzeugt`],
         ["Pruefung", "Menschliche Rolle bewertet Vorschlaege"],
@@ -192,6 +192,27 @@ function createAssistant({ projectId, label, ref, focus, context, mutable, findi
       ],
     },
   };
+}
+
+export function createNgoAssistant(projectId = "demo-ngo-supporter-program") {
+  return createAssistant({
+    projectId,
+    label: "NGO Unterstützerinnen",
+    ref: "Visa/Safeguarding Check",
+    focus: "Offene Visa-Fristen, Minderjährigenregeln und Dank-/Quittungspflichten sichtbar machen.",
+    context: ["Teilnehmerinnen", "Visum", "Safeguarding", "Spenden", "Quittungen"],
+    mutable: ["Wiedervorlagen", "Dankliste", "Journalentwuerfe"],
+    findings: ["Visum Sita Rai im Vorlauf", "Minderjährige ohne Selbstverpflichtung", "Murat Demir braucht Dank und Quittungsprüfung"],
+    why: "Der NGO-Datensatz zeigt, wie Programmassistenz nur Luecken, Risiken und naechste Schritte vorbereitet; Entscheidungen bleiben bei Programmleitung, Betreuung, Fundraising oder Safeguarding.",
+    handoff: "Wenn neue Einwilligungen, Safeguarding-Entscheidungen, Visa-Fristen, Dank-/Quittungsaufgaben oder breitere Quellenzugriffe noetig sind, geht der Lauf an die verantwortliche NGO-Rolle zurueck.",
+    steps: [
+      ["gelesen", "NGO-Rollen, Teilnehmerinnen, Spenden und Fristen gelesen"],
+      ["geplant", "Dataset-Plan gegen Programmstatus, Visa-Fristen und Safeguarding-Spuren geprueft"],
+      ["gefunden", "3 sichtbare Pruefpunkte erzeugt"],
+      ["Pruefung", "Verantwortliche NGO-Rolle bewertet Vorschlaege"],
+      ["gesichert", "Wiedervorlage, Dankliste und Journalentwurf vorbereitet"],
+    ],
+  });
 }
 
 function createSettings(projectId, mailboxName) {
@@ -569,15 +590,7 @@ function buildNgoDataset(plan) {
     },
     schedule,
     planning: createNgoPlanningOverrides(),
-    assistant: createAssistant({
-      projectId,
-      label: "NGO Unterstützerinnen",
-      ref: "Visa/Safeguarding Check",
-      focus: "Offene Visa-Fristen, Minderjährigenregeln und Dank-/Quittungspflichten sichtbar machen.",
-      context: ["Teilnehmerinnen", "Visum", "Safeguarding", "Spenden", "Quittungen"],
-      mutable: ["Wiedervorlagen", "Dankliste", "Journalentwuerfe"],
-      findings: ["Visum Sita Rai im Vorlauf", "Minderjährige ohne Selbstverpflichtung", "Murat Demir braucht Dank und Quittungsprüfung"],
-    }),
+    assistant: createNgoAssistant(projectId),
     settings: createSettings(projectId, "INBOX/Demo NGO"),
     ngo,
     mailPreview: [
@@ -626,7 +639,7 @@ function buildKitaDataset(plan) {
       { id: "behoerdenlauf", label: "Behoerdenlauf und Rueckfragen", owner: "Behoerde", phase: "LP4", durationDays: 30 },
       { id: "ausfuehrungsplanung", label: "Ausfuehrungsplanung freigeben", owner: "Architekt", phase: "LP5", durationDays: 24 },
       { id: "vergabe-rohbau", label: "Rohbau ausschreiben und beauftragen", owner: "Gewerk", phase: "LP6-LP7", durationDays: 22 },
-      { id: "rohbau", label: "Rohbau starten und Baustellenast aktivieren", owner: "Gewerk", phase: "LP8", durationDays: 35 },
+      { id: "rohbau", label: "Rohbau starten und Baustellenbereich aktivieren", owner: "Gewerk", phase: "LP8", durationDays: 35 },
     ],
     dependencies: [
       { from: "bedarf-klaeren", to: "foerderkulisse", type: "SS", lagDays: 3 },
@@ -665,14 +678,14 @@ function buildKitaDataset(plan) {
     cockpit: {
       metrics: [
         ["48", "Beteiligte", "Bauherr, Planung, Fachplanung, Pruefung, Behoerde und Gewerke."],
-        ["7", "Trie-Wurzeln", "Projektmail, Kosten, Genehmigung, Rueckfragen, Planstand, Baustelle und Journal."],
+        ["7", "Datenbereiche", "Projektmail, Kosten, Genehmigung, Rueckfragen, Planstand, Baustelle und Journal."],
         ["10", "Terminaufgaben", "CPM-faehiger Plan mit Foerder- und Genehmigungsabhaengigkeiten."],
         ["8", "Journalspuren", "Freigaben, Nachweise, Rollen, Quellen und Exportabschnitte."],
       ],
       lanes: [
         { title: "Foerderung", text: "Mittelbindung und Gremientermin bleiben mit Entwurf und Kosten verknuepft.", progress: 62 },
-        { title: "Genehmigung", text: "Rueckfragen haengen am LP4-Ast statt an verstreuten Mails.", progress: 58 },
-        { title: "Baustelle", text: "Gewerke erhalten erst nach Planstand-Freigabe den gefilterten Ausfuehrungsast.", progress: 37 },
+        { title: "Genehmigung", text: "Rueckfragen bleiben im LP4-Bereich statt in verstreuten Mails.", progress: 58 },
+        { title: "Baustelle", text: "Gewerke erhalten erst nach Planstand-Freigabe den begrenzten Ausfuehrungsbereich.", progress: 37 },
       ],
     },
     roleModel: {
@@ -717,7 +730,7 @@ function buildKitaDataset(plan) {
     journal: [
       ["2026-06-02 09:12", "Datensatz erzeugt", "Demo Dataset Creator hat Kita 2028 Plus als Projektgraph vorbereitet.", "Dataset 001"],
       ["2026-06-02 09:20", "Foerderung verknuepft", "Foerderkulisse als Termin- und Kostenabhaengigkeit aufgenommen.", "Journal 002"],
-      ["2026-06-02 09:28", "Rolle erweitert", "Fachplanung erhaelt eigenen gefilterten Trie-Ast.", "Journal 003"],
+      ["2026-06-02 09:28", "Rolle erweitert", "Fachplanung erhaelt eigenen gefilterten Datenbereich.", "Journal 003"],
       ["2026-06-02 09:35", "Planstand gesperrt", "LP5 bleibt fuer Gewerke begrenzt, bis LP4-Rueckfrage geklaert ist.", "Journal 004"],
     ],
   });
@@ -778,13 +791,13 @@ function buildClinicDataset(plan) {
     cockpit: {
       metrics: [
         ["86", "Beteiligte", "Klinikbetrieb, Planung, Hygiene, Brandschutz, Behoerde und Gewerke."],
-        ["9", "Trie-Wurzeln", "Betrieb, Hygiene, Brandschutz, Sperrzeiten, Vergabe, Baustelle und Journal."],
+        ["9", "Datenbereiche", "Betrieb, Hygiene, Brandschutz, Sperrzeiten, Vergabe, Baustelle und Journal."],
         ["12", "Terminaufgaben", "Bauabschnitte mit Nachtfenstern und Betreiberfreigaben."],
         ["10", "Journalspuren", "Betriebsauflagen, Sperrbereiche, Nachweise und Abnahmen."],
       ],
       lanes: [
         { title: "Betrieb", text: "Sperrzeiten und Patientenschutz bestimmen die Bauabschnittsfreigaben.", progress: 51 },
-        { title: "Hygiene", text: "Infektionsschutz ist als eigener Nachweis- und Abnahmeast sichtbar.", progress: 63 },
+        { title: "Hygiene", text: "Infektionsschutz ist als eigener Nachweis- und Abnahmebereich sichtbar.", progress: 63 },
         { title: "Ausfuehrung", text: "Nachtarbeit und Provisorien sind terminbestimmende Abhaengigkeiten.", progress: 34 },
       ],
     },
@@ -835,7 +848,7 @@ function buildClinicDataset(plan) {
     exportModel: createExportModel("Demo: Klinikfluegel Sanierung", baseExportSections(["Betrieb", "Hygiene"])),
     journal: [
       ["2026-06-02 09:12", "Datensatz erzeugt", "Demo Dataset Creator hat Klinikfluegel Sanierung vorbereitet.", "Dataset 001"],
-      ["2026-06-02 09:19", "Betrieb abgestimmt", "Sperrzeiten als sichtbarer Projektast angelegt.", "Journal 002"],
+      ["2026-06-02 09:19", "Betrieb abgestimmt", "Sperrzeiten als sichtbarer Projektbereich angelegt.", "Journal 002"],
       ["2026-06-02 09:27", "Hygiene verknuepft", "Hygieneplan steuert Vergabe und Abnahme.", "Journal 003"],
       ["2026-06-02 09:41", "Abnahme geplant", "Wiederinbetriebnahme bleibt von Bauteil B und Hygieneabnahme abhaengig.", "Journal 004"],
     ],
@@ -896,7 +909,7 @@ function buildHousingDataset(plan) {
     cockpit: {
       metrics: [
         ["132", "Beteiligte", "Eigentuemer, Mietendenvertretung, Planung, Foerderstellen und Gewerke."],
-        ["8", "Trie-Wurzeln", "Cluster, Ankuendigungen, Foerderung, Genehmigung, Vergabe, Baustelle und Journal."],
+        ["8", "Datenbereiche", "Cluster, Ankuendigungen, Foerderung, Genehmigung, Vergabe, Baustelle und Journal."],
         ["11", "Terminaufgaben", "Serielle Aufgaben mit ueberlappenden Cluster-Takten."],
         ["9", "Journalspuren", "Ankuendigungen, Zugang, Foerderung, Vergabe und Maengelwelle."],
       ],
@@ -954,7 +967,7 @@ function buildHousingDataset(plan) {
     journal: [
       ["2026-06-02 09:12", "Datensatz erzeugt", "Demo Dataset Creator hat Sanierungswelle vorbereitet.", "Dataset 001"],
       ["2026-06-02 09:21", "Cluster geschnitten", "Gebaeudecluster und Sichtbarkeiten angelegt.", "Journal 002"],
-      ["2026-06-02 09:36", "Mietende verknuepft", "Ankuendigungen haengen am Termin- und Zugangsast.", "Journal 003"],
+      ["2026-06-02 09:36", "Mietende verknuepft", "Ankuendigungen bleiben im Termin- und Zugangsbereich.", "Journal 003"],
       ["2026-06-02 09:45", "Foerderung geprueft", "Foerderantrag als Terminrisiko im CPM sichtbar.", "Journal 004"],
     ],
   });
@@ -1042,8 +1055,8 @@ function protocolFor(projectId, decision, openPoint, thirdRole = "authority") {
     {
       from: "architect",
       to: thirdRole,
-      text: `${openPoint}: Rueckfrage bitte an den passenden Projektast haengen.`,
-      journal: `Architekt teilt gefilterten Trie-Ast mit ${thirdRole}.`,
+      text: `${openPoint}: Rueckfrage bitte im passenden Projektbereich ergaenzen.`,
+      journal: `Architekt gibt gefilterten Datenbereich fuer ${thirdRole} frei.`,
     },
     {
       from: thirdRole,
@@ -1054,7 +1067,7 @@ function protocolFor(projectId, decision, openPoint, thirdRole = "authority") {
     {
       from: "architect",
       to: "trade",
-      text: "Ausfuehrungsast bleibt begrenzt, bis die offene Rueckfrage geschlossen ist.",
+      text: "Ausfuehrungsbereich bleibt begrenzt, bis die offene Rueckfrage geschlossen ist.",
       journal: "Gewerk erhaelt begrenzten Vorabhinweis ohne Planfreigabe.",
     },
   ];
