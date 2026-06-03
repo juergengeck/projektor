@@ -10,6 +10,76 @@ export const NGO_CAPABILITY = {
 };
 
 export const DONATION_TYPES = ["Spende", "Mitgliedsbeitrag", "Dauerspende"];
+export const NGO_DONOR_TYPE = "NgoDonor";
+export const NGO_DONATION_TYPE = "NgoDonation";
+export const NGO_DONOR_CHANGE_TYPE = "NgoDonorChange";
+export const NGO_ONE_SCHEMA_VERSION = "0.1.0";
+
+export const NgoDonationRecipe = {
+  $type$: "Recipe",
+  name: NGO_DONATION_TYPE,
+  rule: [
+    { itemprop: "donationId", itemtype: { type: "string" }, isId: true },
+    { itemprop: "donor", itemtype: { type: "referenceToId", allowedTypes: new Set([NGO_DONOR_TYPE]) } },
+    { itemprop: "type", itemtype: { type: "string" } },
+    { itemprop: "amount", itemtype: { type: "number" } },
+    { itemprop: "date", itemtype: { type: "string" } },
+    { itemprop: "purpose", itemtype: { type: "string" } },
+    { itemprop: "thanked", itemtype: { type: "boolean" } },
+    { itemprop: "createdAt", itemtype: { type: "number" } },
+    { itemprop: "updatedAt", itemtype: { type: "number" } },
+    { itemprop: "schemaVersion", itemtype: { type: "string" } },
+  ],
+};
+
+export const NgoDonorRecipe = {
+  $type$: "Recipe",
+  name: NGO_DONOR_TYPE,
+  rule: [
+    { itemprop: "donorId", itemtype: { type: "string" }, isId: true },
+    { itemprop: "name", itemtype: { type: "string" } },
+    { itemprop: "isMember", itemtype: { type: "boolean" } },
+    { itemprop: "email", itemtype: { type: "string" }, optional: true },
+    { itemprop: "phone", itemtype: { type: "string" }, optional: true },
+    { itemprop: "street", itemtype: { type: "string" }, optional: true },
+    { itemprop: "postalCode", itemtype: { type: "string" }, optional: true },
+    { itemprop: "city", itemtype: { type: "string" }, optional: true },
+    { itemprop: "memberSince", itemtype: { type: "string" }, optional: true },
+    { itemprop: "recurringDonor", itemtype: { type: "boolean" } },
+    { itemprop: "thanked", itemtype: { type: "boolean" } },
+    { itemprop: "asked", itemtype: { type: "boolean" } },
+    { itemprop: "emailMarketingConsent", itemtype: { type: "boolean" } },
+    { itemprop: "receiptSentAt", itemtype: { type: "string" }, optional: true },
+    { itemprop: "tags", itemtype: { type: "array", item: { type: "string" } } },
+    { itemprop: "notes", itemtype: { type: "string" }, optional: true },
+    { itemprop: "donations", itemtype: { type: "array", item: { type: "referenceToId", allowedTypes: new Set([NGO_DONATION_TYPE]) } } },
+    { itemprop: "updatedAt", itemtype: { type: "number" } },
+    { itemprop: "schemaVersion", itemtype: { type: "string" } },
+  ],
+};
+
+export const NgoDonorChangeRecipe = {
+  $type$: "Recipe",
+  name: NGO_DONOR_CHANGE_TYPE,
+  rule: [
+    { itemprop: "changeId", itemtype: { type: "string" }, isId: true },
+    { itemprop: "donor", itemtype: { type: "referenceToId", allowedTypes: new Set([NGO_DONOR_TYPE]) } },
+    { itemprop: "kind", itemtype: { type: "string" } },
+    { itemprop: "createdAt", itemtype: { type: "number" } },
+    { itemprop: "previousDonorVersion", itemtype: { type: "referenceToObj", allowedTypes: new Set([NGO_DONOR_TYPE]) }, optional: true },
+    { itemprop: "nextDonorVersion", itemtype: { type: "referenceToObj", allowedTypes: new Set([NGO_DONOR_TYPE]) }, optional: true },
+    { itemprop: "donation", itemtype: { type: "referenceToId", allowedTypes: new Set([NGO_DONATION_TYPE]) }, optional: true },
+    { itemprop: "reason", itemtype: { type: "string" }, optional: true },
+    { itemprop: "schemaVersion", itemtype: { type: "string" } },
+  ],
+};
+
+export const NgoCoreRecipes = [NgoDonorRecipe, NgoDonationRecipe, NgoDonorChangeRecipe];
+export const NgoCoreReverseMaps = [
+  [NGO_DONOR_TYPE, new Set(["donations"])],
+  [NGO_DONOR_CHANGE_TYPE, new Set(["donor", "previousDonorVersion", "nextDonorVersion", "donation"])],
+];
+export const NgoCoreReverseMapsForIdObjects = [];
 export const PARTICIPANT_MAIN_STAGES = [
   "Erstkontakt",
   "Aufnahme",
@@ -221,6 +291,33 @@ export function addNgoDonor(data, { name, isMember = false } = {}) {
   return normalized;
 }
 
+export function addNgoDonation(data, { donorId, type, amount, date, purpose = "", thanked = false, now = Date.now() } = {}) {
+  const normalized = normalizeNgoProjectData(data);
+  const donorIndex = normalized.donors.findIndex((donor) => donor.id === donorId);
+  if (donorIndex < 0) throw new Error("Donor not found.");
+  const previousDonor = normalizeDonor(normalized.donors[donorIndex]);
+  const donation = normalizeDonation({
+    id: stableSlug("donation", `${previousDonor.id}-${date || ""}-${amount || 0}-${previousDonor.donations.length + 1}`, 0),
+    type,
+    amount,
+    date,
+    purpose,
+    thanked,
+    createdAt: now,
+    updatedAt: now,
+  });
+  if (!donation.date) throw new Error("Donation date is required.");
+  if (!Number.isFinite(donation.amount) || donation.amount <= 0) throw new Error("Donation amount must be positive.");
+  const donor = normalizeDonor({
+    ...previousDonor,
+    thanked: previousDonor.thanked && donation.thanked,
+    donations: [...previousDonor.donations, donation],
+    updatedAt: now,
+  });
+  normalized.donors[donorIndex] = donor;
+  return { data: normalized, donor, donation };
+}
+
 export function addNgoParticipant(data, { firstName, lastName } = {}) {
   const normalized = normalizeNgoProjectData(data);
   const trimmedFirstName = String(firstName || "").trim();
@@ -403,6 +500,366 @@ export function restoreNgoBackup(payload) {
   return normalizeNgoProjectData(payload?.ngo || payload);
 }
 
+export class NgoPlan {
+  constructor({ data = createNgoProjectData(), oneCore } = {}) {
+    this.data = normalizeNgoProjectData(data);
+    this.oneCore = oneCore || null;
+  }
+
+  setOneCore(oneCore) {
+    this.oneCore = oneCore;
+  }
+
+  async init() {
+    registerNgoCoreRecipes(this.requireOneCore());
+  }
+
+  async getWorkspace() {
+    return normalizeNgoProjectData(this.data);
+  }
+
+  async replaceWorkspace({ data } = {}) {
+    this.data = normalizeNgoProjectData(data);
+    return this.getWorkspace();
+  }
+
+  async projectWorkspace({ data = this.data, now = Date.now() } = {}) {
+    const oneCore = this.requireOneCore();
+    const normalized = normalizeNgoProjectData(data);
+    const donors = [];
+    const donations = [];
+    for (const donor of normalized.donors) {
+      for (const donation of donor.donations) {
+        const obj = await createNgoDonationObject(oneCore, donor, donation, { now });
+        donations.push(await oneObjectEnvelope(oneCore, obj));
+      }
+      const obj = await createNgoDonorObject(oneCore, donor, { now });
+      donors.push(await oneObjectEnvelope(oneCore, obj));
+    }
+    return { donors, donations };
+  }
+
+  async addDonation(params = {}) {
+    const result = await addNgoDonationVersion(this.data, params, this.requireOneCore());
+    this.data = result.data;
+    return result;
+  }
+
+  getToolDefinitions() {
+    return [
+      {
+        name: "getWorkspace",
+        description: "Return the current NGO workspace projection.",
+        inputSchema: { type: "object", properties: {} },
+        returns: "NGO workspace data",
+      },
+      {
+        name: "addDonation",
+        description: "Add a donation as ONE versioned objects and update the donor version.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            donorId: { type: "string", description: "Stable donor id." },
+            type: { type: "string", enum: DONATION_TYPES, description: "Donation type." },
+            amount: { type: "number", description: "Donation amount in EUR." },
+            date: { type: "string", description: "ISO date." },
+            purpose: { type: "string", description: "Donation purpose." },
+            thanked: { type: "boolean", description: "Whether this donation has already been thanked." },
+            reason: { type: "string", description: "Human reason for the versioned change." },
+          },
+          required: ["donorId", "amount", "date"],
+        },
+        returns: "Updated workspace, stored ONE object refs, and donation details.",
+      },
+    ];
+  }
+
+  getPublicOperation() {
+    return {
+      getWorkspace: (params) => this.getWorkspace(params),
+      replaceWorkspace: (params) => this.replaceWorkspace(params),
+      projectWorkspace: (params) => this.projectWorkspace(params),
+      addDonation: (params) => this.addDonation(params),
+    };
+  }
+
+  requireOneCore() {
+    return requireNgoOneCore(this.oneCore);
+  }
+}
+
+export class NgoModule {
+  static demands = [
+    { targetType: "OneCore", required: true },
+    { targetType: "OperationRegistry", required: false },
+    { targetType: "NgoWorkspace", required: false },
+  ];
+
+  static supplies = [
+    { targetType: "NgoPlan" },
+  ];
+
+  constructor({ data } = {}) {
+    this.name = "NgoModule";
+    this.deps = {};
+    this.initialData = data;
+    this.ngoPlan = null;
+  }
+
+  setDependency(targetType, instance) {
+    this.deps[targetTypeToDependencyKey(targetType)] = instance;
+  }
+
+  async init() {
+    const data = this.deps.ngoWorkspace || this.initialData || createNgoProjectData();
+    this.ngoPlan = new NgoPlan({ data, oneCore: this.deps.oneCore });
+    await this.ngoPlan.init();
+  }
+
+  async shutdown() {
+    this.deps.operationRegistry?.unregister?.("ngo");
+    this.ngoPlan = null;
+  }
+
+  emitSupplies(registry) {
+    if (!this.ngoPlan) throw new Error("NgoModule has not been initialized.");
+    registry.supply("NgoPlan", this.ngoPlan);
+    const operationRegistry = this.deps.operationRegistry || registry.getOperationRegistry?.();
+    operationRegistry?.register?.("ngo", this.ngoPlan.getPublicOperation(), {
+      category: "ngo",
+      description: "NGO donor, gift, and participant operations backed by ONE versioned objects.",
+      methods: [
+        { name: "getWorkspace", description: "Return the current NGO workspace projection." },
+        { name: "replaceWorkspace", description: "Replace the in-memory NGO workspace projection." },
+        { name: "projectWorkspace", description: "Project NGO workspace records to ONE object envelopes." },
+        { name: "addDonation", description: "Add a gift and create the corresponding ONE versions." },
+      ],
+      tools: this.ngoPlan.getToolDefinitions(),
+    });
+  }
+}
+
+export function createNgoModule(options = {}) {
+  return new NgoModule(options);
+}
+
+export function registerNgoCoreRecipes(oneCore) {
+  const runtime = requireNgoOneCore(oneCore);
+  for (const recipe of NgoCoreRecipes) {
+    if (!runtime.hasRecipe(recipe.name)) runtime.addRecipeToRuntime(recipe);
+  }
+}
+
+export function createNgoRecipeRuntimeConfig({
+  recipes = [],
+  reverseMaps = [],
+  reverseMapsForIdObjects = [],
+} = {}) {
+  return {
+    recipes: [...NgoCoreRecipes, ...recipes],
+    reverseMaps: mergeReverseMapEntries([...NgoCoreReverseMaps, ...reverseMaps]),
+    reverseMapsForIdObjects: mergeReverseMapEntries([...NgoCoreReverseMapsForIdObjects, ...reverseMapsForIdObjects]),
+  };
+}
+
+export async function createNgoDonationObject(oneCore, donor, donation, { now = Date.now() } = {}) {
+  const runtime = requireNgoOneCore(oneCore);
+  registerNgoCoreRecipes(runtime);
+  const normalizedDonor = normalizeDonor(donor);
+  const normalizedDonation = normalizeDonation(donation);
+  const donorIdHash = await runtime.calculateIdHashOfObj(createNgoDonorIdObject(normalizedDonor.id));
+  return {
+    $type$: NGO_DONATION_TYPE,
+    donationId: normalizedDonation.id,
+    donor: donorIdHash,
+    type: normalizedDonation.type,
+    amount: normalizedDonation.amount,
+    date: normalizedDonation.date,
+    purpose: normalizedDonation.purpose,
+    thanked: normalizedDonation.thanked,
+    createdAt: Number(donation.createdAt || now),
+    updatedAt: Number(donation.updatedAt || now),
+    schemaVersion: NGO_ONE_SCHEMA_VERSION,
+  };
+}
+
+export async function createNgoDonorObject(oneCore, donor, { now = Date.now() } = {}) {
+  const runtime = requireNgoOneCore(oneCore);
+  registerNgoCoreRecipes(runtime);
+  const normalized = normalizeDonor(donor);
+  const donations = [];
+  for (const donation of normalized.donations) {
+    donations.push(await runtime.calculateIdHashOfObj(createNgoDonationIdObject(donation.id)));
+  }
+  return stripUndefined({
+    $type$: NGO_DONOR_TYPE,
+    donorId: normalized.id,
+    name: normalized.name,
+    isMember: normalized.isMember,
+    email: normalized.email || undefined,
+    phone: normalized.phone || undefined,
+    street: normalized.street || undefined,
+    postalCode: normalized.postalCode || undefined,
+    city: normalized.city || undefined,
+    memberSince: normalized.memberSince || undefined,
+    recurringDonor: normalized.recurringDonor,
+    thanked: normalized.thanked,
+    asked: normalized.asked,
+    emailMarketingConsent: normalized.emailMarketingConsent,
+    receiptSentAt: normalized.receiptSentAt || undefined,
+    tags: normalized.tags,
+    notes: normalized.notes || undefined,
+    donations,
+    updatedAt: Number(donor.updatedAt || now),
+    schemaVersion: NGO_ONE_SCHEMA_VERSION,
+  });
+}
+
+export async function addNgoDonationVersion(data, { donorId, type, amount, date, purpose = "", thanked = false, reason = "", now = Date.now() } = {}, oneCore) {
+  const runtime = requireNgoOneCore(oneCore);
+  registerNgoCoreRecipes(runtime);
+  const normalized = normalizeNgoProjectData(data);
+  const donorIndex = normalized.donors.findIndex((donor) => donor.id === donorId);
+  if (donorIndex < 0) throw new Error("Donor not found.");
+  const previousDonor = normalizeDonor(normalized.donors[donorIndex]);
+  const donation = normalizeDonation({
+    id: stableSlug("donation", `${previousDonor.id}-${date || ""}-${amount || 0}-${previousDonor.donations.length + 1}`, 0),
+    type,
+    amount,
+    date,
+    purpose,
+    thanked,
+    createdAt: now,
+    updatedAt: now,
+  });
+  const nextDonor = normalizeDonor({
+    ...previousDonor,
+    thanked: previousDonor.thanked && donation.thanked,
+    donations: [...previousDonor.donations, donation],
+    updatedAt: now,
+  });
+  const previousDonorObject = await createNgoDonorObject(runtime, previousDonor, { now });
+  const donationObject = await createNgoDonationObject(runtime, nextDonor, donation, { now });
+  const nextDonorObject = await createNgoDonorObject(runtime, nextDonor, { now });
+  const previousStored = await storeNgoVersionedObject(runtime, previousDonorObject);
+  const donationStored = await storeNgoVersionedObject(runtime, donationObject);
+  const nextStored = await storeNgoVersionedObject(runtime, nextDonorObject);
+  const changeObject = await createNgoDonorChangeObject(runtime, {
+    donor: nextDonor,
+    kind: "donation-added",
+    previousDonorVersionHash: previousStored.hash,
+    nextDonorVersionHash: nextStored.hash,
+    donationIdHash: donationStored.idHash,
+    reason,
+    now,
+  });
+  const changeStored = await storeNgoVersionedObject(runtime, changeObject);
+  normalized.donors[donorIndex] = nextDonor;
+  return {
+    data: normalized,
+    donor: nextDonor,
+    donation,
+    one: {
+      previousDonor: previousStored,
+      donation: donationStored,
+      nextDonor: nextStored,
+      change: changeStored,
+    },
+  };
+}
+
+async function createNgoDonorChangeObject(oneCore, {
+  donor,
+  kind,
+  previousDonorVersionHash,
+  nextDonorVersionHash,
+  donationIdHash,
+  reason = "",
+  now = Date.now(),
+} = {}) {
+  const runtime = requireNgoOneCore(oneCore);
+  if (!donor) throw new TypeError("donor is required.");
+  const changeKind = String(kind || "").trim();
+  if (!changeKind) throw new TypeError("kind is required.");
+  const normalizedDonor = normalizeDonor(donor);
+  const donorRef = await runtime.calculateIdHashOfObj(createNgoDonorIdObject(normalizedDonor.id));
+  return stripUndefined({
+    $type$: NGO_DONOR_CHANGE_TYPE,
+    changeId: stableSlug("ngo-change", `${normalizedDonor.id}-${changeKind}-${now}`, 0),
+    donor: donorRef,
+    kind: changeKind,
+    createdAt: Number(now),
+    previousDonorVersion: previousDonorVersionHash || undefined,
+    nextDonorVersion: nextDonorVersionHash || undefined,
+    donation: donationIdHash || undefined,
+    reason: String(reason || "") || undefined,
+    schemaVersion: NGO_ONE_SCHEMA_VERSION,
+  });
+}
+
+function createNgoDonorIdObject(donorId) {
+  return { $type$: NGO_DONOR_TYPE, donorId: String(donorId || "") };
+}
+
+function createNgoDonationIdObject(donationId) {
+  return { $type$: NGO_DONATION_TYPE, donationId: String(donationId || "") };
+}
+
+async function oneObjectEnvelope(oneCore, obj) {
+  const runtime = requireNgoOneCore(oneCore);
+  return {
+    obj,
+    idHash: await runtime.calculateIdHashOfObj(obj),
+    hash: await runtime.calculateHashOfObj(obj),
+  };
+}
+
+async function storeNgoVersionedObject(oneCore, obj) {
+  const runtime = requireNgoOneCore(oneCore);
+  if (typeof runtime.storeVersionedObject === "function") {
+    const stored = await runtime.storeVersionedObject(obj);
+    return {
+      obj: stored.obj || obj,
+      idHash: stored.idHash,
+      hash: stored.hash,
+      status: stored.status,
+      timestamp: stored.timestamp,
+    };
+  }
+  return oneObjectEnvelope(runtime, obj);
+}
+
+function requireNgoOneCore(oneCore) {
+  if (!oneCore) throw new Error("NgoPlan requires a OneCore dependency.");
+  for (const name of ["hasRecipe", "addRecipeToRuntime", "calculateIdHashOfObj", "calculateHashOfObj"]) {
+    if (typeof oneCore[name] !== "function") {
+      throw new Error(`OneCore dependency is missing ${name}.`);
+    }
+  }
+  return oneCore;
+}
+
+function mergeReverseMapEntries(entries) {
+  const merged = new Map();
+  for (const [type, properties] of entries) {
+    const current = merged.get(type) || new Set();
+    for (const property of properties || []) current.add(property);
+    merged.set(type, current);
+  }
+  return merged;
+}
+
+function targetTypeToDependencyKey(targetType) {
+  const text = String(targetType || "");
+  const acronymPrefix = text.match(/^[A-Z]+(?=[A-Z][a-z]|[0-9]|$)/)?.[0];
+  if (acronymPrefix) return acronymPrefix.toLowerCase() + text.slice(acronymPrefix.length);
+  return text.charAt(0).toLowerCase() + text.slice(1);
+}
+
+function stripUndefined(value) {
+  return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined));
+}
+
 function normalizeDonor(donor = {}) {
   return {
     id: String(donor.id || stableSlug("donor", donor.name || "person", 0)),
@@ -422,6 +879,7 @@ function normalizeDonor(donor = {}) {
     tags: Array.isArray(donor.tags) ? donor.tags.map(String) : [],
     notes: String(donor.notes || ""),
     donations: Array.isArray(donor.donations) ? donor.donations.map(normalizeDonation) : [],
+    updatedAt: Number(donor.updatedAt || 0),
   };
 }
 
