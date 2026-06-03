@@ -701,6 +701,15 @@ function applyRouteFromLocation() {
   if (state.activePanel === "settings" && settingsViews.includes(view)) {
     state.settingsView = view;
   }
+  if (state.activePanel === "data" && view === "table" && PROJECT_DAG_TABLE_VIEWS.some(([id]) => id === routeParam)) {
+    state.activeTableView = routeParam;
+  }
+  if (state.activePanel === "flows" && flowDomains.some((flow) => flow.id === view)) {
+    state.activeFlow = view;
+  }
+  if (state.activePanel === "phases" && phases.some((phase) => phase.id === view)) {
+    state.activePhase = view;
+  }
 }
 
 function routeHash(panel = state.activePanel, settingsView = state.settingsView) {
@@ -729,6 +738,46 @@ function navigateTo(panel, settingsView = state.settingsView) {
 
 function navigateSettings(view) {
   navigateTo("settings", view);
+}
+
+function routeHashForTarget(target) {
+  if (target.panel === "data" && target.tableView) return `#/data/table/${target.tableView}`;
+  if (target.panel === "flows" && target.flow) return `#/flows/${target.flow}`;
+  if (target.panel === "phases" && target.phase) return `#/phases/${target.phase}`;
+  if (target.panel === "cockpit" && target.cockpitSummary) return cockpitSummaryHash(target.cockpitSummary);
+  if (target.panel === "settings") return routeHash("settings", target.settingsView);
+  return routeHash(target.panel);
+}
+
+function applyNavigationTarget(target) {
+  if (!target?.panel) return;
+  if (target.tableView && PROJECT_DAG_TABLE_VIEWS.some(([id]) => id === target.tableView)) {
+    state.activeTableView = target.tableView;
+  }
+  if (target.flow && flowDomains.some((flow) => flow.id === target.flow)) {
+    state.activeFlow = target.flow;
+  }
+  if (target.phase && phases.some((phase) => phase.id === target.phase)) {
+    state.activePhase = target.phase;
+  }
+  if (target.visual && projectVisualTypes.some(([id]) => id === target.visual)) {
+    state.activeProjectVisual = target.visual;
+  }
+  if (target.ngoView) {
+    state.activeNgoView = target.ngoView;
+  }
+  state.activePanel = target.panel;
+  state.activeCockpitSummary = target.panel === "cockpit" ? target.cockpitSummary || null : null;
+  if (target.panel === "settings" && settingsViews.includes(target.settingsView)) {
+    state.settingsView = target.settingsView;
+  }
+
+  const nextHash = routeHashForTarget(target);
+  if (window.location.hash !== nextHash) {
+    window.location.hash = nextHash;
+  } else {
+    render();
+  }
 }
 
 let metrics = [
@@ -2538,6 +2587,73 @@ function renderEditorBoard() {
   );
 }
 
+function defaultFlowTarget() {
+  const preferred = ["tenant", "communications", "calendar", "changes"];
+  return preferred.find((id) => flowDomains.some((flow) => flow.id === id)) || flowDomains[0]?.id;
+}
+
+function assistantStepTarget(index) {
+  const flow = defaultFlowTarget();
+  const stepTargets = [
+    { panel: "data", tableView: "workload", label: "Daten öffnen" },
+    { panel: "flows", flow, visual: "flowchart", label: "Flow öffnen" },
+    { panel: "data", tableView: "dag_edges", label: "DAG öffnen" },
+    { panel: "roles", label: "Navigation prüfen" },
+    { panel: "journal", label: "Journal öffnen" },
+  ];
+  return stepTargets[index % stepTargets.length] || stepTargets[0];
+}
+
+function assistantItemTarget(text, kind, index = 0) {
+  const normalized = String(text || "").toLowerCase();
+  if (demoProject.projectType === "ngo") {
+    if (normalized.includes("spend") || normalized.includes("quitt") || normalized.includes("dank")) {
+      return { panel: "ngo", ngoView: "donors", label: "Spenden öffnen" };
+    }
+    if (normalized.includes("teilnehmer") || normalized.includes("visum")) {
+      return { panel: "ngo", ngoView: "participants", label: "Teilnehmerinnen öffnen" };
+    }
+    if (normalized.includes("safeguarding") || normalized.includes("pflicht")) {
+      return { panel: "ngo", ngoView: "compliance", label: "Pflichten öffnen" };
+    }
+  }
+  if (normalized.includes("mieter") || normalized.includes("kommunikation") || normalized.includes("zugang")) {
+    return { panel: "flows", flow: defaultFlowTarget(), visual: "flowchart", label: "Flow öffnen" };
+  }
+  if (normalized.includes("cluster") || normalized.includes("energie") || normalized.includes("foerder") || normalized.includes("förder")) {
+    return { panel: "data", tableView: kind === "criterion" ? "dag_edges" : "workload", label: kind === "criterion" ? "DAG öffnen" : "Daten öffnen" };
+  }
+  if (normalized.includes("journal")) {
+    return { panel: "journal", label: "Journal öffnen" };
+  }
+  if (normalized.includes("freigabe") || normalized.includes("rolle")) {
+    return { panel: "roles", label: "Navigation prüfen" };
+  }
+  if (kind === "criterion") {
+    return { panel: "data", tableView: "dag_edges", label: "DAG öffnen" };
+  }
+  if (kind === "context") {
+    return { panel: "data", tableView: "workload", label: "Daten öffnen" };
+  }
+  return assistantStepTarget(index);
+}
+
+function renderAssistantAction(text, badge, target, className = "") {
+  const button = el("button", { className: "run-step-button", type: "button" }, [
+    el("span", { text }),
+    el("strong", { text: badge }),
+  ]);
+  button.addEventListener("click", () => applyNavigationTarget(target));
+  return el("li", { className: className.trim() }, [button]);
+}
+
+function advanceAssistantRun() {
+  const target = assistantStepTarget(state.runStep);
+  state.runStep = (state.runStep + 1) % ai.run.steps.length;
+  state.journalExtra += 1;
+  applyNavigationTarget(target);
+}
+
 function renderAI() {
   document.querySelector("#goalBook").replaceChildren(
     bookTop(ai.goal.type, ai.goal.ref),
@@ -2545,15 +2661,21 @@ function renderAI() {
     el("p", { text: ai.goal.objective }),
     el("h3", { text: "Warum" }),
     el("p", { text: ai.goal.why }),
-    el("ul", { className: "run-steps" }, ai.goal.criteria.map((criterion) => el("li", {}, [el("span", { text: criterion }), el("strong", { text: "Kriterium" })]))),
+    el("ul", { className: "run-steps" }, ai.goal.criteria.map((criterion, index) =>
+      renderAssistantAction(criterion, "Kriterium", assistantItemTarget(criterion, "criterion", index)),
+    )),
   );
 
   document.querySelector("#workloadBook").replaceChildren(
     bookTop(ai.workload.type, ai.workload.ref),
     el("h3", { text: "Gelesene Bereiche" }),
-    el("ul", { className: "run-steps" }, ai.workload.context.map((item) => el("li", {}, [el("span", { text: item }), el("strong", { text: "Trie-Leseast" })]))),
+    el("ul", { className: "run-steps" }, ai.workload.context.map((item, index) =>
+      renderAssistantAction(item, "Quelle", assistantItemTarget(item, "context", index)),
+    )),
     el("h3", { text: "Bereich für Vorschläge" }),
-    el("ul", { className: "run-steps" }, ai.workload.mutable.map((item) => el("li", {}, [el("span", { text: item }), el("strong", { text: "Vorschlag" })]))),
+    el("ul", { className: "run-steps" }, ai.workload.mutable.map((item, index) =>
+      renderAssistantAction(item, "Vorschlag", assistantItemTarget(item, "mutable", index)),
+    )),
     el("p", { text: ai.workload.handoff }),
   );
 
@@ -2563,7 +2685,7 @@ function renderAI() {
     el("p", { text: "Dieser Prüflauf zeigt, welche Quellen gelesen wurden, was gefunden wurde und wo eine menschliche Entscheidung nötig ist." }),
     el("ul", { className: "run-steps" }, ai.run.steps.map(([kind, text], index) => {
       const itemState = index < state.runStep ? "done" : index === state.runStep ? "active" : "";
-      return el("li", { className: itemState }, [el("span", { text }), el("strong", { text: kind })]);
+      return renderAssistantAction(text, kind, assistantStepTarget(index), itemState);
     })),
   );
 }
@@ -3437,6 +3559,101 @@ function renderSettingsPanes() {
   }
 }
 
+function cycleValue(currentValue, values) {
+  const currentIndex = values.indexOf(currentValue);
+  return values[(Math.max(0, currentIndex) + 1) % values.length];
+}
+
+function settingsCycleButton(label, value, action) {
+  return el("li", { className: "settings-summary-row" }, [
+    el("span", { text: label }),
+    el("button", {
+      className: "settings-row-button",
+      type: "button",
+      "data-settings-cycle": action,
+      text: value,
+    }),
+  ]);
+}
+
+function settingsEditableField(label, value, field, inputmode = "text") {
+  return el("li", { className: "settings-summary-row editable" }, [
+    el("span", { className: "settings-field-label", text: label }),
+    el("input", {
+      className: "settings-inline-field",
+      "data-settings-field": field,
+      inputmode,
+      value: value || "",
+      "aria-label": label,
+    }),
+  ]);
+}
+
+function mirrorSettingFormField(field, value) {
+  const formFieldIds = {
+    "imap.accountId": "imapAccountId",
+    "imap.host": "imapHost",
+    "profile.name": "onboardingName",
+    "profile.email": "onboardingEmail",
+  };
+  const target = document.querySelector(`#${formFieldIds[field]}`);
+  if (target && document.activeElement !== target) target.value = value;
+}
+
+function updateSummarySettingField(field, value) {
+  if (field === "imap.accountId") {
+    settingsModel.imap.accountId = value.trim();
+    state.imapStatus = "idle";
+  }
+  if (field === "imap.host") {
+    settingsModel.imap.host = value.trim();
+    state.imapStatus = "idle";
+  }
+  if (field === "profile.name") {
+    state.onboarding.name = value.trim();
+    localStorage.setItem("projektor-profile-name", state.onboarding.name);
+  }
+  if (field === "profile.email") {
+    state.onboarding.email = value.trim();
+    localStorage.setItem("projektor-profile-email", state.onboarding.email.toLowerCase());
+  }
+  mirrorSettingFormField(field, value);
+  persistActiveProjectDatatype();
+}
+
+function cycleSummarySetting(action) {
+  if (action === "theme") {
+    state.theme = cycleValue(state.theme, ["light", "dark"]);
+    localStorage.setItem("projektor-theme", state.theme);
+    settingsModel.ui.theme = state.theme;
+    persistActiveProjectDatatype();
+    renderTheme();
+    renderSettingsSummary();
+    return;
+  }
+
+  if (action === "language") {
+    state.language = cycleValue(state.language, Object.keys(languages));
+    localStorage.setItem("projektor-language", state.language);
+    settingsModel.ui.language = state.language;
+    persistActiveProjectDatatype();
+    render();
+    return;
+  }
+
+  if (action === "imapStatus") {
+    state.imapStatus = cycleValue(state.imapStatus, ["idle", "checking", "ok", "failed"]);
+    renderSettingsSummary();
+    return;
+  }
+
+  if (action === "stats") {
+    state.onboarding.statsConsent = localStorage.getItem("projektor-usage-stats") !== "true";
+    localStorage.setItem("projektor-usage-stats", String(state.onboarding.statsConsent));
+    renderSettingsSummary();
+  }
+}
+
 function setInputLabel(inputId, text) {
   const input = document.querySelector(`#${inputId}`);
   const label = input?.closest("label");
@@ -3465,22 +3682,30 @@ function renderSettingsSummary() {
             : "Control language, appearance and project mail connection for the active project here.",
     }),
     el("ul", { className: "object-list" }, [
-      el("li", {}, [el("span", { text: "Theme" }), el("strong", { text: settingsModel.ui.theme })]),
-      el("li", {}, [el("span", { text: "Sprache" }), el("strong", { text: languages[state.language] || state.language })]),
-      el("li", {}, [el("span", { text: "IMAP Account" }), el("strong", { text: imap.accountId || "-" })]),
-      el("li", {}, [el("span", { text: "IMAP Host" }), el("strong", { text: imap.host || "-" })]),
-      el("li", {}, [el("span", { text: "IMAP status" }), el("strong", { text: statusText })]),
+      settingsCycleButton("Theme", settingsModel.ui.theme, "theme"),
+      settingsCycleButton("Sprache", languages[state.language] || state.language, "language"),
+      settingsEditableField("IMAP Account", imap.accountId, "imap.accountId"),
+      settingsEditableField("IMAP Host", imap.host, "imap.host"),
+      settingsCycleButton("IMAP status", statusText, "imapStatus"),
     ]),
     el("h3", { text: state.language === "de" ? "Lokales Profil" : state.language === "fr" ? "Profil local" : state.language === "es" ? "Perfil local" : "Local profile" }),
     el("ul", { className: "object-list" }, [
-      el("li", {}, [el("span", { text: onb("reviewName") }), el("strong", { text: localStorage.getItem("projektor-profile-name") || state.onboarding.name || "-" })]),
-      el("li", {}, [el("span", { text: onb("reviewEmail") }), el("strong", { text: localStorage.getItem("projektor-profile-email") || state.onboarding.email || "-" })]),
-      el("li", {}, [el("span", { text: onb("statsStep") }), el("strong", { text: localStorage.getItem("projektor-usage-stats") === "true" ? onb("reviewStatsOn") : onb("reviewStatsOff") })]),
+      settingsEditableField(onb("reviewName"), localStorage.getItem("projektor-profile-name") || state.onboarding.name, "profile.name"),
+      settingsEditableField(onb("reviewEmail"), localStorage.getItem("projektor-profile-email") || state.onboarding.email, "profile.email", "email"),
+      settingsCycleButton(onb("statsStep"), localStorage.getItem("projektor-usage-stats") === "true" ? onb("reviewStatsOn") : onb("reviewStatsOff"), "stats"),
     ]),
     el("div", { className: "settings-actions" }, [
       el("button", { className: "secondary-action", id: "resetOnboarding", type: "button", text: onb("resetOnboarding") }),
     ]),
   );
+}
+
+function mailPreviewHref(tag, target) {
+  if (target) return target;
+  const normalizedTag = String(tag || "").toLowerCase();
+  if (["visum", "fundraising", "programm", "safeguarding"].includes(normalizedTag)) return routeHash("ngo");
+  if (["entscheidung", "lp4", "fachplanung", "nachhaltigkeit"].includes(normalizedTag)) return routeHash("flows");
+  return routeHash("journal");
 }
 
 function renderMailPreview() {
@@ -3491,10 +3716,12 @@ function renderMailPreview() {
       text:
         "IMAP wird als Projektquelle eingebunden. Nachrichten bleiben nachvollziehbar zugeordnet und werden nicht als unkontrollierte Kopien verteilt.",
     }),
-    el("ul", { className: "topic-list" }, mailPreview.map(([date, sender, subject, tag]) =>
+    el("ul", { className: "topic-list mail-preview-list" }, mailPreview.map(([date, sender, subject, tag, target]) =>
       el("li", {}, [
-        el("strong", { text: subject }),
-        el("span", { text: `${date} · ${sender} · ${tag}` }),
+        el("a", { href: mailPreviewHref(tag, target), className: "mail-preview-link" }, [
+          el("strong", { text: subject }),
+          el("span", { text: `${date} · ${sender} · ${tag}` }),
+        ]),
       ]),
     )),
   );
@@ -3801,6 +4028,7 @@ function updateSettingsFromForm() {
   settingsModel.imap.mailbox = document.querySelector("#imapMailbox").value.trim();
   settingsModel.imap.hasPassword = Boolean(document.querySelector("#imapSecret").value.trim());
   state.imapStatus = "idle";
+  persistActiveProjectDatatype();
   renderSettingsSummary();
 }
 
@@ -3810,6 +4038,7 @@ function validateImapSettings() {
   const valid = Boolean(imap.accountId && imap.host && imap.user && imap.mailbox && imap.port > 0 && imap.hasPassword);
   state.imapStatus = valid ? "ok" : "failed";
   state.journalExtra += 1;
+  persistActiveProjectDatatype();
   renderSettingsSummary();
   renderJournal();
 }
@@ -3887,8 +4116,7 @@ function applyDatasetPlan(planId) {
   state.datasetCreatorStatus = "angewendet";
   state.importStatus = "imported";
   state.importFileName = `${dataset.creator?.plan?.label || planId}.project.json`;
-  state.activePanel = dataset.project?.projectType === "ngo" ? "ngo" : "data";
-  render();
+  applyNavigationTarget({ panel: dataset.project?.projectType === "ngo" ? "ngo" : "data" });
 }
 
 function exportDatasetPlan(planId) {
@@ -4135,6 +4363,12 @@ function bindActions() {
 
   document.querySelector("#onboardingRoot").addEventListener("input", syncOnboardingInputs);
   document.addEventListener("input", (event) => {
+    const settingsField = event.target.closest("[data-settings-field]");
+    if (settingsField) {
+      updateSummarySettingField(settingsField.dataset.settingsField, settingsField.value);
+      return;
+    }
+
     if (event.target.id === "ngoDonorSearch") {
       clearNgoMetricFilter();
       state.donorSearch = event.target.value;
@@ -4186,6 +4420,12 @@ function bindActions() {
   });
 
   document.addEventListener("click", (event) => {
+    const settingsCycle = event.target.closest("[data-settings-cycle]");
+    if (settingsCycle) {
+      cycleSummarySetting(settingsCycle.dataset.settingsCycle);
+      return;
+    }
+
     const ngoMetricButton = event.target.closest("[data-ngo-metric]");
     if (ngoMetricButton) {
       applyNgoMetricFilter(ngoMetricButton.dataset.ngoMetric);
@@ -4301,8 +4541,7 @@ function bindActions() {
   });
 
   document.querySelector("#advanceRun").addEventListener("click", () => {
-    state.runStep = (state.runStep + 1) % ai.run.steps.length;
-    renderAI();
+    advanceAssistantRun();
   });
 
   document.querySelector("#addJournalEntry").addEventListener("click", () => {

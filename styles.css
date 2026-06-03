@@ -906,13 +906,107 @@ h3 {
 .object-list li,
 .topic-list li,
 .run-steps li {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: start;
   gap: 14px;
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--subtle);
+}
+
+.run-steps li {
+  padding: 0;
+  overflow: hidden;
+}
+
+.run-step-button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: start;
+  gap: 14px;
+  width: 100%;
+  min-height: 42px;
+  padding: 10px;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.run-step-button:hover,
+.run-step-button:focus-visible {
+  color: var(--accent-2);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+
+.run-step-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.run-step-button strong {
+  text-align: right;
+}
+
+.settings-summary-row {
+  align-items: center;
+}
+
+.settings-summary-row.editable {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.65fr) minmax(0, 1fr);
+  align-items: center;
+}
+
+.settings-row-button {
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  color: var(--ink);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.settings-row-button:hover,
+.settings-row-button:focus-visible,
+.mail-preview-link:hover,
+.mail-preview-link:focus-visible {
+  color: var(--accent);
+}
+
+.settings-row-button:focus-visible,
+.mail-preview-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+.settings-inline-field {
+  min-width: 0;
+  font-weight: 800;
+  text-align: right;
+}
+
+.mail-preview-list li {
+  padding: 0;
+  overflow: hidden;
+}
+
+.mail-preview-link {
+  display: grid;
+  gap: 9px;
+  width: 100%;
+  padding: 10px;
+  color: inherit;
+  text-decoration: none;
 }
 
 .trie-matrix {
@@ -2426,10 +2520,13 @@ h3 {
 .object-list span,
 .topic-list strong,
 .topic-list span,
-.run-steps strong,
 .run-steps span {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.run-steps strong {
+  white-space: nowrap;
 }
 
 .file-drop input {
