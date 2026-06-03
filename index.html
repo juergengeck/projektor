@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>projektor.one Prototype</title>
     <link rel="icon" type="image/svg+xml" href="./projektor_logo.svg" />
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=ngo-20260603" />
   </head>
   <body>
     <section class="onboarding" id="onboardingRoot" aria-live="polite"></section>
@@ -150,7 +150,19 @@
             <div class="data-card" id="importPreview"></div>
             <div class="data-card" id="exportSummary"></div>
           </div>
+          <div class="project-table-board" id="projectTableBoard"></div>
           <div class="dataset-creator-board" id="datasetCreatorBoard"></div>
+        </section>
+
+        <section class="panel" id="ngo" aria-labelledby="ngo-title">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow" id="ngoEyebrow">NGO Capability</p>
+              <h2 id="ngo-title">Spender und Teilnehmerinnen-Programm</h2>
+            </div>
+          </div>
+          <div class="metrics ngo-metrics" id="ngoMetrics"></div>
+          <div class="ngo-board" id="ngoBoard"></div>
         </section>
 
         <section class="panel" id="ai" aria-labelledby="ai-title">
@@ -257,6 +269,6 @@
       </main>
     </div>
 
-    <script type="module" src="./app.js"></script>
+    <script type="module" src="./app.js?v=ngo-20260603"></script>
   </body>
 </html>

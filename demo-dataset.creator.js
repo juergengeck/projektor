@@ -1,6 +1,7 @@
 import { createMatchingSupply } from "../one/packages/matching.core/dist/index.js";
 import { createHoaiPlanningDefaults } from "./hoai.core.js";
-import { createProjectPlan, createProjectScheduleStateDagUpdate } from "./project.core.js";
+import { NGO_CAPABILITY, createNgoDemoProjectData } from "./packages/ngo.core/index.js";
+import { createProjectPlan, createProjectScheduleStateDagUpdate } from "./packages/project.core/index.js";
 
 export const PROJECT_DATATYPE_KIND = "projektor.one/project";
 export const PROJECT_DATATYPE_VERSION = 1;
@@ -11,9 +12,9 @@ export const DEMO_DATASET_CREATOR_SKILL = {
   capability: {
     capabilityId: "projektor.demo-dataset-creator",
     kind: "project-demo-dataset",
-    domains: ["project.dataset", "project.schedule", "project.roles", "project.assistant"],
+    domains: ["project.dataset", "project.schedule", "project.roles", "project.assistant", "ngo.donors", "ngo.participants"],
     inputShapes: ["demo-dataset-plan"],
-    outputShapes: ["projektor-project-datatype"],
+    outputShapes: ["projektor-project-datatype", "ngo-project-datatype"],
     effects: ["generate", "replace-active-project", "export"],
     tags: ["local-first", "scenario-fixture", "planner-ready"],
   },
@@ -52,6 +53,15 @@ const DATASET_PLANS = [
     scale: { contacts: 132, trieRoots: 8, tasks: 11, journal: 9 },
     risk: "Mittel",
     projectStart: "2026-09-01",
+  },
+  {
+    id: "ngo-supporter-program",
+    label: "NGO Unterstützerinnen",
+    scenario: "Spenderverwaltung und Teilnehmerinnen-Programm mit Visa-Fristen, Safeguarding und DSGVO-Austritt.",
+    density: "domain",
+    scale: { contacts: 9, trieRoots: 7, tasks: 8, journal: 7 },
+    risk: "Fristen",
+    projectStart: "2026-06-03",
   },
 ];
 
@@ -104,6 +114,7 @@ const PLAN_BUILDERS = {
   "kita-2028-expanded": buildKitaDataset,
   "clinic-wing-renovation": buildClinicDataset,
   "housing-retrofit-wave": buildHousingDataset,
+  "ngo-supporter-program": buildNgoDataset,
 };
 
 function clone(value) {
@@ -131,9 +142,11 @@ function createSkillSupply() {
   });
 }
 
-function localizedProject({ id, title, subtitle, phase, risk, nodes }) {
+function localizedProject({ id, title, subtitle, phase, risk, nodes, projectType = "construction", capabilityIds = [] }) {
   return {
     id,
+    projectType,
+    capabilityIds,
     objectType: "Projekt-ID",
     shortTitle: { de: title, en: title, fr: title, es: title },
     titles: { de: title, en: title, fr: title, es: title },
@@ -286,6 +299,7 @@ function composeDataset(plan, parts) {
     planning,
     assistant: parts.assistant,
     settings: parts.settings,
+    ngo: parts.ngo,
     mailPreview: parts.mailPreview,
     importModel: parts.importModel,
     exportModel: parts.exportModel,
@@ -293,6 +307,152 @@ function composeDataset(plan, parts) {
     runtime: runtimeFor(parts.roleModel.roles, planning.phases, planning.flowDomains),
   };
   return assertValidDataset(dataset);
+}
+
+function buildNgoDataset(plan) {
+  const projectId = "demo-ngo-supporter-program";
+  const ngo = createNgoDemoProjectData();
+  const roles = {
+    programLead: {
+      label: "Programmleitung",
+      type: "NGO Rolle",
+      id: "Aufnahme, Abschluss, Safeguarding und Datenaufbewahrung",
+      summary: "Steuert Aufnahmeentscheidungen, Ehemaligen-Übergänge, Meldewege und Lösch-/Aufbewahrungsregeln.",
+      permissions: ["Teilnehmerinnen", "Safeguarding", "Austritt", "Export"],
+    },
+    caregiver: {
+      label: "Betreuerin",
+      type: "NGO Rolle",
+      id: "Betreuung, Gesundheit, Gespräche und Alltag",
+      summary: "Pflegt Eingewöhnung, Betreuungsgespräche, Gesundheit/Therapie und nächste Schritte im Programm.",
+      permissions: ["Programmstatus", "Notizen", "Gesundheit", "Visum lesen"],
+    },
+    education: {
+      label: "Bildungsbegleitung",
+      type: "NGO Rolle",
+      id: "Deutschkurs, Bildung, Ausbildung und Beruf",
+      summary: "Koordiniert Deutschkurs, Bildungsplanung, Bewerbungsphase, Verträge und Übergang in Arbeit.",
+      permissions: ["Deutschkurs", "Ausbildung", "Beruf", "Export Teilnehmerinnen"],
+    },
+    fundraising: {
+      label: "Fundraising",
+      type: "NGO Rolle",
+      id: "Spenden, Mitglieder, Dank und Quittungen",
+      summary: "Verwaltet Unterstützerinnen, Spenden, Dankstatus, jährliche Quittungsschwelle und Export Einzelspenden.",
+      permissions: ["Spender", "Einzelspenden", "Quittungen", "Tags"],
+    },
+    safeguarding: {
+      label: "Safeguarding",
+      type: "Pflicht-Ablauf",
+      id: "Kinderschutz, Meldewege und Eskalation",
+      summary: "Achtet besonders bei Minderjährigen auf Vormundschaft, Meldewege und getrennte Verantwortlichkeiten.",
+      permissions: ["Meldungen", "Eskalation", "Minderjährige", "Notfallnotizen"],
+    },
+  };
+
+  const schedule = {
+    projectId,
+    projectStart: plan.projectStart,
+    tasks: [
+      { id: "erstkontakt", label: "Erstkontakt erfassen", owner: "Programmleitung", phase: "Programm", durationDays: 2 },
+      { id: "aufnahme", label: "Aufnahmeentscheidung und Stammdaten", owner: "Programmleitung", phase: "Programm", durationDays: 5 },
+      { id: "eingewoehnung", label: "Eingewöhnung und Betreuungszuordnung", owner: "Betreuerin", phase: "Programm", durationDays: 21 },
+      { id: "deutschkurs", label: "Deutschkurs starten und Fortschritt pflegen", owner: "Betreuerin", phase: "Bildung", durationDays: 60 },
+      { id: "bildung-ausbildung", label: "Bildungsplanung und Ausbildungspfad", owner: "Bildungsbegleitung", phase: "Bildung", durationDays: 75 },
+      { id: "arbeit", label: "Übergang in Arbeit vorbereiten", owner: "Betreuerin", phase: "Arbeit", durationDays: 45 },
+      { id: "verselbststaendigung", label: "Wohnung, Einkommen und Selbstständigkeit prüfen", owner: "Betreuerin", phase: "Austritt", durationDays: 30 },
+      { id: "ehemalige", label: "Ehemalige, Löschung und Aufbewahrung anwenden", owner: "Programmleitung", phase: "Austritt", durationDays: 10 },
+    ],
+    dependencies: [
+      { from: "erstkontakt", to: "aufnahme", type: "FS", lagDays: 0 },
+      { from: "aufnahme", to: "eingewoehnung", type: "FS", lagDays: 0 },
+      { from: "eingewoehnung", to: "deutschkurs", type: "FS", lagDays: 0 },
+      { from: "deutschkurs", to: "bildung-ausbildung", type: "SS", lagDays: 20 },
+      { from: "bildung-ausbildung", to: "arbeit", type: "FS", lagDays: 0 },
+      { from: "arbeit", to: "verselbststaendigung", type: "FS", lagDays: 0 },
+      { from: "verselbststaendigung", to: "ehemalige", type: "FS", lagDays: 0 },
+    ],
+  };
+
+  return composeDataset(plan, {
+    project: localizedProject({
+      id: projectId,
+      title: "Demo: NGO Unterstützerinnen",
+      subtitle: "Spenderverwaltung und Teilnehmerinnen-Programm mit Fristen, Safeguarding und DSGVO-Austritt",
+      phase: "NGO Programm",
+      risk: plan.risk,
+      nodes: ["Fundraising", "Programmleitung", "Betreuerin", "Safeguarding"],
+      projectType: "ngo",
+      capabilityIds: [NGO_CAPABILITY.capabilityId],
+    }),
+    cockpit: {
+      metrics: [
+        ["3", "Unterstützer", "Spenderinnen und Mitglieder mit Gesamt-, Dank- und Quittungsstatus."],
+        ["860 €", "gesamt eingenommen", "Spenden, Mitgliedsbeiträge und Dauerspenden im aktuellen Demo-Bestand."],
+        ["2", "noch zu bedanken", "Offene Dank- oder Quittungsfälle werden zuerst angezeigt."],
+        ["3", "Teilnehmerinnen", "Programmstatus, Alter, Kinder und Visum-Fristen werden gemeinsam sichtbar."],
+      ],
+      lanes: [
+        { title: "Spenden", text: "Personen, Einzelspenden, Tags, Dankstatus und Quittungsschwelle bleiben im NGO-Datenblock.", progress: 72 },
+        { title: "Teilnehmerinnen", text: "Aktueller Stand ist linear, Visum, Deutschkurs und Ausbildung laufen parallel.", progress: 58 },
+        { title: "Pflicht-Abläufe", text: "Safeguarding, Visa-Vorlauf und DSGVO-Austritt sind als eigene Prüfpunkte modelliert.", progress: 64 },
+      ],
+    },
+    roleModel: {
+      roles,
+      runnerRoleKeys: ["programLead", "caregiver", "education", "fundraising"],
+      runnerRoleWindowLayout: defaultRunnerLayout(),
+      runnerProtocolSteps: ngoProtocolFor(projectId),
+      sharedTrieRoots: [
+        root(`/${projectId}/donors`, "NgoDonorTrieRoot", "fundraising", { programLead: "filtered", caregiver: "none", education: "none", fundraising: "full", safeguarding: "none" }),
+        root(`/${projectId}/donations`, "NgoDonationTrieRoot", "fundraising", { programLead: "filtered", caregiver: "none", education: "none", fundraising: "full", safeguarding: "none" }),
+        root(`/${projectId}/participants`, "NgoParticipantTrieRoot", "programLead", { programLead: "full", caregiver: "filtered", education: "filtered", fundraising: "none", safeguarding: "filtered" }),
+        root(`/${projectId}/visa`, "NgoVisaDeadlineTrieRoot", "programLead", { programLead: "full", caregiver: "filtered", education: "filtered", fundraising: "none", safeguarding: "filtered" }),
+        root(`/${projectId}/safeguarding`, "NgoSafeguardingTrieRoot", "safeguarding", { programLead: "filtered", caregiver: "filtered", education: "none", fundraising: "none", safeguarding: "full" }),
+        root(`/${projectId}/retention`, "NgoRetentionTrieRoot", "programLead", { programLead: "full", caregiver: "none", education: "none", fundraising: "filtered", safeguarding: "filtered" }),
+        root(`/${projectId}/journal`, "ProjectJournalTrieRoot", "programLead", { programLead: "full", caregiver: "filtered", education: "filtered", fundraising: "filtered", safeguarding: "filtered" }),
+      ],
+    },
+    schedule,
+    assistant: createAssistant({
+      projectId,
+      label: "NGO Unterstützerinnen",
+      ref: "Visa/Safeguarding Check",
+      focus: "Offene Visa-Fristen, Minderjährigenregeln und Dank-/Quittungspflichten sichtbar machen.",
+      context: ["Teilnehmerinnen", "Visum", "Safeguarding", "Spenden", "Quittungen"],
+      mutable: ["Wiedervorlagen", "Dankliste", "Journalentwuerfe"],
+      findings: ["Visum Sita Rai im Vorlauf", "Minderjährige ohne Selbstverpflichtung", "Murat Demir braucht Dank und Quittungsprüfung"],
+    }),
+    settings: createSettings(projectId, "INBOX/Demo NGO"),
+    ngo,
+    mailPreview: [
+      ["Heute", "Ausländerbehörde", "Wiedervorlage Schülerinnnenvisum", "visum"],
+      ["Gestern", "Murat Demir", "Projektbesuch und Spendenquittung", "fundraising"],
+      ["Mo", "Betreuerin", "Betreuungsgespräch und Safeguarding-Notiz", "programm"],
+    ],
+    importModel: createImportModel({
+      source: "NGO Demo Dataset",
+      sheets: [
+        ["Spender", "Personen", 3, "Kontakt, Mitgliedschaft, Einwilligung, Dank und Quittungen"],
+        ["Einzelspenden", "Beiträge", 6, "Typ, Betrag, Datum und Verwendungszweck"],
+        ["Teilnehmerinnen", "Programm", 3, "Stammdaten, Status, Visum, Bildung und Betreuung"],
+        ["Pflicht-Abläufe", "Compliance", 4, "Safeguarding, Visum, Betreuungsgespräch und DSGVO-Austritt"],
+      ],
+      previewRows: [
+        ["Anne Keller", "Mitglied", `/${projectId}/donors`, "Fundraising voll"],
+        ["Maya Rai", "Teilnehmerin", `/${projectId}/participants`, "Programmleitung voll"],
+        ["Sita Rai", "Minderjährige", `/${projectId}/safeguarding`, "Safeguarding gefiltert"],
+        ["Murat Demir", "Spender", `/${projectId}/donations`, "Quittung prüfen"],
+      ],
+    }),
+    exportModel: createExportModel("Demo: NGO Unterstützerinnen", baseExportSections(["Spender", "Einzelspenden", "Teilnehmerinnen", "Safeguarding", "DSGVO-Austritt"])),
+    journal: [
+      ["2026-06-03 09:10", "NGO-Datensatz erzeugt", "Demo Dataset Creator hat Spender und Teilnehmerinnen als NGO-Projektgraph vorbereitet.", "NGO 001"],
+      ["2026-06-03 09:18", "Visum markiert", "Sita Rai hat eine Frist im Vorlauf-Alarm.", "NGO 002"],
+      ["2026-06-03 09:26", "Minderjährigkeit geprüft", "Selbstverpflichtung bleibt deaktiviert; Vormundschaft/Safeguarding beachten.", "NGO 003"],
+      ["2026-06-03 09:40", "Dank offen", "Murat Demir und Lena Schulz stehen in der offenen Dankliste.", "NGO 004"],
+    ],
+  });
 }
 
 function buildKitaDataset(plan) {
@@ -667,7 +827,47 @@ function defaultRunnerLayout() {
     trade: { left: 1540, top: 60, width: 470, height: 640 },
     operator: { left: 1040, top: 60, width: 470, height: 640 },
     tenant: { left: 1040, top: 60, width: 470, height: 640 },
+    programLead: { left: 40, top: 60, width: 470, height: 640 },
+    caregiver: { left: 540, top: 60, width: 470, height: 640 },
+    education: { left: 1040, top: 60, width: 470, height: 640 },
+    fundraising: { left: 1540, top: 60, width: 470, height: 640 },
+    safeguarding: { left: 1040, top: 60, width: 470, height: 640 },
   };
+}
+
+function ngoProtocolFor(projectId) {
+  return [
+    {
+      from: "programLead",
+      to: "caregiver",
+      text: `Bitte prüfe die Visumsfrist Sita Rai im Projekt ${projectId}.`,
+      journal: "Programmleitung fordert Betreuerin-Prüfung zur Visumsfrist an.",
+    },
+    {
+      from: "caregiver",
+      to: "safeguarding",
+      text: "Sita ist minderjährig; bitte Vormundschaft und Safeguarding-Notiz gegenzeichnen.",
+      journal: "Betreuerin eskaliert Minderjährigenregel an Safeguarding.",
+    },
+    {
+      from: "safeguarding",
+      to: "programLead",
+      text: "Keine Selbstverpflichtung durch Minderjährige; Vormundschaft und Meldeweg bleiben Pflichtspur.",
+      journal: "Safeguarding bestätigt Pflichtspur ohne Selbstverpflichtung.",
+    },
+    {
+      from: "fundraising",
+      to: "programLead",
+      text: "Murat Demir braucht Dank und Quittungsprüfung; Programmbezug Bildung / Ausbildung ist sichtbar.",
+      journal: "Fundraising meldet offene Dank- und Quittungsaufgabe.",
+    },
+    {
+      from: "education",
+      to: "caregiver",
+      text: "Maya Rai ist in Bewerbungsphase; nächster Schritt Praktikum oder Arbeit vorbereiten.",
+      journal: "Bildungsbegleitung ergänzt nächsten Schritt für Maya Rai.",
+    },
+  ];
 }
 
 function protocolFor(projectId, decision, openPoint, thirdRole = "authority") {

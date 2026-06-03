@@ -7,7 +7,7 @@
   "scripts": {
     "build": "./deploy.sh --build-only",
     "deploy": "./deploy.sh",
-    "test": "node ./project.core.test.js && node ./hoai.core.test.js && node ./demo-dataset.creator.test.js"
+    "test": "node ./packages/project.core/index.test.js && node ./packages/table.core/index.test.js && node ./packages/ngo.core/index.test.js && node ./hoai.core.test.js && node ./demo-dataset.creator.test.js"
   },
   "repository": {
     "type": "git",

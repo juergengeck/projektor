@@ -1,4 +1,4 @@
-import { createProjectPlan } from "./project.core.js";
+import { createProjectPlan } from "./packages/project.core/index.js";
 
 export function createDemoProjectSchedule() {
   return createProjectPlan({

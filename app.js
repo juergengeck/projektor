@@ -1,4 +1,4 @@
-import { createProjectPlan, createProjectScheduleStateDagUpdate } from "./project.core.js";
+import { createProjectPlan, createProjectScheduleStateDagUpdate } from "./packages/project.core/index.js";
 import { createDemoProjectSchedule } from "./demo-kita-2028.project.js";
 import { createProjectEditorWorkbench } from "./content-editors.project.js";
 import {
@@ -9,6 +9,27 @@ import {
   listDemoDatasetPlans,
 } from "./demo-dataset.creator.js";
 import { createHoaiPlanningDefaults, normalizeHoaiPlanning, phaseById } from "./hoai.core.js";
+import {
+  PROJECT_DAG_TABLE_VIEWS,
+  createProjectDagExcelProjection,
+  csvFromProjectDagExcelSheet,
+  getProjectDagExcelSheet,
+} from "./packages/table.core/index.js";
+import {
+  addNgoDonor,
+  addNgoParticipant,
+  createNgoBackup,
+  createNgoProjectData,
+  csvFromNgoDonations,
+  csvFromNgoParticipants,
+  csvFromNgoPeople,
+  donorMetrics,
+  normalizeNgoProjectData,
+  participantMetrics,
+  queryNgoDonors,
+  queryNgoParticipants,
+  restoreNgoBackup,
+} from "./packages/ngo.core/index.js";
 
 const state = {
   activePanel: "cockpit",
@@ -41,13 +62,20 @@ const state = {
   runnerProtocolStep: 0,
   settingsView: "configuration",
   activeProjectVisual: "gantt",
+  activeTableView: "schedule",
+  activeNgoView: "donors",
+  donorSearch: "",
+  donorSort: "open",
+  donorOnlyOpen: false,
+  participantSearch: "",
+  participantSort: "visa",
 };
 
 const runtimeWindowId = `projektor-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const runnerWindowRefs = new Map();
 let activeRunnerAbort = false;
 const runnerRoleParam = new URLSearchParams(window.location.search).get("runnerRole");
-const isRunnerRoleWindow = ["architect", "owner", "authority", "trade", "operator", "tenant"].includes(runnerRoleParam);
+const isRunnerRoleWindow = ["architect", "owner", "authority", "trade", "operator", "tenant", "programLead", "caregiver", "education", "fundraising", "safeguarding"].includes(runnerRoleParam);
 
 const navItems = [
   ["cockpit", "CP", "navCockpit"],
@@ -55,6 +83,7 @@ const navItems = [
   ["phases", "LP", "navPhases"],
   ["flows", "FL", "navFlows"],
   ["data", "DA", "navData"],
+  ["ngo", "NG", "navNgo"],
   ["ai", "AS", "navAi"],
   ["journal", "JO", "navJournal"],
   ["settings", "SE", "navSettings"],
@@ -323,6 +352,7 @@ const i18n = {
     navPhases: "Phasen",
     navFlows: "Flows",
     navData: "Daten",
+    navNgo: "NGO",
     navAi: "Assistenz",
     navJournal: "Journal",
     navSettings: "Einstellungen",
@@ -369,6 +399,8 @@ const i18n = {
     dataPreviewText: "Projektor prüft die Datei zuerst und zeigt Änderungen an, bevor Daten übernommen werden.",
     exportBundleTitle: "Export-Bundle",
     exportBundleText: "Der Export sammelt Kontakte, Rollen, Termine, Dokumente, Mailbezug und Journal in einer nachvollziehbaren Projektdatei.",
+    ngoEyebrow: "NGO Capability",
+    ngoTitle: "Spender und Teilnehmerinnen-Programm",
     roleAllowed: "erlaubt",
     status: "Status",
     parser: "Dateityp",
@@ -384,6 +416,7 @@ const i18n = {
     navPhases: "Phases",
     navFlows: "Flows",
     navData: "Data",
+    navNgo: "NGO",
     navAi: "Assistant",
     navJournal: "Journal",
     navSettings: "Settings",
@@ -430,6 +463,8 @@ const i18n = {
     dataPreviewText: "Projektor checks the file first and previews changes before anything is imported.",
     exportBundleTitle: "Export bundle",
     exportBundleText: "The export collects contacts, roles, dates, documents, mail references and journal entries in one traceable project file.",
+    ngoEyebrow: "NGO capability",
+    ngoTitle: "Donors and participant program",
     roleAllowed: "allowed",
     status: "Status",
     parser: "File type",
@@ -445,6 +480,7 @@ const i18n = {
     navPhases: "Phases",
     navFlows: "Flux",
     navData: "Données",
+    navNgo: "NGO",
     navAi: "Surface IA",
     navJournal: "Journal",
     navSettings: "Réglages",
@@ -491,6 +527,8 @@ const i18n = {
     dataPreviewText: "Projektor vérifie d'abord le fichier et affiche les changements avant toute importation.",
     exportBundleTitle: "Bundle d'export",
     exportBundleText: "L'export rassemble contacts, rôles, dates, documents, références mail et journal dans un fichier projet traçable.",
+    ngoEyebrow: "Capability NGO",
+    ngoTitle: "Donateurs et programme participantes",
     roleAllowed: "autorisé",
     status: "Statut",
     parser: "Type de fichier",
@@ -506,6 +544,7 @@ const i18n = {
     navPhases: "Fases",
     navFlows: "Flujos",
     navData: "Datos",
+    navNgo: "NGO",
     navAi: "Superficie IA",
     navJournal: "Diario",
     navSettings: "Ajustes",
@@ -552,6 +591,8 @@ const i18n = {
     dataPreviewText: "Projektor revisa primero el archivo y muestra los cambios antes de importar datos.",
     exportBundleTitle: "Paquete de exportación",
     exportBundleText: "La exportación reúne contactos, roles, fechas, documentos, referencias de correo y diario en un archivo trazable.",
+    ngoEyebrow: "Capacidad NGO",
+    ngoTitle: "Donantes y programa de participantes",
     roleAllowed: "permitido",
     status: "Estado",
     parser: "Tipo de archivo",
@@ -865,6 +906,8 @@ let journalBase = [
   ["2026-05-27 13:46", "Export vorbereitet", "Projekt-Export mit Beteiligten, Rollen, Dokumenten, Mailbezügen, Einstellungen und Journal vorbereitet.", "Journal 006"],
 ];
 
+let ngoWorkspace = createNgoProjectData();
+
 const PROJECT_STORAGE_KEY = "projektor-active-project";
 const datasetPlans = listDemoDatasetPlans();
 
@@ -931,6 +974,7 @@ function createProjectDatatype() {
     },
     assistant: deepClone(ai),
     settings: sanitizeProjectSettings(settingsModel),
+    ngo: normalizeNgoProjectData(ngoWorkspace),
     mailPreview: deepClone(mailPreview),
     importModel: deepClone(dataImportModel),
     exportModel: deepClone(exportBundleModel),
@@ -1021,6 +1065,7 @@ function installProjectDatatype(projectData, { persist = false } = {}) {
   projectSchedule = createProjectPlan(normalized.planning?.schedule || projectSchedule);
   ai = deepClone(normalized.assistant || ai);
   settingsModel = sanitizeProjectSettings(normalized.settings || settingsModel);
+  ngoWorkspace = normalizeNgoProjectData(normalized.ngo || {});
   mailPreview = deepClone(normalized.mailPreview || []);
   dataImportModel = deepClone(normalized.importModel || dataImportModel);
   exportBundleModel = deepClone(normalized.exportModel || exportBundleModel);
@@ -1039,10 +1084,15 @@ function installProjectDatatype(projectData, { persist = false } = {}) {
   state.runnerMessages = [];
   state.runnerProtocolStep = 0;
   state.runnerStatus = "idle";
+  state.activeNgoView = "donors";
 
   if (persist) {
     localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(createProjectDatatype()));
   }
+}
+
+function persistActiveProjectDatatype() {
+  localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(createProjectDatatype()));
 }
 
 function loadStoredProjectDatatype() {
@@ -1321,6 +1371,8 @@ function renderStaticText() {
   setText("data-title", tr("dataTitle"));
   setText("downloadTemplate", tr("template"));
   setText("exportBundle", tr("export"));
+  setText("ngoEyebrow", tr("ngoEyebrow"));
+  setText("ngo-title", tr("ngoTitle"));
   setText("aiEyebrow", tr("aiEyebrow"));
   setText("ai-title", tr("aiTitle"));
   setText("advanceRun", tr("advanceRun"));
@@ -1561,7 +1613,7 @@ function renderScheduleBoard() {
 
   let update;
   try {
-    update = createProjectScheduleStateDagUpdate(projectSchedule, { managedTaskId: "entwurf" });
+    update = createProjectScheduleStateDagUpdate(projectSchedule, { managedTaskId: managedScheduleTaskId() });
   } catch (error) {
     root.replaceChildren(
       el("article", { className: "schedule-card schedule-error" }, [
@@ -1577,7 +1629,7 @@ function renderScheduleBoard() {
   const taskById = new Map(plan.tasks.map((task) => [task.id, task]));
   const criticalLabels = plan.criticalPath.map((taskId) => taskLabel(taskById, taskId)).join(" -> ");
   const finish = formatProjectDay(plan.projectFinishDay);
-  const managedTask = taskById.get("entwurf") || plan.tasks.find((task) => task.isCritical) || plan.tasks[0];
+  const managedTask = taskById.get(managedScheduleTaskId()) || plan.tasks.find((task) => task.isCritical) || plan.tasks[0];
   const managedSuccessors = plan.dependencies
     .filter((dependency) => dependency.from === managedTask?.id)
     .map((dependency) => taskLabel(taskById, dependency.to));
@@ -1907,7 +1959,7 @@ function renderProjectVisuals() {
 
   let update;
   try {
-    update = createProjectScheduleStateDagUpdate(projectSchedule, { managedTaskId: "entwurf" });
+    update = createProjectScheduleStateDagUpdate(projectSchedule, { managedTaskId: managedScheduleTaskId() });
   } catch (error) {
     root.replaceChildren(
       el("article", { className: "visual-card schedule-error" }, [
@@ -1964,7 +2016,7 @@ function renderEditorBoard() {
       bookTop("Inhalte erstellen", conciseProjectRef()),
       el("h3", { text: "Projektunterlagen aus Struktur und Quellen" }),
       el("p", { text: "Reaktor strukturiert Entscheidungen und offene Punkte; VGER setzt daraus quellengebundene Unterlagen zusammen." }),
-      el("ul", { className: "object-list compact-list" }, [
+      el("ul", { className: "editor-counts" }, [
         el("li", {}, [el("span", { text: "Editoren" }), el("strong", { text: `${workbench.registry.editors.length}` })]),
         el("li", {}, [el("span", { text: "Übergaben" }), el("strong", { text: `${workbench.handoffs.length}` })]),
         el("li", {}, [el("span", { text: "Gemeinsame Kerne" }), el("strong", { text: `${workbench.alignmentModules.length}` })]),
@@ -1974,14 +2026,14 @@ function renderEditorBoard() {
       el("article", { className: "editor-card" }, [
         bookTop(editor.label, editor.workspace === "reaktor" ? "Gliederung" : "Dokumente"),
         el("h3", { text: editor.purpose }),
-        el("ul", { className: "topic-list compact-list" }, [
-          el("li", {}, [
-            el("strong", { text: "Nimmt auf" }),
-            el("span", { text: editor.accepts.map(formatEditorContentKind).join(", ") }),
+        el("dl", { className: "editor-meta" }, [
+          el("div", {}, [
+            el("dt", { text: "Nimmt auf" }),
+            el("dd", { text: editor.accepts.map(formatEditorContentKind).join(", ") }),
           ]),
-          el("li", {}, [
-            el("strong", { text: "Erzeugt" }),
-            el("span", { text: editor.produces.map(formatEditorContentKind).join(", ") }),
+          el("div", {}, [
+            el("dt", { text: "Erzeugt" }),
+            el("dd", { text: editor.produces.map(formatEditorContentKind).join(", ") }),
           ]),
         ]),
       ]),
@@ -2075,6 +2127,7 @@ function renderData() {
     )),
   );
 
+  renderProjectTableBoard();
   renderDatasetCreatorBoard();
 }
 
@@ -2115,6 +2168,476 @@ function renderDatasetCreatorBoard() {
         ]),
       ]),
     )),
+  );
+}
+
+function activeProjectTableType() {
+  return PROJECT_DAG_TABLE_VIEWS.find(([id]) => id === state.activeTableView)?.[0] || PROJECT_DAG_TABLE_VIEWS[0][0];
+}
+
+function managedScheduleTaskId() {
+  return projectSchedule.tasks?.some((task) => task.id === "entwurf")
+    ? "entwurf"
+    : projectSchedule.tasks?.[0]?.id || "fallback";
+}
+
+function createActiveProjectTableProjection() {
+  let update;
+  try {
+    update = createProjectScheduleStateDagUpdate(projectSchedule, { managedTaskId: managedScheduleTaskId() });
+  } catch {
+    update = createProjectScheduleStateDagUpdate({
+      projectId: demoProject.id || "project",
+      projectStart: projectSchedule.projectStart,
+      tasks: [{ id: "fallback", label: "Fallback", durationDays: 0 }],
+      dependencies: [],
+    }, { managedTaskId: "fallback" });
+  }
+
+  return createProjectDagExcelProjection(update, {
+    projectId: demoProject.id || update.schedule.projectId || "project",
+    title: projectRef(),
+    activePhaseId: state.activePhase,
+    roles,
+    sharedTrieRoots,
+    importModel: dataImportModel,
+    exportModel: exportBundleModel,
+    journalRows: journalBase.length + state.journalExtra,
+  });
+}
+
+function renderProjectTable(sheet) {
+  const table = el("table", { className: "matrix-table project-sheet-table" });
+  table.append(
+    el("thead", {}, [
+      el("tr", {}, sheet.columns.map(([, label, type]) => el("th", { "data-column-type": type, text: label }))),
+    ]),
+    el("tbody", {}, sheet.rows.map((row) =>
+      el("tr", {}, sheet.columns.map(([key, , type]) =>
+        el("td", { "data-column-type": type, text: row[key] == null ? "" : String(row[key]) }),
+      )),
+    )),
+  );
+  return table;
+}
+
+function renderProjectTableBoard() {
+  const root = document.querySelector("#projectTableBoard");
+  if (!root) return;
+
+  const projection = createActiveProjectTableProjection();
+  const activeType = activeProjectTableType();
+  const sheet = getProjectDagExcelSheet(projection, activeType);
+
+  root.replaceChildren(
+    el("article", { className: "project-table-card" }, [
+      el("div", { className: "project-table-head" }, [
+        bookTop("Tabellenansicht", sheet.ref),
+        el("div", { className: "table-actions" }, [
+          el("button", { className: "secondary-action", id: "downloadActiveTable", type: "button", text: "CSV" }),
+        ]),
+      ]),
+      el("div", { className: "table-tabs", role: "tablist", "aria-label": "Projekt-Tabelle auswählen" }, PROJECT_DAG_TABLE_VIEWS.map(([id, label, ref]) => {
+        const button = el("button", {
+          type: "button",
+          role: "tab",
+          className: activeType === id ? "active" : "",
+          "aria-selected": activeType === id ? "true" : "false",
+          "data-project-table": id,
+        }, [
+          el("strong", { text: label }),
+          el("span", { text: ref }),
+        ]);
+        button.addEventListener("click", () => {
+          state.activeTableView = id;
+          renderProjectTableBoard();
+        });
+        return button;
+      })),
+      el("div", { className: "sheet-summary" }, [
+        el("h3", { text: sheet.title }),
+        el("ul", { className: "object-list compact-list" }, [
+          el("li", {}, [el("span", { text: "Zeilen" }), el("strong", { text: String(sheet.rows.length) })]),
+          el("li", {}, [el("span", { text: "Spalten" }), el("strong", { text: String(sheet.columns.length) })]),
+          el("li", {}, [el("span", { text: "Quelle" }), el("strong", { text: sheet.ref })]),
+          el("li", {}, [el("span", { text: "ONE Objekt" }), el("strong", { text: projection.projection.$type$ })]),
+        ]),
+      ]),
+      el("div", { className: "preview-table-wrap project-sheet-wrap" }, [renderProjectTable(sheet)]),
+    ]),
+  );
+}
+
+function formatEuro(value) {
+  return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(value || 0);
+}
+
+function renderNgoMetric(value, label, text) {
+  return el("div", { className: "metric ngo-metric" }, [
+    el("span", { className: "card-kicker", text: label }),
+    el("strong", { text: value }),
+    el("p", { text }),
+  ]);
+}
+
+function renderNgoTabs() {
+  return el("div", { className: "ngo-tabs", role: "tablist", "aria-label": "NGO Bereich auswählen" }, [
+    ["donors", "Spender", "Beiträge, Dank, Quittungen"],
+    ["participants", "Teilnehmerinnen", "Programm, Visum, Bildung"],
+  ].map(([id, label, hint]) =>
+    el("button", {
+      type: "button",
+      role: "tab",
+      className: state.activeNgoView === id ? "active" : "",
+      "aria-selected": state.activeNgoView === id ? "true" : "false",
+      "data-ngo-view": id,
+    }, [
+      el("strong", { text: label }),
+      el("span", { text: hint }),
+    ]),
+  ));
+}
+
+function renderNgoDonorControls() {
+  const search = el("input", {
+    id: "ngoDonorSearch",
+    type: "search",
+    placeholder: "Suchen",
+    autocomplete: "off",
+    value: state.donorSearch,
+  });
+  search.value = state.donorSearch;
+  const sort = el("select", { id: "ngoDonorSort" }, [
+    ["open", "offene zuerst"],
+    ["name", "Name"],
+    ["sum", "Summe"],
+    ["last", "zuletzt"],
+  ].map(([value, label]) => {
+    const option = el("option", { value, text: label });
+    option.selected = state.donorSort === value;
+    return option;
+  }));
+  const onlyOpen = el("input", { id: "ngoDonorOnlyOpen", type: "checkbox" });
+  onlyOpen.checked = state.donorOnlyOpen;
+
+  const quickName = el("input", { id: "ngoDonorName", type: "text", placeholder: "Name", autocomplete: "off" });
+  const quickMember = el("input", { id: "ngoDonorIsMember", type: "checkbox" });
+
+  return el("div", { className: "ngo-controls" }, [
+    el("label", {}, [el("span", { text: "Suchen" }), search]),
+    el("label", {}, [el("span", { text: "Sortieren" }), sort]),
+    el("label", { className: "check-label ngo-check" }, [onlyOpen, el("span", { text: "Nur offene" })]),
+    el("div", { className: "ngo-quick-entry" }, [
+      el("span", { className: "card-kicker", text: "Schnelleingabe" }),
+      quickName,
+      el("label", { className: "check-label ngo-check" }, [quickMember, el("span", { text: "Ist Mitglied" })]),
+      el("button", { className: "secondary-action", type: "button", "data-ngo-action": "add-donor", text: "Anlegen" }),
+    ]),
+    el("div", { className: "ngo-export-actions" }, [
+      el("button", { className: "secondary-action", type: "button", "data-ngo-action": "export-people", text: "Export Personen" }),
+      el("button", { className: "secondary-action", type: "button", "data-ngo-action": "export-donations", text: "Export Einzelspenden" }),
+    ]),
+  ]);
+}
+
+function renderNgoDonorTable(rows) {
+  const table = el("table", { className: "matrix-table ngo-table" });
+  table.append(
+    el("thead", {}, [
+      el("tr", {}, [
+        el("th", { text: "Name" }),
+        el("th", { text: "Gesamt" }),
+        el("th", { text: "Einträge" }),
+        el("th", { text: "Erste Spende" }),
+        el("th", { text: "Letzte Spende" }),
+        el("th", { text: "Größte" }),
+        el("th", { text: "Offen" }),
+      ]),
+    ]),
+    el("tbody", {}, rows.map((donor, index) =>
+      el("tr", { className: index === 0 ? "selected-row" : "" }, [
+        el("td", {}, [el("strong", { text: donor.name }), el("span", { text: donor.isMember ? "Mitglied" : "Spender" })]),
+        el("td", { text: formatEuro(donor.totalAmount) }),
+        el("td", { text: String(donor.entryCount) }),
+        el("td", { text: donor.firstDonationDate || "-" }),
+        el("td", { text: donor.lastDonationDate || "-" }),
+        el("td", { text: formatEuro(donor.largestDonationAmount) }),
+        el("td", {}, [
+          el("span", {
+            className: donor.needsThanks || donor.receiptNeeded ? "access-chip filtered" : "access-chip full",
+            text: donor.needsThanks ? "Dank" : donor.receiptNeeded ? "Quittung" : "ok",
+          }),
+        ]),
+      ]),
+    )),
+  );
+  return el("div", { className: "preview-table-wrap ngo-table-wrap" }, [table]);
+}
+
+function renderDonorMask(donor) {
+  if (!donor) {
+    return el("article", { className: "ngo-mask" }, [
+      bookTop("Spender-Maske", "keine Person"),
+      el("p", { text: "Noch keine Spenderdaten im aktiven NGO-Projekt." }),
+    ]);
+  }
+  return el("article", { className: "ngo-mask" }, [
+    bookTop("Spender-Maske", donor.id),
+    el("h3", { text: donor.name }),
+    el("div", { className: "ngo-section-grid" }, [
+      renderObjectSection("Schnelleingabe", [["Name", donor.name], ["Ist Mitglied", donor.isMember ? "ja" : "nein"]]),
+      renderObjectSection("Kennzahlen", [
+        ["Gesamt", formatEuro(donor.totalAmount)],
+        ["Anzahl Einträge", donor.entryCount],
+        ["erste Spende", donor.firstDonationDate || "-"],
+        ["letzte Spende", donor.lastDonationDate || "-"],
+        ["größte Spende", formatEuro(donor.largestDonationAmount)],
+      ]),
+      renderObjectSection("Kontakt", [["E-Mail", donor.email || "-"], ["Telefon", donor.phone || "-"], ["Straße", donor.street || "-"], ["PLZ", donor.postalCode || "-"], ["Ort", donor.city || "-"]]),
+      renderObjectSection("Status & Einwilligung", [
+        ["Mitglied", donor.isMember ? "ja" : "nein"],
+        ["Dauerspender", donor.recurringDonor ? "ja" : "nein"],
+        ["Gedankt", donor.thanked ? "ja" : "nein"],
+        ["Gefragt", donor.asked ? "ja" : "nein"],
+        ["E-Mail-Werbung", donor.emailMarketingConsent ? "ja" : "nein"],
+        ["Mitglied seit", donor.memberSince || "-"],
+        ["Spendenquittung benötigt", donor.receiptNeeded ? "ja" : "nein"],
+        ["verschickt am", donor.receiptSentAt || "-"],
+      ]),
+    ]),
+    el("div", { className: "ngo-contribution-list" }, [
+      el("h3", { text: "Beiträge & Spenden" }),
+      el("ul", { className: "topic-list" }, donor.donations.map((donation) =>
+        el("li", {}, [
+          el("strong", { text: `${donation.type} · ${formatEuro(donation.amount)}` }),
+          el("span", { text: `${donation.date || "-"} · ${donation.purpose || "ohne Zweck"}` }),
+        ]),
+      )),
+    ]),
+    renderObjectSection("Tags", [["frei vergebbar", donor.tags.join(", ") || "-"]]),
+    renderObjectSection("Notizen", [["Freitext", donor.notes || "-"]]),
+  ]);
+}
+
+function renderObjectSection(title, rows) {
+  return el("section", { className: "ngo-object-section" }, [
+    el("h4", { text: title }),
+    el("ul", { className: "object-list compact-list" }, rows.map(([label, value]) =>
+      el("li", {}, [el("span", { text: label }), el("strong", { text: String(value) })]),
+    )),
+  ]);
+}
+
+function renderNgoDonors() {
+  const rows = queryNgoDonors(ngoWorkspace, {
+    search: state.donorSearch,
+    sort: state.donorSort,
+    onlyOpen: state.donorOnlyOpen,
+  });
+  return el("div", { className: "ngo-board-grid" }, [
+    el("article", { className: "ngo-list-card" }, [
+      bookTop("Spenderverwaltung", "Suchen, Sortieren, Filter"),
+      renderNgoDonorControls(),
+      renderNgoDonorTable(rows),
+    ]),
+    renderDonorMask(rows[0]),
+  ]);
+}
+
+function renderNgoParticipantControls() {
+  const search = el("input", {
+    id: "ngoParticipantSearch",
+    type: "search",
+    placeholder: "Suchen",
+    autocomplete: "off",
+    value: state.participantSearch,
+  });
+  search.value = state.participantSearch;
+  const sort = el("select", { id: "ngoParticipantSort" }, [
+    ["visa", "Visum-Frist-Warnung"],
+    ["name", "Name"],
+    ["age", "Alter"],
+    ["admission", "Aufnahme"],
+    ["stage", "Stand"],
+  ].map(([value, label]) => {
+    const option = el("option", { value, text: label });
+    option.selected = state.participantSort === value;
+    return option;
+  }));
+  const firstName = el("input", { id: "ngoParticipantFirstName", type: "text", placeholder: "Vorname", autocomplete: "off" });
+  const lastName = el("input", { id: "ngoParticipantLastName", type: "text", placeholder: "Name", autocomplete: "off" });
+
+  return el("div", { className: "ngo-controls participant-controls" }, [
+    el("label", {}, [el("span", { text: "Suchen" }), search]),
+    el("label", {}, [el("span", { text: "Sortieren" }), sort]),
+    el("div", { className: "ngo-quick-entry" }, [
+      el("span", { className: "card-kicker", text: "Schnelleingabe" }),
+      firstName,
+      lastName,
+      el("button", { className: "secondary-action", type: "button", "data-ngo-action": "add-participant", text: "Anlegen" }),
+    ]),
+    el("div", { className: "ngo-export-actions" }, [
+      el("button", { className: "secondary-action", type: "button", "data-ngo-action": "export-participants", text: "Export CSV" }),
+    ]),
+  ]);
+}
+
+function renderNgoParticipantTable(rows) {
+  const table = el("table", { className: "matrix-table ngo-table" });
+  table.append(
+    el("thead", {}, [
+      el("tr", {}, [
+        el("th", { text: "Name" }),
+        el("th", { text: "Alter" }),
+        el("th", { text: "Aktueller Stand" }),
+        el("th", { text: "Kinder" }),
+        el("th", { text: "Visum-Frist" }),
+        el("th", { text: "Aufnahme" }),
+        el("th", { text: "Betreut durch" }),
+      ]),
+    ]),
+    el("tbody", {}, rows.map((participant, index) =>
+      el("tr", { className: index === 0 ? "selected-row" : "" }, [
+        el("td", {}, [el("strong", { text: participant.name }), el("span", { text: participant.idNumber || "ohne ID" })]),
+        el("td", { text: participant.age == null ? "-" : String(participant.age) }),
+        el("td", { text: participant.currentStage }),
+        el("td", { text: participant.hasChildren ? `ja (${participant.childCount})` : "-" }),
+        el("td", {}, [
+          el("span", {
+            className: participant.visaWarning ? "access-chip filtered" : "access-chip full",
+            text: participant.visa.relevant ? `${participant.visaDeadline || "-"}${participant.visaWarning ? " !" : ""}` : "nicht relevant",
+          }),
+        ]),
+        el("td", { text: participant.admissionDate || "-" }),
+        el("td", { text: participant.supervisedBy || "-" }),
+      ]),
+    )),
+  );
+  return el("div", { className: "preview-table-wrap ngo-table-wrap" }, [table]);
+}
+
+function renderParticipantMask(participant, allParticipants) {
+  if (!participant) {
+    return el("article", { className: "ngo-mask" }, [
+      bookTop("Teilnehmerinnen-Maske", "keine Person"),
+      el("p", { text: "Noch keine Teilnehmerinnen im aktiven NGO-Projekt." }),
+    ]);
+  }
+  const relativeNames = participant.relatives.map((relative) => {
+    const found = allParticipants.find((item) => item.id === relative.participantId);
+    return `${found?.name || relative.participantId} (${relative.relation})`;
+  });
+  return el("article", { className: "ngo-mask participant-mask" }, [
+    bookTop("Teilnehmerinnen-Maske", participant.id),
+    el("h3", { text: participant.name }),
+    el("div", { className: "ngo-section-grid" }, [
+      renderObjectSection("Schnelleingabe", [["Vorname", participant.firstName], ["Name", participant.lastName]]),
+      renderObjectSection("Stammdaten", [
+        ["Geburtstag", participant.birthday || "-"],
+        ["Alter", participant.age == null ? "-" : participant.age],
+        ["Geburtsort", participant.birthPlace || "-"],
+        ["Familienstand", participant.familyStatus || "-"],
+        ["ID-Nummer", participant.idNumber || "-"],
+      ]),
+      renderObjectSection("Programm", [
+        ["Aufnahme", participant.admissionDate || "-"],
+        ["Aktueller Stand", participant.currentStage],
+        ["Mitarbeit", participant.program.collaboration || "-"],
+        ["Betreut durch", participant.supervisedBy || "-"],
+        ["Selbstverpflichtung", participant.selfCommitmentRequired ? (participant.selfCommitmentSigned ? `ja, ${participant.program.selfCommitment.date || "ohne Datum"}` : "offen") : "nicht bei Minderjährigen"],
+      ]),
+      renderObjectSection("Aufenthalt / Visum", [
+        ["Visum relevant", participant.visa.relevant ? "ja" : "nein"],
+        ["Art", participant.visa.kind || "-"],
+        ["Antrag am", participant.visa.appliedAt || "-"],
+        ["Wiedervorlage/Frist", participant.visaDeadline || "-"],
+      ]),
+      renderObjectSection("Sprache & Ausbildung", [
+        ["Deutschkurs-Status", participant.germanCourseStatus],
+        ["Kursart/Niveau", participant.languageEducation.courseLevel || "-"],
+        ["Ausbildungsstatus", participant.trainingStatus],
+        ["Sprachen", participant.languageEducation.languages || "-"],
+      ]),
+      renderObjectSection("Bildung & Beruf", [
+        ["Schulabschluss", participant.training.schoolDegree || "-"],
+        ["Bildung", participant.training.education || "-"],
+        ["Berufswunsch", participant.training.careerWish || "-"],
+        ["Beruf", participant.training.job || "-"],
+        ["Interessen", participant.training.interests || "-"],
+        ["Kenntnisse", participant.training.skills || "-"],
+      ]),
+      renderObjectSection("Persönliches & Sensibles", [
+        ["Kaste", participant.sensitive.caste || "-"],
+        ["Kinder", participant.hasChildren ? `ja, ${participant.childCount}` : "nein"],
+        ["Familiensituation", participant.familySituation || "-"],
+        ["Krankheiten/Medikamente", participant.sensitive.healthMedication || "-"],
+        ["Besonderheiten", participant.sensitive.specialNotes || "-"],
+      ]),
+      renderObjectSection("Verwandtschaft", [["verknüpft", relativeNames.join(", ") || "-"]]),
+      renderObjectSection("Notizen", [["Freitext", participant.notes || "-"]]),
+    ]),
+  ]);
+}
+
+function renderNgoParticipants() {
+  const rows = queryNgoParticipants(ngoWorkspace, {
+    search: state.participantSearch,
+    sort: state.participantSort,
+  });
+  return el("div", { className: "ngo-board-grid" }, [
+    el("article", { className: "ngo-list-card" }, [
+      bookTop("Teilnehmerinnen-Programm", "Status, Fristen, Pflicht-Abläufe"),
+      renderNgoParticipantControls(),
+      renderNgoParticipantTable(rows),
+    ]),
+    renderParticipantMask(rows[0], participantMetrics(ngoWorkspace).participants),
+  ]);
+}
+
+function renderNgoBackupActions() {
+  return el("div", { className: "ngo-backup-actions" }, [
+    el("button", { className: "secondary-action", type: "button", "data-ngo-action": "backup", text: "Sichern" }),
+    el("label", { className: "secondary-action ngo-restore-label" }, [
+      el("input", { id: "ngoRestoreFile", type: "file", accept: ".json,application/json" }),
+      el("span", { text: "Wiederherstellen" }),
+    ]),
+  ]);
+}
+
+function renderNgo() {
+  const donorStats = donorMetrics(ngoWorkspace);
+  const participantStats = participantMetrics(ngoWorkspace);
+  const root = document.querySelector("#ngoBoard");
+  const metricsRoot = document.querySelector("#ngoMetrics");
+  if (!root || !metricsRoot) return;
+
+  metricsRoot.replaceChildren(
+    renderNgoMetric(String(donorStats.supporterCount), "Unterstützer", "Personen mit Spenden-, Mitglieds- oder Dankstatus."),
+    renderNgoMetric(formatEuro(donorStats.totalReceived), "gesamt eingenommen", "Summe aller Beiträge und Spenden im NGO-Datenblock."),
+    renderNgoMetric(String(donorStats.openThanks), "noch zu bedanken", "Offene Dank- oder Spendenquittungsfälle."),
+    renderNgoMetric(String(donorStats.members), "Mitglieder", "Personen mit aktivem Mitgliedsstatus."),
+    renderNgoMetric(String(donorStats.recurringDonors), "Dauerspender", "Regelmäßige Unterstützerinnen."),
+    renderNgoMetric(String(participantStats.participantCount), "Teilnehmerinnen", "Personen im Teilnehmerinnen-Programm."),
+    renderNgoMetric(String(participantStats.averageAge), "Ø Alter", "Automatisch aus Geburtsdatum berechnet."),
+    renderNgoMetric(String(participantStats.withChildren), "mit Kindern", "Teilnehmerinnen mit Kinder-Markierung."),
+    renderNgoMetric(String(participantStats.inGermanCourse), "im Deutschkurs", "Parallele Deutschkurs-Spur läuft."),
+    renderNgoMetric(String(participantStats.openVisaDeadlines), "Visum-Fristen offen", "Fristen im Vorlauf-Alarm oder überfällig."),
+  );
+
+  root.replaceChildren(
+    el("div", { className: "ngo-board-head" }, [
+      renderNgoTabs(),
+      renderNgoBackupActions(),
+    ]),
+    state.activeNgoView === "participants" ? renderNgoParticipants() : renderNgoDonors(),
+    el("article", { className: "ngo-compliance-card" }, [
+      bookTop("Querliegende Pflicht-Abläufe", "besonders beachten"),
+      el("ul", { className: "topic-list" }, [
+        ["Kinderschutz und Safeguarding", "Melde- und Eskalationswege bleiben sichtbar; Minderjährige unterschreiben keine Selbstverpflichtung."],
+        ["Visumsfristen", "Wiedervorlage/Frist löst einen Vorlauf-Alarm aus, damit keine Frist durchrutscht."],
+        ["Austritt zu Ehemalige", ngoWorkspace.settings.retentionPolicy || "Lösch- und Aufbewahrungsregel festlegen."],
+      ].map(([title, text]) => el("li", {}, [el("strong", { text: title }), el("span", { text })]))),
+    ]),
   );
 }
 
@@ -2628,6 +3151,21 @@ function downloadTextFile(filename, mimeType, content) {
   URL.revokeObjectURL(url);
 }
 
+function downloadActiveProjectTable() {
+  const projection = createActiveProjectTableProjection();
+  const tableType = activeProjectTableType();
+  const sheet = getProjectDagExcelSheet(projection, tableType);
+  const projectId = demoProject.id || "project";
+  state.journalExtra += 1;
+  renderProjectTableBoard();
+  renderJournal();
+  downloadTextFile(
+    `projektor-one-${projectId}-${tableType}.csv`,
+    "text/csv;charset=utf-8",
+    csvFromProjectDagExcelSheet(sheet),
+  );
+}
+
 function downloadTemplate() {
   const headers = ["Name", "Rolle", "Trie-Pfad", "Sichtbarkeit", "Leistungsphase", "E-Mail", "Hinweis"];
   const roleEntries = Object.entries(roles);
@@ -2674,7 +3212,7 @@ function applyDatasetPlan(planId) {
   state.datasetCreatorStatus = "angewendet";
   state.importStatus = "imported";
   state.importFileName = `${dataset.creator?.plan?.label || planId}.project.json`;
-  state.activePanel = "data";
+  state.activePanel = dataset.project?.projectType === "ngo" ? "ngo" : "data";
   render();
 }
 
@@ -2714,6 +3252,71 @@ async function importProjectFile(file) {
     state.importStatus = "idle";
     renderData();
     window.alert(error.message || "Project import failed.");
+  }
+}
+
+function exportNgoPeople() {
+  downloadTextFile(`projektor-one-${demoProject.id || "project"}-ngo-personen.csv`, "text/csv;charset=utf-8", csvFromNgoPeople(ngoWorkspace));
+}
+
+function exportNgoDonations() {
+  downloadTextFile(`projektor-one-${demoProject.id || "project"}-ngo-einzelspenden.csv`, "text/csv;charset=utf-8", csvFromNgoDonations(ngoWorkspace));
+}
+
+function exportNgoParticipants() {
+  downloadTextFile(`projektor-one-${demoProject.id || "project"}-ngo-teilnehmerinnen.csv`, "text/csv;charset=utf-8", csvFromNgoParticipants(ngoWorkspace));
+}
+
+function backupNgoWorkspace() {
+  downloadTextFile(`projektor-one-${demoProject.id || "project"}-ngo-backup.json`, "application/json", JSON.stringify(createNgoBackup(ngoWorkspace), null, 2));
+}
+
+async function restoreNgoWorkspace(file) {
+  if (!file) return;
+  try {
+    ngoWorkspace = restoreNgoBackup(JSON.parse(await file.text()));
+    state.journalExtra += 1;
+    persistActiveProjectDatatype();
+    renderNgo();
+    renderJournal();
+  } catch (error) {
+    window.alert(error.message || "NGO Wiederherstellung fehlgeschlagen.");
+  }
+}
+
+function addDonorFromQuickEntry() {
+  const nameInput = document.querySelector("#ngoDonorName");
+  const memberInput = document.querySelector("#ngoDonorIsMember");
+  try {
+    ngoWorkspace = addNgoDonor(ngoWorkspace, {
+      name: nameInput?.value,
+      isMember: Boolean(memberInput?.checked),
+    });
+    state.donorSearch = "";
+    state.journalExtra += 1;
+    persistActiveProjectDatatype();
+    renderNgo();
+    renderJournal();
+  } catch (error) {
+    window.alert(error.message || "Spender konnte nicht angelegt werden.");
+  }
+}
+
+function addParticipantFromQuickEntry() {
+  const firstNameInput = document.querySelector("#ngoParticipantFirstName");
+  const lastNameInput = document.querySelector("#ngoParticipantLastName");
+  try {
+    ngoWorkspace = addNgoParticipant(ngoWorkspace, {
+      firstName: firstNameInput?.value,
+      lastName: lastNameInput?.value,
+    });
+    state.participantSearch = "";
+    state.journalExtra += 1;
+    persistActiveProjectDatatype();
+    renderNgo();
+    renderJournal();
+  } catch (error) {
+    window.alert(error.message || "Teilnehmerin konnte nicht angelegt werden.");
   }
 }
 
@@ -2812,6 +3415,17 @@ function bindActions() {
   });
 
   document.querySelector("#onboardingRoot").addEventListener("input", syncOnboardingInputs);
+  document.addEventListener("input", (event) => {
+    if (event.target.id === "ngoDonorSearch") {
+      state.donorSearch = event.target.value;
+      renderNgo();
+    }
+    if (event.target.id === "ngoParticipantSearch") {
+      state.participantSearch = event.target.value;
+      renderNgo();
+    }
+  });
+
   document.querySelector("#onboardingRoot").addEventListener("change", (event) => {
     if (event.target.id === "onboardingLanguage") {
       state.language = event.target.value;
@@ -2822,6 +3436,24 @@ function bindActions() {
     }
     syncOnboardingInputs();
   });
+  document.addEventListener("change", (event) => {
+    if (event.target.id === "ngoDonorSort") {
+      state.donorSort = event.target.value;
+      renderNgo();
+    }
+    if (event.target.id === "ngoDonorOnlyOpen") {
+      state.donorOnlyOpen = event.target.checked;
+      renderNgo();
+    }
+    if (event.target.id === "ngoParticipantSort") {
+      state.participantSort = event.target.value;
+      renderNgo();
+    }
+    if (event.target.id === "ngoRestoreFile") {
+      void restoreNgoWorkspace(event.target.files?.[0]);
+    }
+  });
+
   document.querySelector("#onboardingRoot").addEventListener("click", (event) => {
     const action = event.target.closest("[data-onboarding-action]")?.dataset.onboardingAction;
     if (!action) return;
@@ -2832,6 +3464,25 @@ function bindActions() {
   });
 
   document.addEventListener("click", (event) => {
+    const ngoViewButton = event.target.closest("[data-ngo-view]");
+    if (ngoViewButton) {
+      state.activeNgoView = ngoViewButton.dataset.ngoView;
+      renderNgo();
+      return;
+    }
+
+    const ngoActionButton = event.target.closest("[data-ngo-action]");
+    if (ngoActionButton) {
+      const action = ngoActionButton.dataset.ngoAction;
+      if (action === "add-donor") addDonorFromQuickEntry();
+      if (action === "add-participant") addParticipantFromQuickEntry();
+      if (action === "export-people") exportNgoPeople();
+      if (action === "export-donations") exportNgoDonations();
+      if (action === "export-participants") exportNgoParticipants();
+      if (action === "backup") backupNgoWorkspace();
+      return;
+    }
+
     const settingsButton = event.target.closest("[data-settings-view]");
     if (settingsButton) {
       navigateSettings(settingsButton.dataset.settingsView);
@@ -2842,6 +3493,10 @@ function bindActions() {
     if (event.target.closest("#runnerRunProtocol")) void runIntegratedProtocol();
     if (event.target.closest("#runnerStop")) stopIntegratedProtocol();
     if (event.target.closest("#runnerClear")) clearRunnerInstances();
+    if (event.target.closest("#downloadActiveTable")) {
+      downloadActiveProjectTable();
+      return;
+    }
     const datasetPlanButton = event.target.closest("[data-dataset-plan]");
     if (datasetPlanButton) {
       applyDatasetPlan(datasetPlanButton.dataset.datasetPlan);
@@ -2913,6 +3568,7 @@ function render() {
   renderProjectVisuals();
   renderEditorBoard();
   renderData();
+  renderNgo();
   renderAI();
   renderJournal();
   renderSettings();

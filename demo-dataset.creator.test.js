@@ -6,7 +6,7 @@ import {
   createDemoDatasetProject,
   listDemoDatasetPlans,
 } from "./demo-dataset.creator.js";
-import { createProjectScheduleStateDagUpdate } from "./project.core.js";
+import { createProjectScheduleStateDagUpdate } from "./packages/project.core/index.js";
 
 const plans = listDemoDatasetPlans();
 
