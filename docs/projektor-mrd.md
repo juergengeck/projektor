@@ -299,23 +299,85 @@ maintaining a complete, locally verifiable chain. The issuing model is specified
 in the [admin.cube PRD](./projektor-admin-cube-prd.md); this section states the
 market requirements it must satisfy.
 
-- **M** Identity must not depend on a central authentication provider. The
-  system spans independent organizations and no single party can be the identity
-  authority for all of them. The certificate issuer is an issuing authority, not
-  an account provider, and must never become a runtime dependency for using the
-  product.
-- **M** Participants are identified by a cryptographic key pair they control.
-  Email is an identifier and a routing hint, never a credential.
+**The chain is refinio → organization admin → user.** Three tiers, one
+primitive: at every tier the subject generates and holds their own key pair, and
+the tier above issues an **attestation certifying the identity that holds those
+keys**. No tier ever creates, holds, escrows, or can recover another tier's
+private key material. Certification is a statement about a binding, not a grant
+of a credential.
+
+- **M** Identity must not depend on a central authentication provider. No party
+  authenticates anyone: refinio attests to an organization admin's identity once,
+  and the admin attests to its users. The attesting tier is an issuing authority,
+  not an account provider, and must never be a runtime dependency for using the
+  product or for verifying evidence.
+- **M** Participants are identified by a cryptographic key pair they control and
+  generate themselves. Email is an identifier and a routing hint, never a
+  credential.
+- **M** An organization must be able to generate keys and work productively
+  before its attestation exists. What an unattested organization cannot do is
+  produce evidence that verifies for an outside party against the pinned root.
+  Attestation makes work externally verifiable; it does not gate the work.
+- **M** *Never attested* and *attested but expired* are different states and must
+  not be conflated. The second is grandfathered by the as-of-assertion-time rule
+  below; the first is not, and evidence produced during an unattested window
+  requires reissue to become externally verifiable.
 - **M** Project roles are **bounded certificates** bound to a participant's key,
   each carrying issuer, subject, scope, validity window, and signature.
 - **M** Chain verification must be **local and repeatable** — no network call,
   no vendor service, no live endpoint. An audit performed in five years must
   verify from the bundle alone.
-- **M** Invalidation is **supersession-based**, not a mutable deny list. A
-  superseded certificate remains part of the evidence record; it does not
-  disappear.
 - **M** Verification must **fail closed**. Missing or unverifiable chain
   evidence denies the operation; it never degrades to permitting it.
+
+**Two questions, two evaluation times.** The same certificate answers *"was this
+validly asserted then?"* and *"may this participant act now?"* These evaluate
+validity at different times, and conflating them is the most damaging error
+available in this design.
+
+- **M** **Evidence verification evaluates the chain as of assertion time.** An
+  assertion is valid if the chain that authorized it was valid at the moment it
+  was made. It does not become invalid later because a certificate has since
+  expired, been superseded, or lapsed.
+- **M** **Access control evaluates the chain as of now.** Whether a participant
+  may issue, sign, or act today depends on the chain being currently valid.
+- **M** A verifier must state which question it answered. A bundle proves
+  historical validity; it is not a statement about present authority.
+
+*Rationale: refinio's attestation window is the commercial term, so certificate
+expiry is a business event as much as a technical one. If the verifier asks "is
+this valid now," a lapsed subscription retroactively destroys the customer's
+entire project record on the day it expires. That outcome is unacceptable
+commercially and indefensible in procurement, and the only thing preventing it is
+evaluating evidence at assertion time.*
+
+- **M** **Licence lapse position, stated plainly in product and sales material:**
+  when an organization's attestation lapses, everything already asserted remains
+  verifiable, permanently. What stops is the ability to issue new certificates
+  and make new contractual assertions. The customer's record is theirs and does
+  not expire with the contract.
+
+**Validity windows and revocation.**
+
+- **M** Invalidation is **supersession by a newer end time** — a new version of
+  the certificate carrying a revised `validUntil` — never a mutable deny list and
+  never deletion. A superseded certificate remains part of the evidence record.
+- **M** An organization admin sets the validity duration of the certificates it
+  issues. Refinio sets the admin's own window; that window is the licence term.
+- **S** A user certificate is **not clamped** to the admin's attestation window.
+  It was validly issued while the admin was attested, and the as-of-assertion-time
+  rule governs it thereafter. This is safe only because the two evaluation times
+  are explicit — do not introduce clamping as a substitute for getting them right.
+- **M** **Revocation is sound in semantics and open in distribution: a verifier
+  only knows the versions it has received.** The two uses need different freshness
+  rules, and the product must implement both rather than picking one:
+  - *Evidence* — an exported bundle proves state as of its export time. A later
+    revocation does not reach back into it, and this is correct. Every bundle
+    must therefore carry its as-of time explicitly and visibly.
+  - *Access control* — a stale replica means a revoked participant still
+    verifies. This path requires a stated freshness policy: how recent the chain
+    state must be for a decision to be made on it, and what happens when it
+    is not.
 - **M** Key loss, key rotation, and certificate renewal must have defined
   recovery ceremonies that do not invalidate previously issued evidence. Over a
   multi-year evidence horizon, key loss is a certainty, not an edge case, and
@@ -547,24 +609,28 @@ testable there rather than aggregated across a partner cohort.
 5. **Chain verification offline.** A role decision and an approval path verify
    from the bundle with the machine disconnected from any network, and a
    superseded certificate is still visible in the evidence rather than absent.
-6. **Procurement clearance.** A data protection reviewer answers, correctly and
+6. **Evidence survives lapse.** With the organization's attestation window
+   expired, previously made assertions still verify, and the verifier reports
+   them as valid-as-asserted rather than as errors or warnings. New contractual
+   assertions are refused at the same time. Both halves must hold together.
+7. **Procurement clearance.** A data protection reviewer answers, correctly and
    unaided after reading the product documentation, where project data resides
    and what is transmitted. No escalation to the vendor required.
-7. **Non-adopter reach.** At least one external party on the reference project
+8. **Non-adopter reach.** At least one external party on the reference project
    accepts an exported evidence bundle or read-only view as sufficient, without
    installing anything. The bundle opens as a normal document in their existing
    workflow, and its verifier runs in their browser offline.
-8. **Countersignature without adoption.** At least one external party
+9. **Countersignature without adoption.** At least one external party
    countersigns an asserted milestone from a bundle or link, using a passkey,
    without installing anything or creating an account — and the result verifies
    offline afterwards.
-9. **Tier legibility.** A reviewer reading an exported bundle correctly
+10. **Tier legibility.** A reviewer reading an exported bundle correctly
    distinguishes an unauthenticated local claim from a contractual assertion,
    unprompted.
-8. **Divergence is legible.** Where two participants assert incompatible state,
+11. **Divergence is legible.** Where two participants assert incompatible state,
    users identify the divergence and its parties from the interface alone, with
    no support contact and no silent resolution.
-9. **Retroactive entry survives review.** At least one real retrospective
+12. **Retroactive entry survives review.** At least one real retrospective
    approval or revised baseline occurs on the reference project, is recorded as
    such, and is correctly read back by a reviewer as retroactive rather than
    contemporaneous.
@@ -613,6 +679,8 @@ specification and validation, tracked below as gates 1, 3, 5, and 7.
 | 10 | Bounded parsing set frozen and published | The "integrate without migrating" claim |
 | 11 | §8 dimensions instrumented and measured on the reference project | v2 architecture sign-off; scaling beyond one project |
 | 12 | Counsel review — privacy, telemetry, evidentiary wording, and specifically the Art. 17(3) retention position in MR-7 | Any public compliance or legal-weight claim |
+| 13 | Freshness policy for access-control decisions: how current chain state must be to decide on it, and behaviour when it is not | Any access-control claim; revocation effectiveness |
+| 14 | Attestation renewal cadence and what an organization experiences when its window lapses mid-project | The licence-lapse position in MR-3; any continuity claim |
 
 **Gate 5 carries a distributed problem the others do not.** Shredding a leaf key
 on the originating device does not shred replicas already shared with other
@@ -639,6 +707,17 @@ settled before any erasure claim is made externally.
   document reduces to the chain (MR-3). A gap in issuance, recovery, or
   verification is not a degraded feature — it invalidates the product's core
   claim. Recovery ceremonies (gate 4) deserve disproportionate design attention.
+- **A verifier written to check "valid now."** This is the most likely single
+  defect in the whole system, because checking current validity is the obvious
+  implementation and it passes every test written on fresh data. It surfaces
+  years later, on a customer whose licence lapsed, as the total loss of their
+  project record. It needs an explicit test asserting that evidence signed under
+  an expired chain still verifies — written before the verifier is.
+- **Renewal as a recurring dependency.** Attestation windows make refinio an
+  annual dependency, not a one-time one, and key rotation compounds it. The
+  continuity story ("your evidence verifies forever without us") is true for
+  verification and false for issuance; both halves must be said together or the
+  claim reads as broader than it is.
 - **Personal data leaking into the assertion graph.** A single convenience —
   a name denormalized into an assertion for display, an email in a routing
   field — permanently destroys the erasure position in MR-7 for the life of the
