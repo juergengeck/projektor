@@ -2,492 +2,277 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build `packages/group.core` — group definitions, per-member certificates, access grants, and signed disclosure records — per [the design spec](../specs/2026-08-31-group-sharing-design.md).
+**Goal:** Add the time-bounded evidence layer that ONE.core and one.models do not already provide for group sharing — membership validity windows, the re-share right, disclosure records, and the two evaluation times — on top of the existing `Group` / `HashGroup` / `Signature` / certificate primitives.
 
-**Architecture:** Membership is per-member certificates (versioned ONE objects keyed by `{group, subject, issuer}`); the roster is a derived projection, never stored as authoritative. Two evaluation functions replace any single membership lookup: `rosterAsOf` walks version history to an assertion time, `mayAct` reads latest under a freshness policy. Revocation reuses ONE.core version supersession and never moves `validUntil` earlier than issuance.
+**Architecture:** Groups are `Group` (versioned, id `{name, owner}`) referencing `HashGroup` (unversioned, content-addressed member set). The roster history is the `Group` version DAG; `HashGroup`'s content hash is the roster pin. Signatures are separate `Signature` objects. Certificates follow the one.models pattern — an unversioned claim object plus a `License`, issued and checked through `TrustedKeysManager`. This package adds only what those types lack: time.
 
-**Tech Stack:** Plain ESM JavaScript, no build step. Tests are standalone `node` scripts using `node:assert/strict`, run from the `test` script in `package.json`. ONE.core is consumed from the sibling checkout at `../../../one/packages/one.core/lib/`.
+**Tech Stack:** Plain ESM JavaScript, no build step. Tests are standalone `node` scripts using `node:assert/strict`, registered in the `test` script in `package.json`. ONE.core and one.models are consumed from the sibling checkout at `../../../one/packages/`.
+
+---
+
+## Design Deltas From The Spec
+
+The [spec](../specs/2026-08-31-group-sharing-design.md) was written before checking what
+the platform already provides. It invented types that exist. These deltas change
+the spec's object model; **the spec needs amending to match, and if any delta is
+rejected this plan changes with it.** The spec's *reasoning* — two evaluation
+times, prospective revocation, disclosure as evidence — is unchanged.
+
+1. **`ProjectGroup` and `ProjectGroupMembership` are deleted.** The group type is
+   ONE.core's [`Group`](/Users/gecko/src/one/packages/one.core/lib/recipes.js:282):
+   versioned, `isId: {name, owner}`, referencing a `HashGroup`. `owner` is the
+   issuer tier. There is no project field, which is what the spec argued for.
+2. **`HashGroup` is the roster.** `{person: Set<referenceToId Person>}`,
+   unversioned, so its content hash *is* the membership pin — definitionally, not
+   by convention. The spec's claim that a descriptor's content hash pins a roster
+   was false; this makes it true. No snapshot type is needed and `pinnedSubjects`
+   is deleted.
+3. **Roster history is the `Group` version DAG**, read with `getVersionsNodes`,
+   not a hand-rolled `issuedAt` field. `VersionNode` carries `depth`,
+   `creationTime` and `prev`, and `VersionNodeMerge` makes concurrent versions an
+   explicit case rather than an array-order accident.
+4. **Signatures are `Signature` objects**, `{issuer, data: SHA256Hash,
+   signature}`, created with `sign(dataHash)`. A `signature` field on a recipe is
+   rejected by the serializer (`O2M-COBJ2: Unknown properties`), which is correct
+   behaviour rather than an obstacle.
+5. **Authorization is `TrustedKeysManager.isCertifiedBy` / `getCertificates`**,
+   not a signature check against a caller-supplied key. Verifying a signature
+   against a key the caller handed you establishes nothing about issuer authority.
+6. **A membership certificate proves membership of a pinned `HashGroup`, not
+   open-ended membership of a group.** This is the significant change. It makes
+   the certificate a portable *proof* rather than the authoritative membership
+   record, and it dissolves the certificate-revocation problem: one.models
+   certificates are unversioned and cannot be superseded, but a certificate
+   pinned to roster H proves only "was in H", never "is in the group now". The
+   authoritative present-tense record is the `Group` version DAG. This is the
+   spec's evidence/access split expressed in the type system rather than in a
+   convention.
+
+**What is genuinely new, and is therefore all this package builds:** no existing
+certificate carries a validity window. `AffirmationCertificate` is `{data,
+license}`; `RelationCertificate` is `{app, relation, person1, person2, license}`.
+Time is the gap.
+
+---
 
 ## Global Constraints
 
-- Object type names exactly: `ProjectGroup`, `ProjectGroupMembership`, `ProjectGroupDisclosure`, `ProjectAccessAssertion`, `ProjectKeyCompromiseClaim`.
-- `PROJECT_GROUP_SCHEMA_VERSION = "0.1.0"`; every stored object carries `schemaVersion`.
-- Every recipe carries `$type$` with a `regexp` guard and `$version$` matching `/^v1$/`, following `packages/project-source.core/index.js`.
-- `ProjectGroup` has **no** project field and **no** scope field. Scope is read off the issuer.
-- `validUntil` is the only input to validity. `learnedAt` and `compromisedSince` never affect it.
-- Revocation sets `validUntil = revokedAt`. A version whose `validUntil` precedes an assertion it authorized is rejected at write time.
+- Reuse before adding. Every new recipe must be justified by something the
+  existing types cannot express. That justification is time bounds and the
+  re-share right.
+- New type names carry no `Project` prefix unless genuinely project-scoped.
+  `ProjectAccessAssertion` earns it; nothing else here does.
+- Certificates follow the one.models shape: unversioned, `{...claim, license:
+  SHA256Hash<License>}`, issued via `TrustedKeysManager.certify`. Never a
+  `signature` field.
+- Reference-typed fields use `referenceToId` / `referenceToObj` with
+  `allowedTypes`, never a bare string standing in for a hash.
+- `validUntil` is the only input to validity. `learnedAt` and `compromisedSince`
+  never affect it. Revocation ends authority at issuance, never earlier.
 - There is no `getMembers(group)`. Only `rosterAsOf` and `mayAct`.
-- Disclosures pin a **content** hash. Living access grants bind an **id** hash; pinned grants bind a **content** hash.
-- Fail fast and throw. No fallback values, no silent defaults for missing required input.
-- Commit messages: imperative, sentence case, no prefix (repo style, e.g. "Add project source core"). No AI attribution.
+- Fail fast and throw. No fallback values, no silent defaults for required input.
+- Commit messages: imperative, sentence case, no prefix, no AI attribution.
 
 ---
 
-### Task 1: Recipes And Group Descriptor
+### Task 1: Walking Skeleton — One End-To-End Slice
+
+This task exists to settle contracts, not to produce reusable modules. It proves
+the whole loop against a live instance: create a group, sign it, admit a member,
+remove them, then show historical verification still succeeds while present
+access fails.
+
+**Everything after this task depends on what this test discovers.** The API
+shapes below are read from the `.d.ts` files but have not been executed. Where
+the runtime disagrees, the runtime wins — fix the test, then carry the correction
+into later tasks before starting them.
+
+Specifically unverified, to be confirmed on first run:
+- whether storing a `Group` requires its `HashGroup` stored first
+- the exact field names on `storeVersionedObject` / `storeUnversionedObject` results
+- whether `sign()` works with only an initialised instance, or needs `LeuteModel`
+- what `getVersionsNodes` returns, and in what order
 
 **Files:**
-- Create: `packages/group.core/recipes.js`
-- Create: `packages/group.core/groups.js`
-- Create: `packages/group.core/index.js`
-- Create: `packages/group.core/index.test.js`
+- Create: `packages/group.core/skeleton.test.js`
 - Modify: `package.json` (the `test` script)
 
 **Interfaces:**
-- Consumes: nothing.
-- Produces: `PROJECT_GROUP_TYPE`, `PROJECT_GROUP_MEMBERSHIP_TYPE`, `PROJECT_GROUP_DISCLOSURE_TYPE`, `PROJECT_ACCESS_ASSERTION_TYPE`, `PROJECT_KEY_COMPROMISE_CLAIM_TYPE`, `PROJECT_GROUP_SCHEMA_VERSION`, `GroupCoreRecipes` (array), `createProjectGroup({groupId, name, purpose, issuer}) -> object`.
+- Consumes: `Group`, `HashGroup` from one.core; `sign`, `getSignatures` from one.models.
+- Produces: confirmed API contracts, recorded as comments in the test and consumed by every later task.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the end-to-end test**
 
-Create `packages/group.core/index.test.js`:
-
-```js
-import assert from "node:assert/strict";
-import {
-  PROJECT_GROUP_TYPE,
-  PROJECT_GROUP_SCHEMA_VERSION,
-  GroupCoreRecipes,
-  createProjectGroup,
-} from "./index.js";
-
-const group = createProjectGroup({
-  groupId: "tragwerksplanung",
-  name: "Tragwerksplanung",
-  purpose: "Structural engineers working with the office",
-  issuer: "person:admin@buero.example.invalid",
-});
-
-assert.equal(group.$type$, PROJECT_GROUP_TYPE);
-assert.equal(group.$version$, "v1");
-assert.equal(group.groupId, "group:tragwerksplanung");
-assert.equal(group.schemaVersion, PROJECT_GROUP_SCHEMA_VERSION);
-
-// A group is a set of identities, and identities are organization-level.
-// It must carry no project or scope field.
-assert.equal("projectId" in group, false);
-assert.equal("scope" in group, false);
-
-assert.throws(
-  () => createProjectGroup({ groupId: "x", name: "X", purpose: "p" }),
-  /issuer is required/,
-);
-
-const groupRecipe = GroupCoreRecipes.find((recipe) => recipe.name === PROJECT_GROUP_TYPE);
-assert.ok(groupRecipe, "ProjectGroup recipe is registered");
-assert.ok(groupRecipe.rule.some((rule) => rule.itemprop === "groupId" && rule.isId === true));
-assert.equal(groupRecipe.rule.some((rule) => rule.itemprop === "projectId"), false);
-
-console.log("group.core index tests passed");
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `node ./packages/group.core/index.test.js`
-Expected: FAIL with `ERR_MODULE_NOT_FOUND` for `./index.js`.
-
-- [ ] **Step 3: Write the recipes module**
-
-Create `packages/group.core/recipes.js`:
-
-```js
-export const PROJECT_GROUP_TYPE = "ProjectGroup";
-export const PROJECT_GROUP_MEMBERSHIP_TYPE = "ProjectGroupMembership";
-export const PROJECT_GROUP_DISCLOSURE_TYPE = "ProjectGroupDisclosure";
-export const PROJECT_ACCESS_ASSERTION_TYPE = "ProjectAccessAssertion";
-export const PROJECT_KEY_COMPROMISE_CLAIM_TYPE = "ProjectKeyCompromiseClaim";
-export const PROJECT_GROUP_SCHEMA_VERSION = "0.1.0";
-
-export const ProjectGroupRecipe = {
-  $type$: "Recipe",
-  name: PROJECT_GROUP_TYPE,
-  rule: [
-    { itemprop: "$type$", itemtype: { type: "string", regexp: /^ProjectGroup$/ } },
-    { itemprop: "$version$", itemtype: { type: "string", regexp: /^v1$/ } },
-    { itemprop: "groupId", itemtype: { type: "string" }, isId: true },
-    { itemprop: "name", itemtype: { type: "string" } },
-    { itemprop: "purpose", itemtype: { type: "string" } },
-    { itemprop: "issuer", itemtype: { type: "string" } },
-    { itemprop: "schemaVersion", itemtype: { type: "string" } },
-  ],
-};
-
-export const GroupCoreRecipes = [ProjectGroupRecipe];
-```
-
-- [ ] **Step 4: Write the group factory**
-
-Create `packages/group.core/groups.js`:
-
-```js
-import {
-  PROJECT_GROUP_TYPE,
-  PROJECT_GROUP_SCHEMA_VERSION,
-} from "./recipes.js";
-
-function requiredText(value, field) {
-  if (typeof value !== "string" || value.trim() === "") {
-    throw new Error(`ProjectGroup: ${field} is required`);
-  }
-  return value.trim();
-}
-
-export function createProjectGroup({ groupId, name, purpose, issuer } = {}) {
-  const id = requiredText(groupId, "groupId");
-  return {
-    $type$: PROJECT_GROUP_TYPE,
-    $version$: "v1",
-    groupId: id.startsWith("group:") ? id : `group:${id}`,
-    name: requiredText(name, "name"),
-    purpose: requiredText(purpose, "purpose"),
-    issuer: requiredText(issuer, "issuer"),
-    schemaVersion: PROJECT_GROUP_SCHEMA_VERSION,
-  };
-}
-```
-
-- [ ] **Step 5: Write the barrel module**
-
-Create `packages/group.core/index.js`:
-
-```js
-export * from "./recipes.js";
-export * from "./groups.js";
-```
-
-- [ ] **Step 6: Run test to verify it passes**
-
-Run: `node ./packages/group.core/index.test.js`
-Expected: PASS, prints `group.core index tests passed`.
-
-- [ ] **Step 7: Register the test in package.json**
-
-In `package.json`, append to the end of the `test` script value, before the closing quote:
-
-```
- && node ./packages/group.core/index.test.js
-```
-
-Run: `npm test`
-Expected: all existing tests pass, ending with `group.core index tests passed`.
-
-- [ ] **Step 8: Commit**
-
-```bash
-git add packages/group.core package.json
-git commit -m "Add group core recipes and group descriptor"
-```
-
----
-
-### Task 2: Membership Certificates And Revocation Timing
-
-**Files:**
-- Create: `packages/group.core/memberships.js`
-- Create: `packages/group.core/memberships.test.js`
-- Modify: `packages/group.core/recipes.js`
-- Modify: `packages/group.core/index.js`
-- Modify: `package.json` (the `test` script)
-
-**Interfaces:**
-- Consumes: `PROJECT_GROUP_MEMBERSHIP_TYPE`, `PROJECT_GROUP_SCHEMA_VERSION` from Task 1.
-- Produces:
-  - `createProjectGroupMembership({group, subject, issuer, validFrom, validUntil, mayReshare, issuedAt}) -> object`
-  - `reviseProjectGroupMembership(previous, {validUntil, issuedAt, mayReshare, authorizedAssertionTimes}) -> object`
-  - `revokeProjectGroupMembership(previous, {revokedAt, learnedAt, reason, authorizedAssertionTimes}) -> object`
-  - Membership objects carry: `group`, `subject`, `issuer`, `validFrom`, `validUntil`, `issuedAt`, `mayReshare`, `schemaVersion`, and on revocation `revoked`, `revokedAt`, `learnedAt`, `revocationReason`.
-
-- [ ] **Step 1: Write the failing test**
-
-Create `packages/group.core/memberships.test.js`:
+Create `packages/group.core/skeleton.test.js`:
 
 ```js
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import "../../../one/packages/one.core/lib/system/load-nodejs.js";
 import {
-  PROJECT_GROUP_MEMBERSHIP_TYPE,
-  createProjectGroupMembership,
-  reviseProjectGroupMembership,
-  revokeProjectGroupMembership,
-} from "./index.js";
-
-const JAN = Date.UTC(2026, 0, 1);
-const FEB = Date.UTC(2026, 1, 1);
-const MAR = Date.UTC(2026, 2, 1);
-const DEC = Date.UTC(2026, 11, 1);
-
-const base = createProjectGroupMembership({
-  group: "group:tragwerksplanung",
-  subject: "person:statik@partner.example.invalid",
-  issuer: "person:admin@buero.example.invalid",
-  validFrom: JAN,
-  validUntil: DEC,
-  mayReshare: false,
-  issuedAt: JAN,
-});
-
-assert.equal(base.$type$, PROJECT_GROUP_MEMBERSHIP_TYPE);
-assert.equal(base.mayReshare, false);
-assert.equal(base.revoked, undefined);
-
-// Revocation ends authority at the moment it is issued, never before.
-const revoked = revokeProjectGroupMembership(base, {
-  revokedAt: MAR,
-  learnedAt: FEB,
-  reason: "Left the partner office",
-  authorizedAssertionTimes: [FEB],
-});
-
-assert.equal(revoked.validUntil, MAR, "validUntil ends at revocation time");
-assert.equal(revoked.revokedAt, MAR);
-assert.equal(revoked.learnedAt, FEB, "learning time is recorded");
-assert.equal(revoked.revoked, true);
-assert.equal(revoked.validFrom, JAN, "validFrom is never rewritten");
-
-// Backdating to the learning time would destroy the assertion made in between.
-assert.throws(
-  () =>
-    revokeProjectGroupMembership(base, {
-      revokedAt: FEB,
-      learnedAt: FEB,
-      reason: "backdated",
-      authorizedAssertionTimes: [MAR],
-    }),
-  /precedes an assertion it authorized/,
-);
-
-// The same guard applies to an ordinary revision that shortens the window.
-assert.throws(
-  () =>
-    reviseProjectGroupMembership(base, {
-      validUntil: FEB,
-      issuedAt: MAR,
-      authorizedAssertionTimes: [MAR],
-    }),
-  /precedes an assertion it authorized/,
-);
-
-const extended = reviseProjectGroupMembership(base, {
-  validUntil: Date.UTC(2027, 5, 1),
-  issuedAt: MAR,
-  authorizedAssertionTimes: [FEB],
-});
-assert.equal(extended.validUntil, Date.UTC(2027, 5, 1));
-assert.equal(extended.issuedAt, MAR);
-assert.equal(extended.group, base.group, "identity props are preserved across versions");
-assert.equal(extended.subject, base.subject);
-assert.equal(extended.issuer, base.issuer);
-
-assert.throws(
-  () =>
-    createProjectGroupMembership({
-      group: "group:x",
-      subject: "person:a",
-      issuer: "person:b",
-      validFrom: DEC,
-      validUntil: JAN,
-      issuedAt: JAN,
-    }),
-  /validUntil must be after validFrom/,
-);
-
-console.log("group.core membership tests passed");
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `node ./packages/group.core/memberships.test.js`
-Expected: FAIL with `SyntaxError: The requested module './index.js' does not provide an export named 'createProjectGroupMembership'`.
-
-- [ ] **Step 3: Add the membership recipe**
-
-In `packages/group.core/recipes.js`, add before the `GroupCoreRecipes` export:
-
-```js
-export const ProjectGroupMembershipRecipe = {
-  $type$: "Recipe",
-  name: PROJECT_GROUP_MEMBERSHIP_TYPE,
-  rule: [
-    { itemprop: "$type$", itemtype: { type: "string", regexp: /^ProjectGroupMembership$/ } },
-    { itemprop: "$version$", itemtype: { type: "string", regexp: /^v1$/ } },
-    { itemprop: "group", itemtype: { type: "string" }, isId: true },
-    { itemprop: "subject", itemtype: { type: "string" }, isId: true },
-    { itemprop: "issuer", itemtype: { type: "string" }, isId: true },
-    { itemprop: "validFrom", itemtype: { type: "number" } },
-    { itemprop: "validUntil", itemtype: { type: "number" } },
-    { itemprop: "issuedAt", itemtype: { type: "number" } },
-    { itemprop: "mayReshare", itemtype: { type: "boolean" } },
-    { itemprop: "revoked", itemtype: { type: "boolean" }, optional: true },
-    { itemprop: "revokedAt", itemtype: { type: "number" }, optional: true },
-    { itemprop: "learnedAt", itemtype: { type: "number" }, optional: true },
-    { itemprop: "revocationReason", itemtype: { type: "string" }, optional: true },
-    { itemprop: "schemaVersion", itemtype: { type: "string" } },
-  ],
-};
-```
-
-Then change the `GroupCoreRecipes` export to:
-
-```js
-export const GroupCoreRecipes = [ProjectGroupRecipe, ProjectGroupMembershipRecipe];
-```
-
-- [ ] **Step 4: Write the membership module**
-
-Create `packages/group.core/memberships.js`:
-
-```js
+  closeInstance,
+  initInstance,
+  getInstanceOwnerIdHash,
+} from "../../../one/packages/one.core/lib/instance.js";
+import { storeUnversionedObject } from "../../../one/packages/one.core/lib/storage-unversioned-objects.js";
 import {
-  PROJECT_GROUP_MEMBERSHIP_TYPE,
-  PROJECT_GROUP_SCHEMA_VERSION,
-} from "./recipes.js";
+  storeVersionedObject,
+  getVersionsNodes,
+  getVersion,
+} from "../../../one/packages/one.core/lib/storage-versioned-objects.js";
+import { sign, getSignatures } from "../../../one/packages/one.models/lib/misc/Signature.js";
 
-function requiredText(value, field) {
-  if (typeof value !== "string" || value.trim() === "") {
-    throw new Error(`ProjectGroupMembership: ${field} is required`);
-  }
-  return value.trim();
-}
+const directory = await mkdtemp(path.join(tmpdir(), "projektor-group-"));
+let initialized = false;
 
-function requiredTime(value, field) {
-  if (!Number.isFinite(value)) {
-    throw new Error(`ProjectGroupMembership: ${field} must be a timestamp in milliseconds`);
-  }
-  return value;
-}
+try {
+  await initInstance({
+    name: "projektor-group-skeleton",
+    email: "projektor-group-skeleton@example.invalid",
+    secret: "projektor-group-skeleton-secret",
+    wipeStorage: true,
+    encryptStorage: false,
+    directory,
+  });
+  initialized = true;
 
-// validUntil is the only input to validity. A version may never end authority
-// before an assertion that version's chain already authorized.
-function assertCoversAuthorizedAssertions(validUntil, authorizedAssertionTimes) {
-  const times = Array.isArray(authorizedAssertionTimes) ? authorizedAssertionTimes : [];
-  for (const time of times) {
-    requiredTime(time, "authorizedAssertionTimes entry");
-    if (validUntil < time) {
-      throw new Error(
-        `ProjectGroupMembership: validUntil ${validUntil} precedes an assertion it authorized at ${time}`,
-      );
-    }
-  }
-}
+  const owner = getInstanceOwnerIdHash();
+  assert.ok(owner, "instance owner id hash is available");
 
-export function createProjectGroupMembership({
-  group,
-  subject,
-  issuer,
-  validFrom,
-  validUntil,
-  mayReshare = false,
-  issuedAt,
-} = {}) {
-  const from = requiredTime(validFrom, "validFrom");
-  const until = requiredTime(validUntil, "validUntil");
-  if (until <= from) {
-    throw new Error("ProjectGroupMembership: validUntil must be after validFrom");
-  }
-  if (typeof mayReshare !== "boolean") {
-    throw new Error("ProjectGroupMembership: mayReshare must be a boolean");
-  }
-  return {
-    $type$: PROJECT_GROUP_MEMBERSHIP_TYPE,
-    $version$: "v1",
-    group: requiredText(group, "group"),
-    subject: requiredText(subject, "subject"),
-    issuer: requiredText(issuer, "issuer"),
-    validFrom: from,
-    validUntil: until,
-    issuedAt: requiredTime(issuedAt, "issuedAt"),
-    mayReshare,
-    schemaVersion: PROJECT_GROUP_SCHEMA_VERSION,
-  };
-}
+  // The owner stands in for a member so the test needs no contact wiring.
+  const anna = owner;
 
-export function reviseProjectGroupMembership(
-  previous,
-  { validUntil, issuedAt, mayReshare, authorizedAssertionTimes } = {},
-) {
-  if (!previous || previous.$type$ !== PROJECT_GROUP_MEMBERSHIP_TYPE) {
-    throw new Error("ProjectGroupMembership: previous version is required");
-  }
-  const until = requiredTime(validUntil, "validUntil");
-  if (until <= previous.validFrom) {
-    throw new Error("ProjectGroupMembership: validUntil must be after validFrom");
-  }
-  assertCoversAuthorizedAssertions(until, authorizedAssertionTimes);
-  return {
-    ...previous,
-    validUntil: until,
-    issuedAt: requiredTime(issuedAt, "issuedAt"),
-    mayReshare: typeof mayReshare === "boolean" ? mayReshare : previous.mayReshare,
-  };
-}
+  // --- Admit a member: HashGroup first, then the Group version pointing at it.
+  const rosterV1 = await storeUnversionedObject({
+    $type$: "HashGroup",
+    person: new Set([anna]),
+  });
+  const groupV1 = await storeVersionedObject({
+    $type$: "Group",
+    name: "tragwerksplanung",
+    owner,
+    hashGroup: rosterV1.hash,
+  });
 
-export function revokeProjectGroupMembership(
-  previous,
-  { revokedAt, learnedAt, reason, authorizedAssertionTimes } = {},
-) {
-  if (!previous || previous.$type$ !== PROJECT_GROUP_MEMBERSHIP_TYPE) {
-    throw new Error("ProjectGroupMembership: previous version is required");
+  assert.ok(groupV1.idHash, "Group has an id hash");
+  assert.ok(groupV1.hash, "Group version has a content hash");
+  assert.notEqual(groupV1.idHash, groupV1.hash);
+
+  // The roster pin is the HashGroup hash, and it is a function of membership.
+  const emptyRoster = await storeUnversionedObject({
+    $type$: "HashGroup",
+    person: new Set(),
+  });
+  assert.notEqual(
+    rosterV1.hash,
+    emptyRoster.hash,
+    "HashGroup hash changes with membership",
+  );
+
+  // --- Sign the group version. The signature is its own object.
+  const signature = await sign(groupV1.hash);
+  assert.ok(signature.hash, "Signature is stored as its own object");
+  const signatures = await getSignatures(groupV1.hash);
+  assert.equal(signatures.length, 1);
+  assert.equal(signatures[0].issuer, owner);
+
+  // --- Remove the member: a new Group version pointing at a new HashGroup.
+  const groupV2 = await storeVersionedObject({
+    $type$: "Group",
+    name: "tragwerksplanung",
+    owner,
+    hashGroup: emptyRoster.hash,
+  });
+  assert.equal(groupV2.idHash, groupV1.idHash, "same identity across versions");
+  assert.notEqual(groupV2.hash, groupV1.hash, "different version");
+
+  // --- The version DAG is the roster history, ordered by the platform.
+  const nodes = await getVersionsNodes(groupV1.idHash);
+  assert.ok(nodes.length >= 2, "both versions are in the version DAG");
+  for (const node of nodes) {
+    assert.ok(Number.isFinite(node.creationTime), "each node carries creationTime");
+    assert.ok(Number.isFinite(node.depth), "each node carries depth");
   }
-  const at = requiredTime(revokedAt, "revokedAt");
-  assertCoversAuthorizedAssertions(at, authorizedAssertionTimes);
-  const revocation = {
-    ...previous,
-    // Authority ends when the revocation is issued, never earlier.
-    validUntil: at,
-    issuedAt: at,
-    revoked: true,
-    revokedAt: at,
-    revocationReason: requiredText(reason, "revocationReason"),
-  };
-  if (learnedAt !== undefined) {
-    // Recorded for accountability. Never an input to validity.
-    revocation.learnedAt = requiredTime(learnedAt, "learnedAt");
+
+  // --- Present access fails: the current roster no longer contains Anna.
+  const currentNode = nodes[nodes.length - 1];
+  const currentGroup = await getVersion(currentNode.data);
+  assert.equal(
+    currentGroup.hashGroup,
+    emptyRoster.hash,
+    "current version points at the empty roster",
+  );
+
+  // --- Historical verification still succeeds: version 1 is intact, still
+  // signed, and still names the roster that contained Anna.
+  const historicGroup = await getVersion(groupV1.hash);
+  assert.equal(historicGroup.hashGroup, rosterV1.hash);
+  const historicSignatures = await getSignatures(groupV1.hash);
+  assert.equal(historicSignatures.length, 1, "the earlier version is still signed");
+
+  console.log("group.core skeleton test passed");
+} finally {
+  if (initialized) {
+    closeInstance();
   }
-  return revocation;
+  await rm(directory, { recursive: true, force: true });
 }
 ```
 
-- [ ] **Step 5: Export from the barrel**
+- [ ] **Step 2: Run it and record what the runtime actually does**
 
-In `packages/group.core/index.js`, add:
+Run: `node ./packages/group.core/skeleton.test.js`
 
-```js
-export * from "./memberships.js";
-```
+This is expected to fail on the first run — that is the point. Fix the test to
+match the runtime, one failure at a time. Record each correction as a comment at
+the top of the file under a `// Confirmed contracts:` heading, covering at least
+the four unknowns listed above.
 
-- [ ] **Step 6: Run test to verify it passes**
+Do not proceed to Step 3 until the test passes and those four are written down.
 
-Run: `node ./packages/group.core/memberships.test.js`
-Expected: PASS, prints `group.core membership tests passed`.
+- [ ] **Step 3: Register the test in package.json**
 
-- [ ] **Step 7: Register the test in package.json**
-
-In `package.json`, append to the `test` script:
+In `package.json`, append to the end of the `test` script value:
 
 ```
- && node ./packages/group.core/memberships.test.js
+ && node ./packages/group.core/skeleton.test.js
 ```
 
 Run: `npm test`
-Expected: all tests pass.
+Expected: all existing tests pass, ending with `group.core skeleton test passed`.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add packages/group.core package.json
-git commit -m "Add group membership certificates with prospective revocation"
+git commit -m "Prove the group sharing slice against a live instance"
 ```
+
+- [ ] **Step 5: Reconcile the rest of the plan**
+
+Re-read Tasks 2–7 against the confirmed contracts. Where a task's code uses an
+API shape the skeleton disproved, correct the task before starting it, and note
+the correction in that task's commit message.
 
 ---
 
-### Task 3: rosterAsOf — The Evidence Question
+### Task 2: rosterAsOf And mayAct Over The Version DAG
 
 **Files:**
 - Create: `packages/group.core/roster.js`
+- Create: `packages/group.core/index.js`
 - Create: `packages/group.core/roster.test.js`
-- Modify: `packages/group.core/index.js`
 - Modify: `package.json` (the `test` script)
 
 **Interfaces:**
-- Consumes: membership objects from Task 2 (`group`, `subject`, `issuer`, `validFrom`, `validUntil`, `issuedAt`).
-- Produces: `rosterAsOf(memberships, atTime) -> string[]` — sorted subject identifiers.
+- Consumes: `getVersionsNodes`, `getVersion`, `getObject` from one.core; contracts confirmed in Task 1.
+- Produces:
+  - `StaleChainError` — class extending `Error`, `name === "StaleChainError"`
+  - `ConcurrentVersionsError` — class extending `Error`, thrown when the version in force at a time is ambiguous
+  - `rosterAsOf(groupIdHash, atTime) -> Promise<string[]>` — sorted Person id hashes
+  - `mayAct({groupIdHash, subject, now, replicaAsOf, maxStalenessMs}) -> Promise<boolean>`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -495,256 +280,125 @@ Create `packages/group.core/roster.test.js`:
 
 ```js
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import "../../../one/packages/one.core/lib/system/load-nodejs.js";
 import {
-  createProjectGroupMembership,
-  revokeProjectGroupMembership,
-  rosterAsOf,
-} from "./index.js";
+  closeInstance,
+  initInstance,
+  getInstanceOwnerIdHash,
+} from "../../../one/packages/one.core/lib/instance.js";
+import { storeUnversionedObject } from "../../../one/packages/one.core/lib/storage-unversioned-objects.js";
+import { storeVersionedObject } from "../../../one/packages/one.core/lib/storage-versioned-objects.js";
+import { StaleChainError, rosterAsOf, mayAct } from "./index.js";
 
-const JAN = Date.UTC(2026, 0, 1);
-const FEB = Date.UTC(2026, 1, 1);
-const MAR = Date.UTC(2026, 2, 1);
-const DEC = Date.UTC(2026, 11, 1);
+const directory = await mkdtemp(path.join(tmpdir(), "projektor-roster-"));
+let initialized = false;
+const DAY = 24 * 60 * 60 * 1000;
 
-const anna = createProjectGroupMembership({
-  group: "group:tragwerksplanung",
-  subject: "person:anna@partner.example.invalid",
-  issuer: "person:admin@buero.example.invalid",
-  validFrom: JAN,
-  validUntil: DEC,
-  issuedAt: JAN,
-});
+try {
+  await initInstance({
+    name: "projektor-roster-test",
+    email: "projektor-roster-test@example.invalid",
+    secret: "projektor-roster-test-secret",
+    wipeStorage: true,
+    encryptStorage: false,
+    directory,
+  });
+  initialized = true;
 
-const ben = createProjectGroupMembership({
-  group: "group:tragwerksplanung",
-  subject: "person:ben@partner.example.invalid",
-  issuer: "person:admin@buero.example.invalid",
-  validFrom: MAR,
-  validUntil: DEC,
-  issuedAt: MAR,
-});
+  const owner = getInstanceOwnerIdHash();
 
-const annaRevoked = revokeProjectGroupMembership(anna, {
-  revokedAt: MAR,
-  reason: "Left the partner office",
-  authorizedAssertionTimes: [FEB],
-});
+  const withMember = await storeUnversionedObject({
+    $type$: "HashGroup",
+    person: new Set([owner]),
+  });
+  const v1 = await storeVersionedObject({
+    $type$: "Group",
+    name: "tragwerksplanung",
+    owner,
+    hashGroup: withMember.hash,
+  });
+  const afterV1 = Date.now();
 
-const versions = [anna, ben, annaRevoked];
+  const withoutMember = await storeUnversionedObject({
+    $type$: "HashGroup",
+    person: new Set(),
+  });
+  await storeVersionedObject({
+    $type$: "Group",
+    name: "tragwerksplanung",
+    owner,
+    hashGroup: withoutMember.hash,
+  });
+  const afterV2 = Date.now();
 
-// The revocation is dated March. It must not reach back into February.
-assert.deepEqual(rosterAsOf(versions, FEB), ["person:anna@partner.example.invalid"]);
+  // Evidence: at afterV1 the member was in the group, and removing them later
+  // does not reach back.
+  assert.deepEqual(await rosterAsOf(v1.idHash, afterV1), [owner]);
 
-// In April, Anna's authority has ended and Ben's has begun.
-assert.deepEqual(rosterAsOf(versions, Date.UTC(2026, 3, 1)), [
-  "person:ben@partner.example.invalid",
-]);
+  // Evidence: at afterV2 they are not.
+  assert.deepEqual(await rosterAsOf(v1.idHash, afterV2), []);
 
-// Before anyone was admitted, the roster is empty.
-assert.deepEqual(rosterAsOf(versions, Date.UTC(2025, 11, 1)), []);
+  // Before the group existed, the roster is empty rather than an error.
+  assert.deepEqual(await rosterAsOf(v1.idHash, 0), []);
 
-// Only the version in force at the evaluated time governs it.
-const extended = createProjectGroupMembership({
-  group: "group:tragwerksplanung",
-  subject: "person:anna@partner.example.invalid",
-  issuer: "person:admin@buero.example.invalid",
-  validFrom: JAN,
-  validUntil: DEC,
-  issuedAt: Date.UTC(2026, 5, 1),
-});
-assert.deepEqual(rosterAsOf([...versions, extended], FEB), [
-  "person:anna@partner.example.invalid",
-]);
+  // Access: evaluated now, under a freshness policy.
+  assert.equal(
+    await mayAct({
+      groupIdHash: v1.idHash,
+      subject: owner,
+      now: afterV2,
+      replicaAsOf: afterV2 - DAY,
+      maxStalenessMs: 7 * DAY,
+    }),
+    false,
+  );
 
-assert.throws(() => rosterAsOf(versions, undefined), /atTime is required/);
+  // A replica staler than the policy fails closed, distinguishably from a deny.
+  await assert.rejects(
+    () =>
+      mayAct({
+        groupIdHash: v1.idHash,
+        subject: owner,
+        now: afterV2,
+        replicaAsOf: afterV2 - 30 * DAY,
+        maxStalenessMs: 7 * DAY,
+      }),
+    StaleChainError,
+  );
 
-console.log("group.core roster tests passed");
+  await assert.rejects(
+    () => mayAct({ groupIdHash: v1.idHash, subject: owner, now: afterV2 }),
+    /replicaAsOf is required/,
+  );
+  await assert.rejects(() => rosterAsOf(v1.idHash), /atTime is required/);
+
+  console.log("group.core roster tests passed");
+} finally {
+  if (initialized) {
+    closeInstance();
+  }
+  await rm(directory, { recursive: true, force: true });
+}
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `node ./packages/group.core/roster.test.js`
-Expected: FAIL with `does not provide an export named 'rosterAsOf'`.
+Expected: FAIL with `ERR_MODULE_NOT_FOUND` for `./index.js`.
 
-- [ ] **Step 3: Write the roster projection**
+- [ ] **Step 3: Write the roster module**
 
 Create `packages/group.core/roster.js`:
 
 ```js
-import { PROJECT_GROUP_MEMBERSHIP_TYPE } from "./recipes.js";
-
-function identityKey(membership) {
-  return `${membership.group} ${membership.subject} ${membership.issuer}`;
-}
-
-/**
- * The evidence question: who was in the group at `atTime`?
- *
- * Only versions issued at or before `atTime` are considered, so a later
- * revocation cannot reach back into an earlier evaluation. This is a
- * projection — it is never stored as authoritative state.
- */
-export function rosterAsOf(memberships, atTime) {
-  if (!Number.isFinite(atTime)) {
-    throw new Error("rosterAsOf: atTime is required");
-  }
-  if (!Array.isArray(memberships)) {
-    throw new Error("rosterAsOf: memberships must be an array");
-  }
-
-  const inForce = new Map();
-  for (const membership of memberships) {
-    if (!membership || membership.$type$ !== PROJECT_GROUP_MEMBERSHIP_TYPE) {
-      throw new Error("rosterAsOf: every entry must be a ProjectGroupMembership");
-    }
-    if (membership.issuedAt > atTime) {
-      continue;
-    }
-    const key = identityKey(membership);
-    const current = inForce.get(key);
-    if (!current || membership.issuedAt > current.issuedAt) {
-      inForce.set(key, membership);
-    }
-  }
-
-  const subjects = [];
-  for (const membership of inForce.values()) {
-    if (membership.validFrom <= atTime && atTime <= membership.validUntil) {
-      subjects.push(membership.subject);
-    }
-  }
-  return subjects.sort();
-}
-```
-
-- [ ] **Step 4: Export from the barrel**
-
-In `packages/group.core/index.js`, add:
-
-```js
-export * from "./roster.js";
-```
-
-- [ ] **Step 5: Run test to verify it passes**
-
-Run: `node ./packages/group.core/roster.test.js`
-Expected: PASS, prints `group.core roster tests passed`.
-
-- [ ] **Step 6: Register the test in package.json**
-
-In `package.json`, append to the `test` script:
-
-```
- && node ./packages/group.core/roster.test.js
-```
-
-Run: `npm test`
-Expected: all tests pass.
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add packages/group.core package.json
-git commit -m "Project group rosters as of an assertion time"
-```
-
----
-
-### Task 4: mayAct — The Access Question
-
-**Files:**
-- Create: `packages/group.core/access.js`
-- Create: `packages/group.core/access.test.js`
-- Modify: `packages/group.core/index.js`
-- Modify: `package.json` (the `test` script)
-
-**Interfaces:**
-- Consumes: membership objects from Task 2, `rosterAsOf` from Task 3.
-- Produces:
-  - `StaleChainError` (class extending `Error`, `name === "StaleChainError"`)
-  - `mayAct(memberships, {subject, group, now, replicaAsOf, maxStalenessMs}) -> boolean`
-
-- [ ] **Step 1: Write the failing test**
-
-Create `packages/group.core/access.test.js`:
-
-```js
-import assert from "node:assert/strict";
+import { getObject } from "../../../one/packages/one.core/lib/storage-unversioned-objects.js";
 import {
-  StaleChainError,
-  createProjectGroupMembership,
-  revokeProjectGroupMembership,
-  mayAct,
-} from "./index.js";
-
-const JAN = Date.UTC(2026, 0, 1);
-const FEB = Date.UTC(2026, 1, 1);
-const MAR = Date.UTC(2026, 2, 1);
-const APR = Date.UTC(2026, 3, 1);
-const DEC = Date.UTC(2026, 11, 1);
-const DAY = 24 * 60 * 60 * 1000;
-
-const anna = createProjectGroupMembership({
-  group: "group:tragwerksplanung",
-  subject: "person:anna@partner.example.invalid",
-  issuer: "person:admin@buero.example.invalid",
-  validFrom: JAN,
-  validUntil: DEC,
-  issuedAt: JAN,
-});
-const annaRevoked = revokeProjectGroupMembership(anna, {
-  revokedAt: MAR,
-  reason: "Left the partner office",
-  authorizedAssertionTimes: [FEB],
-});
-const versions = [anna, annaRevoked];
-
-const fresh = {
-  subject: "person:anna@partner.example.invalid",
-  group: "group:tragwerksplanung",
-  now: APR,
-  replicaAsOf: APR - DAY,
-  maxStalenessMs: 7 * DAY,
-};
-
-// Revoked in March, so she may not act in April.
-assert.equal(mayAct(versions, fresh), false);
-
-// But she could act in February, under the same version history.
-assert.equal(mayAct(versions, { ...fresh, now: FEB, replicaAsOf: FEB - DAY }), true);
-
-// Unknown subject is denied, not errored.
-assert.equal(mayAct(versions, { ...fresh, subject: "person:nobody@example.invalid" }), false);
-
-// A replica staler than the policy fails closed and is distinguishable from a deny.
-assert.throws(
-  () => mayAct(versions, { ...fresh, replicaAsOf: APR - 30 * DAY }),
-  StaleChainError,
-);
-
-assert.throws(
-  () => mayAct(versions, { ...fresh, maxStalenessMs: undefined }),
-  /maxStalenessMs is required/,
-);
-assert.throws(
-  () => mayAct(versions, { ...fresh, replicaAsOf: undefined }),
-  /replicaAsOf is required/,
-);
-
-console.log("group.core access tests passed");
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `node ./packages/group.core/access.test.js`
-Expected: FAIL with `does not provide an export named 'StaleChainError'`.
-
-- [ ] **Step 3: Write the access module**
-
-Create `packages/group.core/access.js`:
-
-```js
-import { rosterAsOf } from "./roster.js";
+  getVersion,
+  getVersionsNodes,
+} from "../../../one/packages/one.core/lib/storage-versioned-objects.js";
 
 export class StaleChainError extends Error {
   constructor(message) {
@@ -753,22 +407,71 @@ export class StaleChainError extends Error {
   }
 }
 
+export class ConcurrentVersionsError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "ConcurrentVersionsError";
+  }
+}
+
+/**
+ * Select the single Group version in force at `atTime`.
+ *
+ * The version DAG, not a timestamp field on the object, is the ordering
+ * authority. Concurrent unmerged branches are an explicit error rather than an
+ * arbitrary pick: two versions at the same depth with no merge between them
+ * means the roster genuinely is ambiguous at that time.
+ */
+function versionInForce(nodes, atTime) {
+  const candidates = nodes.filter((node) => node.creationTime <= atTime);
+  if (candidates.length === 0) {
+    return undefined;
+  }
+  const maxDepth = Math.max(...candidates.map((node) => node.depth));
+  const deepest = candidates.filter((node) => node.depth === maxDepth);
+  if (deepest.length > 1) {
+    throw new ConcurrentVersionsError(
+      `Group has ${deepest.length} concurrent versions at depth ${maxDepth} as of ${atTime}; merge before evaluating`,
+    );
+  }
+  return deepest[0];
+}
+
+/**
+ * The evidence question: who was in the group at `atTime`?
+ */
+export async function rosterAsOf(groupIdHash, atTime) {
+  if (!groupIdHash) {
+    throw new Error("rosterAsOf: groupIdHash is required");
+  }
+  if (!Number.isFinite(atTime)) {
+    throw new Error("rosterAsOf: atTime is required");
+  }
+  const nodes = await getVersionsNodes(groupIdHash);
+  const node = versionInForce(nodes, atTime);
+  if (node === undefined) {
+    return [];
+  }
+  const group = await getVersion(node.data);
+  const hashGroup = await getObject(group.hashGroup);
+  return [...hashGroup.person].sort();
+}
+
 /**
  * The access question: may this participant act now?
  *
- * Evaluated against the present, under an explicit freshness policy. A replica
- * older than the policy allows throws rather than returning false, so a stale
- * chain can never be misread as an ordinary deny.
+ * A replica older than the freshness policy allows throws rather than returning
+ * false, so a stale chain can never be misread as an ordinary deny.
  */
-export function mayAct(
-  memberships,
-  { subject, group, now, replicaAsOf, maxStalenessMs } = {},
-) {
-  if (typeof subject !== "string" || subject.trim() === "") {
+export async function mayAct({
+  groupIdHash,
+  subject,
+  now,
+  replicaAsOf,
+  maxStalenessMs,
+} = {}) {
+  if (!subject) {
     throw new Error("mayAct: subject is required");
-  }
-  if (typeof group !== "string" || group.trim() === "") {
-    throw new Error("mayAct: group is required");
   }
   if (!Number.isFinite(now)) {
     throw new Error("mayAct: now is required");
@@ -784,9 +487,298 @@ export function mayAct(
       `mayAct: chain replica is ${now - replicaAsOf}ms old, policy allows ${maxStalenessMs}ms`,
     );
   }
+  const roster = await rosterAsOf(groupIdHash, now);
+  return roster.includes(subject);
+}
+```
 
-  const inGroup = memberships.filter((membership) => membership.group === group);
-  return rosterAsOf(inGroup, now).includes(subject);
+Create `packages/group.core/index.js`:
+
+```js
+export * from "./roster.js";
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `node ./packages/group.core/roster.test.js`
+Expected: PASS, prints `group.core roster tests passed`.
+
+- [ ] **Step 5: Register the test in package.json**
+
+In `package.json`, append to the `test` script:
+
+```
+ && node ./packages/group.core/roster.test.js
+```
+
+Run: `npm test`
+Expected: all tests pass.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add packages/group.core package.json
+git commit -m "Read group rosters from the version DAG at two evaluation times"
+```
+
+---
+
+### Task 3: The Membership Certificate And Its Validity Window
+
+The only genuinely new evidence type. It states: *the issuer certifies that this
+person was in this exact roster, for this window, with or without the right to
+re-share the definition.* It pins `HashGroup`, so it can never be read as an
+open-ended present-tense grant.
+
+**Files:**
+- Create: `packages/group.core/certificates.js`
+- Create: `packages/group.core/certificates.test.js`
+- Modify: `packages/group.core/index.js`
+- Modify: `package.json` (the `test` script)
+
+**Interfaces:**
+- Consumes: `HashGroup` hashes from Task 1.
+- Produces:
+  - `GROUP_MEMBERSHIP_CERTIFICATE_TYPE`, `GroupMembershipLicense`, `GroupMembershipCertificateRecipe`, `GroupCoreRecipes`
+  - `createGroupMembershipCertificate({group, hashGroup, person, mayReshare, validFrom, validUntil, licenseHash}) -> object`
+  - `isMembershipValidAt(certificate, atTime) -> boolean`
+  - `revokeMembershipCertificate(previous, {revokedAt, learnedAt, reason, endAt}) -> object`
+
+- [ ] **Step 1: Write the failing test**
+
+Create `packages/group.core/certificates.test.js`:
+
+```js
+import assert from "node:assert/strict";
+import {
+  GROUP_MEMBERSHIP_CERTIFICATE_TYPE,
+  GroupCoreRecipes,
+  createGroupMembershipCertificate,
+  isMembershipValidAt,
+  revokeMembershipCertificate,
+} from "./index.js";
+
+const JAN = Date.UTC(2026, 0, 1);
+const FEB = Date.UTC(2026, 1, 1);
+const MAR = Date.UTC(2026, 2, 1);
+const DEC = Date.UTC(2026, 11, 1);
+
+const GROUP = "0".repeat(64);
+const ROSTER = "1".repeat(64);
+const PERSON = "2".repeat(64);
+const LICENSE = "3".repeat(64);
+
+const cert = createGroupMembershipCertificate({
+  group: GROUP,
+  hashGroup: ROSTER,
+  person: PERSON,
+  mayReshare: true,
+  validFrom: JAN,
+  validUntil: DEC,
+  licenseHash: LICENSE,
+});
+
+assert.equal(cert.$type$, GROUP_MEMBERSHIP_CERTIFICATE_TYPE);
+// The certificate pins the exact roster, so it can never mean "is in the group now".
+assert.equal(cert.hashGroup, ROSTER);
+assert.equal(cert.license, LICENSE);
+// Signatures are separate objects, never a field.
+assert.equal("signature" in cert, false);
+
+assert.equal(isMembershipValidAt(cert, FEB), true);
+assert.equal(isMembershipValidAt(cert, Date.UTC(2027, 5, 1)), false);
+
+// Revocation ends authority at issuance, never before.
+const revoked = revokeMembershipCertificate(cert, {
+  revokedAt: MAR,
+  learnedAt: FEB,
+  reason: "Left the partner office",
+});
+assert.equal(revoked.validUntil, MAR, "validUntil ends at revocation time");
+assert.equal(revoked.learnedAt, FEB, "learning time is recorded");
+assert.equal(revoked.validFrom, JAN, "validFrom is never rewritten");
+assert.equal(revoked.hashGroup, ROSTER, "the pinned roster does not change");
+
+// The February assertion this certificate authorised is still covered.
+assert.equal(isMembershipValidAt(revoked, FEB), true);
+assert.equal(isMembershipValidAt(revoked, Date.UTC(2026, 3, 1)), false);
+
+// Ending the window before the revocation was issued is refused outright.
+assert.throws(
+  () =>
+    revokeMembershipCertificate(cert, {
+      revokedAt: MAR,
+      endAt: FEB,
+      reason: "backdated",
+    }),
+  /earliest permitted end/,
+);
+
+assert.throws(
+  () =>
+    createGroupMembershipCertificate({
+      group: GROUP,
+      hashGroup: ROSTER,
+      person: PERSON,
+      validFrom: DEC,
+      validUntil: JAN,
+      licenseHash: LICENSE,
+    }),
+  /validUntil must be after validFrom/,
+);
+
+const recipe = GroupCoreRecipes.find(
+  (entry) => entry.name === GROUP_MEMBERSHIP_CERTIFICATE_TYPE,
+);
+assert.ok(recipe, "certificate recipe is registered");
+assert.equal(
+  recipe.rule.find((rule) => rule.itemprop === "hashGroup").itemtype.type,
+  "referenceToObj",
+);
+assert.equal(
+  recipe.rule.find((rule) => rule.itemprop === "person").itemtype.type,
+  "referenceToId",
+);
+assert.equal(recipe.rule.some((rule) => rule.itemprop === "signature"), false);
+
+console.log("group.core certificate tests passed");
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `node ./packages/group.core/certificates.test.js`
+Expected: FAIL with `does not provide an export named 'createGroupMembershipCertificate'`.
+
+- [ ] **Step 3: Write the certificates module**
+
+Create `packages/group.core/certificates.js`:
+
+```js
+export const GROUP_MEMBERSHIP_CERTIFICATE_TYPE = "GroupMembershipCertificate";
+
+/**
+ * License text follows the one.models convention: values stored in the
+ * certificate are referenced in brackets.
+ */
+export const GroupMembershipLicense = {
+  $type$: "License",
+  name: "GroupMembership",
+  description:
+    "The [signature.issuer] certifies that [person] was a member of the roster [hashGroup] of group [group] from [validFrom] until [validUntil]. This certificate states past membership of an exact roster. It is not a statement that [person] is currently a member.",
+};
+
+export const GroupMembershipCertificateRecipe = {
+  $type$: "Recipe",
+  name: GROUP_MEMBERSHIP_CERTIFICATE_TYPE,
+  rule: [
+    {
+      itemprop: "group",
+      itemtype: { type: "referenceToId", allowedTypes: new Set(["Group"]) },
+    },
+    {
+      itemprop: "hashGroup",
+      itemtype: { type: "referenceToObj", allowedTypes: new Set(["HashGroup"]) },
+    },
+    {
+      itemprop: "person",
+      itemtype: { type: "referenceToId", allowedTypes: new Set(["Person"]) },
+    },
+    { itemprop: "mayReshare", itemtype: { type: "boolean" } },
+    { itemprop: "validFrom", itemtype: { type: "number" } },
+    { itemprop: "validUntil", itemtype: { type: "number" } },
+    { itemprop: "learnedAt", itemtype: { type: "number" }, optional: true },
+    { itemprop: "revocationReason", itemtype: { type: "string" }, optional: true },
+    {
+      itemprop: "license",
+      itemtype: { type: "referenceToObj", allowedTypes: new Set(["License"]) },
+    },
+  ],
+};
+
+export const GroupCoreRecipes = [GroupMembershipCertificateRecipe];
+
+function required(value, field) {
+  if (value === undefined || value === null || value === "") {
+    throw new Error(`GroupMembershipCertificate: ${field} is required`);
+  }
+  return value;
+}
+
+function requiredTime(value, field) {
+  if (!Number.isFinite(value)) {
+    throw new Error(
+      `GroupMembershipCertificate: ${field} must be a timestamp in milliseconds`,
+    );
+  }
+  return value;
+}
+
+export function createGroupMembershipCertificate({
+  group,
+  hashGroup,
+  person,
+  mayReshare = false,
+  validFrom,
+  validUntil,
+  licenseHash,
+} = {}) {
+  const from = requiredTime(validFrom, "validFrom");
+  const until = requiredTime(validUntil, "validUntil");
+  if (until <= from) {
+    throw new Error("GroupMembershipCertificate: validUntil must be after validFrom");
+  }
+  if (typeof mayReshare !== "boolean") {
+    throw new Error("GroupMembershipCertificate: mayReshare must be a boolean");
+  }
+  return {
+    $type$: GROUP_MEMBERSHIP_CERTIFICATE_TYPE,
+    group: required(group, "group"),
+    hashGroup: required(hashGroup, "hashGroup"),
+    person: required(person, "person"),
+    mayReshare,
+    validFrom: from,
+    validUntil: until,
+    license: required(licenseHash, "licenseHash"),
+  };
+}
+
+export function isMembershipValidAt(certificate, atTime) {
+  requiredTime(atTime, "atTime");
+  return certificate.validFrom <= atTime && atTime <= certificate.validUntil;
+}
+
+/**
+ * Issue a superseding certificate that ends authority now.
+ *
+ * `revokedAt` is the earliest permitted end. Ending earlier — including at the
+ * time the issuer learned of the trust change — would invalidate assertions made
+ * in good faith in the gap, and would not discriminate between honest and
+ * hostile signatures in that window. `learnedAt` records the gap for
+ * accountability and has no effect on validity.
+ */
+export function revokeMembershipCertificate(
+  previous,
+  { revokedAt, learnedAt, reason, endAt } = {},
+) {
+  if (!previous || previous.$type$ !== GROUP_MEMBERSHIP_CERTIFICATE_TYPE) {
+    throw new Error("GroupMembershipCertificate: previous certificate is required");
+  }
+  const at = requiredTime(revokedAt, "revokedAt");
+  const end = endAt === undefined ? at : requiredTime(endAt, "endAt");
+  if (end < at) {
+    throw new Error(
+      "GroupMembershipCertificate: revokedAt is the earliest permitted end; a validity window may not end before the revocation was issued",
+    );
+  }
+  const revocation = {
+    ...previous,
+    validUntil: end,
+    revocationReason: required(reason, "revocationReason"),
+  };
+  if (learnedAt !== undefined) {
+    revocation.learnedAt = requiredTime(learnedAt, "learnedAt");
+  }
+  return revocation;
 }
 ```
 
@@ -795,20 +787,20 @@ export function mayAct(
 In `packages/group.core/index.js`, add:
 
 ```js
-export * from "./access.js";
+export * from "./certificates.js";
 ```
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `node ./packages/group.core/access.test.js`
-Expected: PASS, prints `group.core access tests passed`.
+Run: `node ./packages/group.core/certificates.test.js`
+Expected: PASS, prints `group.core certificate tests passed`.
 
 - [ ] **Step 6: Register the test in package.json**
 
 In `package.json`, append to the `test` script:
 
 ```
- && node ./packages/group.core/access.test.js
+ && node ./packages/group.core/certificates.test.js
 ```
 
 Run: `npm test`
@@ -818,273 +810,348 @@ Expected: all tests pass.
 
 ```bash
 git add packages/group.core package.json
-git commit -m "Evaluate present group authority under a freshness policy"
+git commit -m "Add time-bounded group membership certificates"
 ```
 
 ---
 
-### Task 5: Disclosure Records And The Re-Share Right
+### Task 4: Issuance And The Authorization Boundary
+
+The constructors in Task 3 are pure and prove nothing. This task supplies the
+authority: issuing goes through `TrustedKeysManager.certify`, and disclosing
+requires stored-certificate evidence that the sharer holds a valid, issuer-signed
+membership certificate **for the group being disclosed**.
 
 **Files:**
-- Create: `packages/group.core/disclosure.js`
-- Create: `packages/group.core/disclosure.test.js`
-- Modify: `packages/group.core/recipes.js`
+- Create: `packages/group.core/issuance.js`
+- Create: `packages/group.core/issuance.test.js`
+- Modify: `packages/group.core/certificates.js` (extend `GroupCoreRecipes`)
 - Modify: `packages/group.core/index.js`
 - Modify: `package.json` (the `test` script)
 
 **Interfaces:**
-- Consumes: `PROJECT_GROUP_DISCLOSURE_TYPE` from Task 1, membership objects from Task 2.
-- Produces: `createProjectGroupDisclosure({groupIdHash, groupVersionHash, recipient, disclosedBy, disclosedAt, sharerMembership, groupIssuer}) -> object`.
+- Consumes: `TrustedKeysManager` from one.models, Task 3 factories.
+- Produces:
+  - `GROUP_DISCLOSURE_CERTIFICATE_TYPE`, `GroupDisclosureLicense`, `GroupDisclosureCertificateRecipe`
+  - `issueMembership(trust, {group, hashGroup, person, mayReshare, validFrom, validUntil}) -> Promise<{certificate, signature, license}>`
+  - `authorizeDisclosure(trust, {groupIdHash, sharer, issuer, atTime}) -> Promise<{certificateHash}>`
+  - `discloseGroup(trust, {groupIdHash, hashGroup, recipient, sharer, issuer, atTime}) -> Promise<object>`
+
+**Dependency note:** `TrustedKeysManager` takes a `LeuteModel`, so this task is
+where the one.models runtime dependency lands. The root README already sanctions
+one.models "where Leute/contact model is the owning API", which this is. If
+standing up `LeuteModel` proves disproportionate for this prototype, stop and
+raise it — do not substitute a hand-rolled key check, which is the exact defect
+this task exists to fix.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `packages/group.core/disclosure.test.js`:
+Create `packages/group.core/issuance.test.js`:
 
 ```js
 import assert from "node:assert/strict";
-import {
-  PROJECT_GROUP_DISCLOSURE_TYPE,
-  createProjectGroupMembership,
-  createProjectGroupDisclosure,
-} from "./index.js";
+import { authorizeDisclosure } from "./index.js";
 
-const JAN = Date.UTC(2026, 0, 1);
-const FEB = Date.UTC(2026, 1, 1);
-const DEC = Date.UTC(2026, 11, 1);
-
-const ISSUER = "person:admin@buero.example.invalid";
-const GROUP_ID = "group:tragwerksplanung";
-const VERSION_HASH = "b1946ac92492d2347c6235b4d2611184";
-
-function membershipFor(subject, mayReshare) {
-  return createProjectGroupMembership({
-    group: GROUP_ID,
-    subject,
-    issuer: ISSUER,
-    validFrom: JAN,
-    validUntil: DEC,
-    mayReshare,
-    issuedAt: JAN,
-  });
+// A stub standing in for TrustedKeysManager, exercising the boundary without
+// LeuteModel. Step 6 replaces it with the real manager; these assertions must
+// hold unchanged against both.
+function stubTrust(entries) {
+  return {
+    async getCertificates(dataHash) {
+      return entries.filter((entry) => entry.certificate.group === dataHash);
+    },
+  };
 }
 
-const sharer = membershipFor("person:anna@partner.example.invalid", true);
-const disclosure = createProjectGroupDisclosure({
-  groupIdHash: GROUP_ID,
-  groupVersionHash: VERSION_HASH,
-  recipient: "person:bauamt@stadt.example.invalid",
-  disclosedBy: "person:anna@partner.example.invalid",
-  disclosedAt: FEB,
-  sharerMembership: sharer,
-  groupIssuer: ISSUER,
+const FEB = Date.UTC(2026, 1, 1);
+const ISSUER = "9".repeat(64);
+const OTHER_ISSUER = "8".repeat(64);
+const GROUP_A = "a".repeat(64);
+const GROUP_B = "b".repeat(64);
+const ROSTER = "1".repeat(64);
+const SHARER = "2".repeat(64);
+
+const certForGroupA = {
+  issuer: ISSUER,
+  certificateHash: "c".repeat(64),
+  certificate: {
+    $type$: "GroupMembershipCertificate",
+    group: GROUP_A,
+    hashGroup: ROSTER,
+    person: SHARER,
+    mayReshare: true,
+    validFrom: Date.UTC(2026, 0, 1),
+    validUntil: Date.UTC(2026, 11, 1),
+    license: "3".repeat(64),
+  },
+};
+
+const trust = stubTrust([certForGroupA]);
+
+// The happy path names the exact certificate relied on.
+const authorized = await authorizeDisclosure(trust, {
+  groupIdHash: GROUP_A,
+  sharer: SHARER,
+  issuer: ISSUER,
+  atTime: FEB,
 });
+assert.equal(authorized.certificateHash, "c".repeat(64));
 
-assert.equal(disclosure.$type$, PROJECT_GROUP_DISCLOSURE_TYPE);
-// A disclosure pins the exact roster that was shown.
-assert.equal(disclosure.groupVersionHash, VERSION_HASH);
-assert.equal(disclosure.recipient, "person:bauamt@stadt.example.invalid");
-assert.equal(disclosure.disclosedAt, FEB);
-
-// Without the re-share right, disclosure fails closed.
-const blocked = membershipFor("person:ben@partner.example.invalid", false);
-assert.throws(
+// A certificate for group A must not authorize disclosure of group B.
+await assert.rejects(
   () =>
-    createProjectGroupDisclosure({
-      groupIdHash: GROUP_ID,
-      groupVersionHash: VERSION_HASH,
-      recipient: "person:bauamt@stadt.example.invalid",
-      disclosedBy: "person:ben@partner.example.invalid",
-      disclosedAt: FEB,
-      sharerMembership: blocked,
-      groupIssuer: ISSUER,
+    authorizeDisclosure(trust, {
+      groupIdHash: GROUP_B,
+      sharer: SHARER,
+      issuer: ISSUER,
+      atTime: FEB,
+    }),
+  /no membership certificate/,
+);
+
+// An expired certificate does not authorize.
+await assert.rejects(
+  () =>
+    authorizeDisclosure(trust, {
+      groupIdHash: GROUP_A,
+      sharer: SHARER,
+      issuer: ISSUER,
+      atTime: Date.UTC(2027, 5, 1),
+    }),
+  /not valid at/,
+);
+
+// A certificate from a different issuer does not authorize.
+await assert.rejects(
+  () =>
+    authorizeDisclosure(trust, {
+      groupIdHash: GROUP_A,
+      sharer: SHARER,
+      issuer: OTHER_ISSUER,
+      atTime: FEB,
+    }),
+  /no membership certificate/,
+);
+
+// A certificate belonging to someone else does not authorize.
+await assert.rejects(
+  () =>
+    authorizeDisclosure(trust, {
+      groupIdHash: GROUP_A,
+      sharer: "7".repeat(64),
+      issuer: ISSUER,
+      atTime: FEB,
+    }),
+  /no membership certificate/,
+);
+
+// Without mayReshare, disclosure fails closed.
+const noReshare = stubTrust([
+  {
+    ...certForGroupA,
+    certificate: { ...certForGroupA.certificate, mayReshare: false },
+  },
+]);
+await assert.rejects(
+  () =>
+    authorizeDisclosure(noReshare, {
+      groupIdHash: GROUP_A,
+      sharer: SHARER,
+      issuer: ISSUER,
+      atTime: FEB,
     }),
   /does not carry mayReshare/,
 );
 
-// The group's own issuer discloses without needing a membership.
-const byIssuer = createProjectGroupDisclosure({
-  groupIdHash: GROUP_ID,
-  groupVersionHash: VERSION_HASH,
-  recipient: "person:bauamt@stadt.example.invalid",
-  disclosedBy: ISSUER,
-  disclosedAt: FEB,
-  groupIssuer: ISSUER,
-});
-assert.equal(byIssuer.disclosedBy, ISSUER);
-
-// A sharer cannot present someone else's certificate as their own authority.
-assert.throws(
-  () =>
-    createProjectGroupDisclosure({
-      groupIdHash: GROUP_ID,
-      groupVersionHash: VERSION_HASH,
-      recipient: "person:bauamt@stadt.example.invalid",
-      disclosedBy: "person:ben@partner.example.invalid",
-      disclosedAt: FEB,
-      sharerMembership: sharer,
-      groupIssuer: ISSUER,
-    }),
-  /certificate subject does not match/,
-);
-
-// Disclosure outside the sharer's validity window fails closed.
-assert.throws(
-  () =>
-    createProjectGroupDisclosure({
-      groupIdHash: GROUP_ID,
-      groupVersionHash: VERSION_HASH,
-      recipient: "person:bauamt@stadt.example.invalid",
-      disclosedBy: "person:anna@partner.example.invalid",
-      disclosedAt: Date.UTC(2027, 5, 1),
-      sharerMembership: sharer,
-      groupIssuer: ISSUER,
-    }),
-  /outside the sharer's validity window/,
-);
-
-console.log("group.core disclosure tests passed");
+console.log("group.core issuance tests passed");
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `node ./packages/group.core/disclosure.test.js`
-Expected: FAIL with `does not provide an export named 'createProjectGroupDisclosure'`.
+Run: `node ./packages/group.core/issuance.test.js`
+Expected: FAIL with `does not provide an export named 'authorizeDisclosure'`.
 
-- [ ] **Step 3: Add the disclosure recipe**
+- [ ] **Step 3: Write the issuance module**
 
-In `packages/group.core/recipes.js`, add before the `GroupCoreRecipes` export:
-
-```js
-export const ProjectGroupDisclosureRecipe = {
-  $type$: "Recipe",
-  name: PROJECT_GROUP_DISCLOSURE_TYPE,
-  rule: [
-    { itemprop: "$type$", itemtype: { type: "string", regexp: /^ProjectGroupDisclosure$/ } },
-    { itemprop: "$version$", itemtype: { type: "string", regexp: /^v1$/ } },
-    { itemprop: "groupIdHash", itemtype: { type: "string" } },
-    { itemprop: "groupVersionHash", itemtype: { type: "string" } },
-    { itemprop: "recipient", itemtype: { type: "string" } },
-    { itemprop: "disclosedBy", itemtype: { type: "string" } },
-    { itemprop: "disclosedAt", itemtype: { type: "number" } },
-    { itemprop: "underCertificate", itemtype: { type: "string" }, optional: true },
-    { itemprop: "schemaVersion", itemtype: { type: "string" } },
-  ],
-};
-```
-
-Then change the `GroupCoreRecipes` export to:
-
-```js
-export const GroupCoreRecipes = [
-  ProjectGroupRecipe,
-  ProjectGroupMembershipRecipe,
-  ProjectGroupDisclosureRecipe,
-];
-```
-
-- [ ] **Step 4: Write the disclosure module**
-
-Create `packages/group.core/disclosure.js`:
+Create `packages/group.core/issuance.js`:
 
 ```js
 import {
-  PROJECT_GROUP_DISCLOSURE_TYPE,
-  PROJECT_GROUP_SCHEMA_VERSION,
-} from "./recipes.js";
+  GROUP_MEMBERSHIP_CERTIFICATE_TYPE,
+  isMembershipValidAt,
+} from "./certificates.js";
 
-function requiredText(value, field) {
-  if (typeof value !== "string" || value.trim() === "") {
-    throw new Error(`ProjectGroupDisclosure: ${field} is required`);
+export const GROUP_DISCLOSURE_CERTIFICATE_TYPE = "GroupDisclosureCertificate";
+
+export const GroupDisclosureLicense = {
+  $type$: "License",
+  name: "GroupDisclosure",
+  description:
+    "The [signature.issuer] records that the roster [hashGroup] of group [group] was disclosed to [recipient] at [disclosedAt], under the membership certificate [underCertificate].",
+};
+
+export const GroupDisclosureCertificateRecipe = {
+  $type$: "Recipe",
+  name: GROUP_DISCLOSURE_CERTIFICATE_TYPE,
+  rule: [
+    {
+      itemprop: "group",
+      itemtype: { type: "referenceToId", allowedTypes: new Set(["Group"]) },
+    },
+    {
+      itemprop: "hashGroup",
+      itemtype: { type: "referenceToObj", allowedTypes: new Set(["HashGroup"]) },
+    },
+    {
+      itemprop: "recipient",
+      itemtype: { type: "referenceToId", allowedTypes: new Set(["Person"]) },
+    },
+    { itemprop: "disclosedAt", itemtype: { type: "number" } },
+    {
+      itemprop: "underCertificate",
+      itemtype: {
+        type: "referenceToObj",
+        allowedTypes: new Set([GROUP_MEMBERSHIP_CERTIFICATE_TYPE]),
+      },
+    },
+    {
+      itemprop: "license",
+      itemtype: { type: "referenceToObj", allowedTypes: new Set(["License"]) },
+    },
+  ],
+};
+
+export async function issueMembership(
+  trust,
+  { group, hashGroup, person, mayReshare = false, validFrom, validUntil } = {},
+) {
+  if (!trust || typeof trust.certify !== "function") {
+    throw new Error("issueMembership: a TrustedKeysManager is required");
   }
-  return value.trim();
+  return trust.certify(GROUP_MEMBERSHIP_CERTIFICATE_TYPE, {
+    group,
+    hashGroup,
+    person,
+    mayReshare,
+    validFrom,
+    validUntil,
+  });
 }
 
 /**
- * Records that a participant disclosed a group definition to someone.
+ * Establish that `sharer` may disclose `groupIdHash`, and return the exact
+ * certificate relied on.
  *
- * `mayReshare` governs disclosure of the definition only. Authority to grant a
- * group access to project records comes from the project role certificate and
- * is checked elsewhere.
+ * Authority is read from stored certificates through the trust manager.
+ * Verifying a signature against a key the caller supplied would establish
+ * nothing about issuer authority. Every failure path is closed.
  */
-export function createProjectGroupDisclosure({
-  groupIdHash,
-  groupVersionHash,
-  recipient,
-  disclosedBy,
-  disclosedAt,
-  sharerMembership,
-  groupIssuer,
-} = {}) {
-  const by = requiredText(disclosedBy, "disclosedBy");
-  const issuer = requiredText(groupIssuer, "groupIssuer");
-  if (!Number.isFinite(disclosedAt)) {
-    throw new Error("ProjectGroupDisclosure: disclosedAt is required");
+export async function authorizeDisclosure(
+  trust,
+  { groupIdHash, sharer, issuer, atTime } = {},
+) {
+  if (!trust || typeof trust.getCertificates !== "function") {
+    throw new Error("authorizeDisclosure: a TrustedKeysManager is required");
+  }
+  if (!groupIdHash || !sharer || !issuer) {
+    throw new Error("authorizeDisclosure: groupIdHash, sharer and issuer are required");
+  }
+  if (!Number.isFinite(atTime)) {
+    throw new Error("authorizeDisclosure: atTime is required");
   }
 
-  const disclosure = {
-    $type$: PROJECT_GROUP_DISCLOSURE_TYPE,
-    $version$: "v1",
-    groupIdHash: requiredText(groupIdHash, "groupIdHash"),
-    // Pins the exact roster that was shown, not the group's later state.
-    groupVersionHash: requiredText(groupVersionHash, "groupVersionHash"),
-    recipient: requiredText(recipient, "recipient"),
-    disclosedBy: by,
-    disclosedAt,
-    schemaVersion: PROJECT_GROUP_SCHEMA_VERSION,
-  };
-
-  if (by === issuer) {
-    return disclosure;
-  }
-
-  if (!sharerMembership) {
+  const entries = await trust.getCertificates(groupIdHash);
+  const forThisGroup = entries.filter(
+    (entry) =>
+      entry.certificate.$type$ === GROUP_MEMBERSHIP_CERTIFICATE_TYPE &&
+      entry.certificate.group === groupIdHash &&
+      entry.certificate.person === sharer &&
+      entry.issuer === issuer,
+  );
+  if (forThisGroup.length === 0) {
     throw new Error(
-      "ProjectGroupDisclosure: a non-issuer sharer must present a membership certificate",
-    );
-  }
-  if (sharerMembership.subject !== by) {
-    throw new Error(
-      "ProjectGroupDisclosure: certificate subject does not match disclosedBy",
-    );
-  }
-  if (sharerMembership.mayReshare !== true) {
-    throw new Error(
-      "ProjectGroupDisclosure: sharer's certificate does not carry mayReshare",
-    );
-  }
-  if (
-    disclosedAt < sharerMembership.validFrom ||
-    disclosedAt > sharerMembership.validUntil
-  ) {
-    throw new Error(
-      "ProjectGroupDisclosure: disclosedAt is outside the sharer's validity window",
+      `authorizeDisclosure: no membership certificate for ${sharer} in group ${groupIdHash} issued by ${issuer}`,
     );
   }
 
-  disclosure.underCertificate = `${sharerMembership.group} ${sharerMembership.subject} ${sharerMembership.issuer}`;
-  return disclosure;
+  const valid = forThisGroup.filter((entry) =>
+    isMembershipValidAt(entry.certificate, atTime),
+  );
+  if (valid.length === 0) {
+    throw new Error(`authorizeDisclosure: certificate is not valid at ${atTime}`);
+  }
+
+  const withReshare = valid.filter((entry) => entry.certificate.mayReshare === true);
+  if (withReshare.length === 0) {
+    throw new Error("authorizeDisclosure: certificate does not carry mayReshare");
+  }
+
+  return { certificateHash: withReshare[0].certificateHash };
+}
+
+export async function discloseGroup(
+  trust,
+  { groupIdHash, hashGroup, recipient, sharer, issuer, atTime } = {},
+) {
+  const { certificateHash } = await authorizeDisclosure(trust, {
+    groupIdHash,
+    sharer,
+    issuer,
+    atTime,
+  });
+  return trust.certify(GROUP_DISCLOSURE_CERTIFICATE_TYPE, {
+    group: groupIdHash,
+    hashGroup,
+    recipient,
+    disclosedAt: atTime,
+    underCertificate: certificateHash,
+  });
 }
 ```
 
-- [ ] **Step 5: Export from the barrel**
+- [ ] **Step 4: Register the disclosure recipe**
 
-In `packages/group.core/index.js`, add:
+In `packages/group.core/index.js`, replace the `GroupCoreRecipes` re-export with
+a composed list so the two modules do not import each other:
 
 ```js
-export * from "./disclosure.js";
+export * from "./roster.js";
+export * from "./certificates.js";
+export * from "./issuance.js";
+
+import { GroupMembershipCertificateRecipe } from "./certificates.js";
+import { GroupDisclosureCertificateRecipe } from "./issuance.js";
+
+export const GroupCoreRecipes = [
+  GroupMembershipCertificateRecipe,
+  GroupDisclosureCertificateRecipe,
+];
 ```
 
-- [ ] **Step 6: Run test to verify it passes**
+Remove the `GroupCoreRecipes` export from `certificates.js` so there is one
+definition.
 
-Run: `node ./packages/group.core/disclosure.test.js`
-Expected: PASS, prints `group.core disclosure tests passed`.
+- [ ] **Step 5: Run test to verify it passes**
+
+Run: `node ./packages/group.core/issuance.test.js`
+Expected: PASS, prints `group.core issuance tests passed`.
+
+Then run: `node ./packages/group.core/certificates.test.js`
+Expected: PASS — the recipe assertions still hold against the composed list.
+
+- [ ] **Step 6: Replace the stub with the real manager**
+
+Construct a real `TrustedKeysManager` against a `LeuteModel` in the test, issue a
+membership through `issueMembership`, and re-run. The assertions must hold
+unchanged. If `LeuteModel` setup proves disproportionate, stop and raise it
+rather than weakening the assertions to fit the stub.
 
 - [ ] **Step 7: Register the test in package.json**
 
 In `package.json`, append to the `test` script:
 
 ```
- && node ./packages/group.core/disclosure.test.js
+ && node ./packages/group.core/issuance.test.js
 ```
 
 Run: `npm test`
@@ -1094,25 +1161,28 @@ Expected: all tests pass.
 
 ```bash
 git add packages/group.core package.json
-git commit -m "Record group disclosures under an explicit re-share right"
+git commit -m "Check disclosure authority against stored certificates"
 ```
 
 ---
 
-### Task 6: Access Assertions With Living And Pinned Binding
+### Task 5: Project Access Assertions, Living And Pinned
+
+This type keeps its `Project` prefix because it is the one thing here that is
+genuinely project-scoped.
 
 **Files:**
 - Create: `packages/group.core/grants.js`
 - Create: `packages/group.core/grants.test.js`
-- Modify: `packages/group.core/recipes.js`
 - Modify: `packages/group.core/index.js`
 - Modify: `package.json` (the `test` script)
 
 **Interfaces:**
-- Consumes: `PROJECT_ACCESS_ASSERTION_TYPE` from Task 1, `rosterAsOf` from Task 3.
+- Consumes: `rosterAsOf` from Task 2, `getObject` from one.core.
 - Produces:
-  - `createProjectAccessAssertion({groupIdHash, groupVersionHash, binding, pinnedSubjects, record, projectId, grantedBy, grantedAt}) -> object`
-  - `resolveGrantAudience(assertion, memberships, atTime) -> string[]`
+  - `PROJECT_ACCESS_ASSERTION_TYPE`, `ProjectAccessLicense`, `ProjectAccessAssertionRecipe`
+  - `createProjectAccessAssertion({group, hashGroup, binding, record, projectId, grantedAt, licenseHash}) -> object`
+  - `resolveGrantAudience(assertion, atTime) -> Promise<string[]>`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1122,95 +1192,62 @@ Create `packages/group.core/grants.test.js`:
 import assert from "node:assert/strict";
 import {
   PROJECT_ACCESS_ASSERTION_TYPE,
-  createProjectGroupMembership,
   createProjectAccessAssertion,
-  resolveGrantAudience,
 } from "./index.js";
 
-const JAN = Date.UTC(2026, 0, 1);
 const FEB = Date.UTC(2026, 1, 1);
-const MAR = Date.UTC(2026, 2, 1);
-const DEC = Date.UTC(2026, 11, 1);
-
-const ISSUER = "person:admin@buero.example.invalid";
-const GROUP_ID = "group:tragwerksplanung";
-const VERSION_AT_GRANT = "b1946ac92492d2347c6235b4d2611184";
-
-function membershipFor(subject, validFrom, issuedAt) {
-  return createProjectGroupMembership({
-    group: GROUP_ID,
-    subject,
-    issuer: ISSUER,
-    validFrom,
-    validUntil: DEC,
-    issuedAt,
-  });
-}
-
-const anna = membershipFor("person:anna@partner.example.invalid", JAN, JAN);
-// Ben joins after the grant was made.
-const ben = membershipFor("person:ben@partner.example.invalid", MAR, MAR);
-const memberships = [anna, ben];
+const GROUP = "a".repeat(64);
+const ROSTER = "1".repeat(64);
+const LICENSE = "3".repeat(64);
 
 const living = createProjectAccessAssertion({
-  groupIdHash: GROUP_ID,
+  group: GROUP,
   binding: "living",
   record: "record:lp3-kostenschaetzung",
   projectId: "demo-kita-2028",
-  grantedBy: ISSUER,
   grantedAt: FEB,
+  licenseHash: LICENSE,
 });
 assert.equal(living.$type$, PROJECT_ACCESS_ASSERTION_TYPE);
 assert.equal(living.binding, "living");
-assert.equal(living.groupVersionHash, undefined);
+assert.equal(living.hashGroup, undefined, "a living grant pins no roster");
 
 const pinned = createProjectAccessAssertion({
-  groupIdHash: GROUP_ID,
-  groupVersionHash: VERSION_AT_GRANT,
+  group: GROUP,
+  hashGroup: ROSTER,
   binding: "pinned",
   record: "record:lp3-vergabeentscheidung",
   projectId: "demo-kita-2028",
-  grantedBy: ISSUER,
   grantedAt: FEB,
-  pinnedSubjects: ["person:anna@partner.example.invalid"],
+  licenseHash: LICENSE,
 });
-assert.equal(pinned.binding, "pinned");
-assert.equal(pinned.groupVersionHash, VERSION_AT_GRANT);
-
-// A living grant admits the later-added member.
-assert.deepEqual(resolveGrantAudience(living, memberships, Date.UTC(2026, 3, 1)), [
-  "person:anna@partner.example.invalid",
-  "person:ben@partner.example.invalid",
-]);
-
-// A pinned grant does not.
-assert.deepEqual(resolveGrantAudience(pinned, memberships, Date.UTC(2026, 3, 1)), [
-  "person:anna@partner.example.invalid",
-]);
+// The pinned audience is the HashGroup itself. There is no separate member list
+// that could disagree with it.
+assert.equal(pinned.hashGroup, ROSTER);
+assert.equal("pinnedSubjects" in pinned, false);
 
 assert.throws(
   () =>
     createProjectAccessAssertion({
-      groupIdHash: GROUP_ID,
+      group: GROUP,
       binding: "pinned",
       record: "record:x",
       projectId: "demo-kita-2028",
-      grantedBy: ISSUER,
       grantedAt: FEB,
-      pinnedSubjects: ["person:anna@partner.example.invalid"],
+      licenseHash: LICENSE,
     }),
-  /pinned grant requires groupVersionHash/,
+  /pinned grant requires hashGroup/,
 );
 
 assert.throws(
   () =>
     createProjectAccessAssertion({
-      groupIdHash: GROUP_ID,
+      group: GROUP,
       binding: "whatever",
       record: "record:x",
       projectId: "demo-kita-2028",
-      grantedBy: ISSUER,
       grantedAt: FEB,
+      licenseHash: LICENSE,
     }),
   /binding must be "living" or "pinned"/,
 );
@@ -1223,55 +1260,46 @@ console.log("group.core grant tests passed");
 Run: `node ./packages/group.core/grants.test.js`
 Expected: FAIL with `does not provide an export named 'createProjectAccessAssertion'`.
 
-- [ ] **Step 3: Add the access assertion recipe**
-
-In `packages/group.core/recipes.js`, add before the `GroupCoreRecipes` export:
-
-```js
-export const ProjectAccessAssertionRecipe = {
-  $type$: "Recipe",
-  name: PROJECT_ACCESS_ASSERTION_TYPE,
-  rule: [
-    { itemprop: "$type$", itemtype: { type: "string", regexp: /^ProjectAccessAssertion$/ } },
-    { itemprop: "$version$", itemtype: { type: "string", regexp: /^v1$/ } },
-    { itemprop: "groupIdHash", itemtype: { type: "string" } },
-    { itemprop: "groupVersionHash", itemtype: { type: "string" }, optional: true },
-    { itemprop: "binding", itemtype: { type: "string", regexp: /^(living|pinned)$/ } },
-    {
-      itemprop: "pinnedSubjects",
-      itemtype: { type: "array", item: { type: "string" } },
-      optional: true,
-    },
-    { itemprop: "record", itemtype: { type: "string" } },
-    { itemprop: "projectId", itemtype: { type: "string" } },
-    { itemprop: "grantedBy", itemtype: { type: "string" } },
-    { itemprop: "grantedAt", itemtype: { type: "number" } },
-    { itemprop: "schemaVersion", itemtype: { type: "string" } },
-  ],
-};
-```
-
-Then change the `GroupCoreRecipes` export to:
-
-```js
-export const GroupCoreRecipes = [
-  ProjectGroupRecipe,
-  ProjectGroupMembershipRecipe,
-  ProjectGroupDisclosureRecipe,
-  ProjectAccessAssertionRecipe,
-];
-```
-
-- [ ] **Step 4: Write the grants module**
+- [ ] **Step 3: Write the grants module**
 
 Create `packages/group.core/grants.js`:
 
 ```js
-import {
-  PROJECT_ACCESS_ASSERTION_TYPE,
-  PROJECT_GROUP_SCHEMA_VERSION,
-} from "./recipes.js";
+import { getObject } from "../../../one/packages/one.core/lib/storage-unversioned-objects.js";
 import { rosterAsOf } from "./roster.js";
+
+export const PROJECT_ACCESS_ASSERTION_TYPE = "ProjectAccessAssertion";
+
+export const ProjectAccessLicense = {
+  $type$: "License",
+  name: "ProjectAccess",
+  description:
+    "The [signature.issuer] grants group [group] access to [record] in project [projectId] as of [grantedAt]. A living grant follows current membership; a pinned grant fixes the audience to the roster [hashGroup].",
+};
+
+export const ProjectAccessAssertionRecipe = {
+  $type$: "Recipe",
+  name: PROJECT_ACCESS_ASSERTION_TYPE,
+  rule: [
+    {
+      itemprop: "group",
+      itemtype: { type: "referenceToId", allowedTypes: new Set(["Group"]) },
+    },
+    {
+      itemprop: "hashGroup",
+      itemtype: { type: "referenceToObj", allowedTypes: new Set(["HashGroup"]) },
+      optional: true,
+    },
+    { itemprop: "binding", itemtype: { type: "string", regexp: /^(living|pinned)$/ } },
+    { itemprop: "record", itemtype: { type: "string" } },
+    { itemprop: "projectId", itemtype: { type: "string" } },
+    { itemprop: "grantedAt", itemtype: { type: "number" } },
+    {
+      itemprop: "license",
+      itemtype: { type: "referenceToObj", allowedTypes: new Set(["License"]) },
+    },
+  ],
+};
 
 function requiredText(value, field) {
   if (typeof value !== "string" || value.trim() === "") {
@@ -1280,23 +1308,14 @@ function requiredText(value, field) {
   return value.trim();
 }
 
-/**
- * Records that a group was granted access to a project record.
- *
- * A living grant binds the group id hash and follows current membership. A
- * pinned grant binds a content hash and fixes the audience to that roster. The
- * assertion records which was chosen, so an auditor can see whether the
- * audience was open or closed at grant time.
- */
 export function createProjectAccessAssertion({
-  groupIdHash,
-  groupVersionHash,
+  group,
+  hashGroup,
   binding,
-  pinnedSubjects,
   record,
   projectId,
-  grantedBy,
   grantedAt,
+  licenseHash,
 } = {}) {
   if (binding !== "living" && binding !== "pinned") {
     throw new Error('ProjectAccessAssertion: binding must be "living" or "pinned"');
@@ -1304,59 +1323,56 @@ export function createProjectAccessAssertion({
   if (!Number.isFinite(grantedAt)) {
     throw new Error("ProjectAccessAssertion: grantedAt is required");
   }
+  if (binding === "pinned" && !hashGroup) {
+    throw new Error("ProjectAccessAssertion: pinned grant requires hashGroup");
+  }
 
   const assertion = {
     $type$: PROJECT_ACCESS_ASSERTION_TYPE,
-    $version$: "v1",
-    groupIdHash: requiredText(groupIdHash, "groupIdHash"),
+    group: requiredText(group, "group"),
     binding,
     record: requiredText(record, "record"),
     projectId: requiredText(projectId, "projectId"),
-    grantedBy: requiredText(grantedBy, "grantedBy"),
     grantedAt,
-    schemaVersion: PROJECT_GROUP_SCHEMA_VERSION,
+    license: requiredText(licenseHash, "licenseHash"),
   };
-
   if (binding === "pinned") {
-    if (typeof groupVersionHash !== "string" || groupVersionHash.trim() === "") {
-      throw new Error("ProjectAccessAssertion: pinned grant requires groupVersionHash");
-    }
-    if (!Array.isArray(pinnedSubjects) || pinnedSubjects.length === 0) {
-      throw new Error("ProjectAccessAssertion: pinned grant requires pinnedSubjects");
-    }
-    assertion.groupVersionHash = groupVersionHash.trim();
-    assertion.pinnedSubjects = [...pinnedSubjects].sort();
+    assertion.hashGroup = hashGroup;
   }
-
   return assertion;
 }
 
-export function resolveGrantAudience(assertion, memberships, atTime) {
+export async function resolveGrantAudience(assertion, atTime) {
   if (!assertion || assertion.$type$ !== PROJECT_ACCESS_ASSERTION_TYPE) {
     throw new Error("resolveGrantAudience: assertion must be a ProjectAccessAssertion");
   }
   if (assertion.binding === "pinned") {
-    return [...assertion.pinnedSubjects];
+    const hashGroup = await getObject(assertion.hashGroup);
+    return [...hashGroup.person].sort();
   }
-  const inGroup = memberships.filter(
-    (membership) => membership.group === assertion.groupIdHash,
-  );
-  return rosterAsOf(inGroup, atTime);
+  return rosterAsOf(assertion.group, atTime);
 }
 ```
 
-- [ ] **Step 5: Export from the barrel**
+- [ ] **Step 4: Export from the barrel**
 
-In `packages/group.core/index.js`, add:
+In `packages/group.core/index.js`, add `export * from "./grants.js";` and add
+`ProjectAccessAssertionRecipe` to the composed `GroupCoreRecipes` list.
 
-```js
-export * from "./grants.js";
-```
-
-- [ ] **Step 6: Run test to verify it passes**
+- [ ] **Step 5: Run test to verify it passes**
 
 Run: `node ./packages/group.core/grants.test.js`
 Expected: PASS, prints `group.core grant tests passed`.
+
+- [ ] **Step 6: Add the live audience case**
+
+Extend `packages/group.core/roster.test.js`: after the second Group version is
+stored, build one living and one pinned assertion over the first roster, and
+assert that `resolveGrantAudience` gives `[]` for the living grant at `afterV2`
+while the pinned grant still gives `[owner]`.
+
+Run: `node ./packages/group.core/roster.test.js`
+Expected: PASS.
 
 - [ ] **Step 7: Register the test in package.json**
 
@@ -1373,25 +1389,24 @@ Expected: all tests pass.
 
 ```bash
 git add packages/group.core package.json
-git commit -m "Bind group access grants as living or pinned"
+git commit -m "Bind project access grants as living or pinned"
 ```
 
 ---
 
-### Task 7: Key Compromise Claims
+### Task 6: Key Compromise Claims
 
 **Files:**
 - Create: `packages/group.core/compromise.js`
 - Create: `packages/group.core/compromise.test.js`
-- Modify: `packages/group.core/recipes.js`
 - Modify: `packages/group.core/index.js`
 - Modify: `package.json` (the `test` script)
 
 **Interfaces:**
-- Consumes: `PROJECT_KEY_COMPROMISE_CLAIM_TYPE` from Task 1.
 - Produces:
-  - `createKeyCompromiseClaim({subject, compromisedSince, claimedBy, claimedAt, reason}) -> object`
-  - `markDisputedAssertions(claim, assertions) -> Array<{assertion, disputed}>` where each input assertion has `{subject, assertedAt}`.
+  - `KEY_COMPROMISE_CLAIM_TYPE`, `KeyCompromiseLicense`, `KeyCompromiseClaimRecipe`
+  - `createKeyCompromiseClaim({person, compromisedSince, claimedAt, reason, licenseHash}) -> object`
+  - `markDisputedAssertions(claim, assertions) -> Array<{assertion, disputed}>`, each input assertion `{person, assertedAt}`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1400,7 +1415,7 @@ Create `packages/group.core/compromise.test.js`:
 ```js
 import assert from "node:assert/strict";
 import {
-  PROJECT_KEY_COMPROMISE_CLAIM_TYPE,
+  KEY_COMPROMISE_CLAIM_TYPE,
   createKeyCompromiseClaim,
   markDisputedAssertions,
 } from "./index.js";
@@ -1408,46 +1423,40 @@ import {
 const JAN = Date.UTC(2026, 0, 1);
 const FEB = Date.UTC(2026, 1, 1);
 const MAR = Date.UTC(2026, 2, 1);
+const ANNA = "2".repeat(64);
+const BEN = "4".repeat(64);
+const LICENSE = "3".repeat(64);
 
 const claim = createKeyCompromiseClaim({
-  subject: "person:anna@partner.example.invalid",
+  person: ANNA,
   compromisedSince: FEB,
-  claimedBy: "person:admin@buero.example.invalid",
   claimedAt: MAR,
   reason: "Laptop stolen, reported in March",
+  licenseHash: LICENSE,
 });
 
-assert.equal(claim.$type$, PROJECT_KEY_COMPROMISE_CLAIM_TYPE);
+assert.equal(claim.$type$, KEY_COMPROMISE_CLAIM_TYPE);
 assert.equal(claim.compromisedSince, FEB);
-assert.equal(claim.claimedAt, MAR);
-
-const assertions = [
-  { subject: "person:anna@partner.example.invalid", assertedAt: JAN },
-  { subject: "person:anna@partner.example.invalid", assertedAt: MAR },
-  { subject: "person:ben@partner.example.invalid", assertedAt: MAR },
-];
-
-const marked = markDisputedAssertions(claim, assertions);
-
-// Before the compromise window: untouched.
-assert.equal(marked[0].disputed, false);
-// Inside the window, by the compromised subject: disputed, not invalid.
-assert.equal(marked[1].disputed, true);
-// A different subject is unaffected.
-assert.equal(marked[2].disputed, false);
-
-// The claim never alters a certificate version.
+// The claim never touches a validity window.
 assert.equal("validUntil" in claim, false);
-assert.equal("revoked" in claim, false);
+
+const marked = markDisputedAssertions(claim, [
+  { person: ANNA, assertedAt: JAN },
+  { person: ANNA, assertedAt: MAR },
+  { person: BEN, assertedAt: MAR },
+]);
+assert.equal(marked[0].disputed, false, "before the window: untouched");
+assert.equal(marked[1].disputed, true, "inside the window: disputed, not invalid");
+assert.equal(marked[2].disputed, false, "a different person is unaffected");
 
 assert.throws(
   () =>
     createKeyCompromiseClaim({
-      subject: "person:anna@partner.example.invalid",
+      person: ANNA,
       compromisedSince: MAR,
-      claimedBy: "person:admin@buero.example.invalid",
       claimedAt: FEB,
       reason: "impossible",
+      licenseHash: LICENSE,
     }),
   /compromisedSince must not be after claimedAt/,
 );
@@ -1460,96 +1469,83 @@ console.log("group.core compromise tests passed");
 Run: `node ./packages/group.core/compromise.test.js`
 Expected: FAIL with `does not provide an export named 'createKeyCompromiseClaim'`.
 
-- [ ] **Step 3: Add the compromise claim recipe**
-
-In `packages/group.core/recipes.js`, add before the `GroupCoreRecipes` export:
-
-```js
-export const ProjectKeyCompromiseClaimRecipe = {
-  $type$: "Recipe",
-  name: PROJECT_KEY_COMPROMISE_CLAIM_TYPE,
-  rule: [
-    { itemprop: "$type$", itemtype: { type: "string", regexp: /^ProjectKeyCompromiseClaim$/ } },
-    { itemprop: "$version$", itemtype: { type: "string", regexp: /^v1$/ } },
-    { itemprop: "subject", itemtype: { type: "string" } },
-    { itemprop: "compromisedSince", itemtype: { type: "number" } },
-    { itemprop: "claimedBy", itemtype: { type: "string" } },
-    { itemprop: "claimedAt", itemtype: { type: "number" } },
-    { itemprop: "reason", itemtype: { type: "string" } },
-    { itemprop: "schemaVersion", itemtype: { type: "string" } },
-  ],
-};
-```
-
-Then change the `GroupCoreRecipes` export to:
-
-```js
-export const GroupCoreRecipes = [
-  ProjectGroupRecipe,
-  ProjectGroupMembershipRecipe,
-  ProjectGroupDisclosureRecipe,
-  ProjectAccessAssertionRecipe,
-  ProjectKeyCompromiseClaimRecipe,
-];
-```
-
-- [ ] **Step 4: Write the compromise module**
+- [ ] **Step 3: Write the compromise module**
 
 Create `packages/group.core/compromise.js`:
 
 ```js
-import {
-  PROJECT_KEY_COMPROMISE_CLAIM_TYPE,
-  PROJECT_GROUP_SCHEMA_VERSION,
-} from "./recipes.js";
+export const KEY_COMPROMISE_CLAIM_TYPE = "KeyCompromiseClaim";
 
-function requiredText(value, field) {
-  if (typeof value !== "string" || value.trim() === "") {
-    throw new Error(`ProjectKeyCompromiseClaim: ${field} is required`);
-  }
-  return value.trim();
-}
+export const KeyCompromiseLicense = {
+  $type$: "License",
+  name: "KeyCompromise",
+  description:
+    "The [signature.issuer] claims that the keys of [person] were compromised from [compromisedSince], stated at [claimedAt]. This disputes assertions made by [person] in that window. It does not invalidate them and does not alter any certificate.",
+};
+
+export const KeyCompromiseClaimRecipe = {
+  $type$: "Recipe",
+  name: KEY_COMPROMISE_CLAIM_TYPE,
+  rule: [
+    {
+      itemprop: "person",
+      itemtype: { type: "referenceToId", allowedTypes: new Set(["Person"]) },
+    },
+    { itemprop: "compromisedSince", itemtype: { type: "number" } },
+    { itemprop: "claimedAt", itemtype: { type: "number" } },
+    { itemprop: "reason", itemtype: { type: "string" } },
+    {
+      itemprop: "license",
+      itemtype: { type: "referenceToObj", allowedTypes: new Set(["License"]) },
+    },
+  ],
+};
 
 /**
- * States that a subject's key was compromised from some earlier time.
+ * States that a person's keys were compromised from an earlier time.
  *
  * This is how a retroactive trust change is expressed. It never rewrites a
  * certificate's validity window: assertions in the window become disputed so a
  * verifier can re-weigh them, rather than disappearing.
  */
 export function createKeyCompromiseClaim({
-  subject,
+  person,
   compromisedSince,
-  claimedBy,
   claimedAt,
   reason,
+  licenseHash,
 } = {}) {
   if (!Number.isFinite(compromisedSince)) {
-    throw new Error("ProjectKeyCompromiseClaim: compromisedSince is required");
+    throw new Error("KeyCompromiseClaim: compromisedSince is required");
   }
   if (!Number.isFinite(claimedAt)) {
-    throw new Error("ProjectKeyCompromiseClaim: claimedAt is required");
+    throw new Error("KeyCompromiseClaim: claimedAt is required");
   }
   if (compromisedSince > claimedAt) {
-    throw new Error(
-      "ProjectKeyCompromiseClaim: compromisedSince must not be after claimedAt",
-    );
+    throw new Error("KeyCompromiseClaim: compromisedSince must not be after claimedAt");
+  }
+  if (!person) {
+    throw new Error("KeyCompromiseClaim: person is required");
+  }
+  if (typeof reason !== "string" || reason.trim() === "") {
+    throw new Error("KeyCompromiseClaim: reason is required");
+  }
+  if (!licenseHash) {
+    throw new Error("KeyCompromiseClaim: licenseHash is required");
   }
   return {
-    $type$: PROJECT_KEY_COMPROMISE_CLAIM_TYPE,
-    $version$: "v1",
-    subject: requiredText(subject, "subject"),
+    $type$: KEY_COMPROMISE_CLAIM_TYPE,
+    person,
     compromisedSince,
-    claimedBy: requiredText(claimedBy, "claimedBy"),
     claimedAt,
-    reason: requiredText(reason, "reason"),
-    schemaVersion: PROJECT_GROUP_SCHEMA_VERSION,
+    reason: reason.trim(),
+    license: licenseHash,
   };
 }
 
 export function markDisputedAssertions(claim, assertions) {
-  if (!claim || claim.$type$ !== PROJECT_KEY_COMPROMISE_CLAIM_TYPE) {
-    throw new Error("markDisputedAssertions: claim must be a ProjectKeyCompromiseClaim");
+  if (!claim || claim.$type$ !== KEY_COMPROMISE_CLAIM_TYPE) {
+    throw new Error("markDisputedAssertions: claim must be a KeyCompromiseClaim");
   }
   if (!Array.isArray(assertions)) {
     throw new Error("markDisputedAssertions: assertions must be an array");
@@ -1561,27 +1557,24 @@ export function markDisputedAssertions(claim, assertions) {
     return {
       assertion,
       disputed:
-        assertion.subject === claim.subject &&
+        assertion.person === claim.person &&
         assertion.assertedAt >= claim.compromisedSince,
     };
   });
 }
 ```
 
-- [ ] **Step 5: Export from the barrel**
+- [ ] **Step 4: Export from the barrel**
 
-In `packages/group.core/index.js`, add:
+In `packages/group.core/index.js`, add `export * from "./compromise.js";` and add
+`KeyCompromiseClaimRecipe` to the composed `GroupCoreRecipes` list.
 
-```js
-export * from "./compromise.js";
-```
-
-- [ ] **Step 6: Run test to verify it passes**
+- [ ] **Step 5: Run test to verify it passes**
 
 Run: `node ./packages/group.core/compromise.test.js`
 Expected: PASS, prints `group.core compromise tests passed`.
 
-- [ ] **Step 7: Register the test in package.json**
+- [ ] **Step 6: Register the test in package.json**
 
 In `package.json`, append to the `test` script:
 
@@ -1592,7 +1585,7 @@ In `package.json`, append to the `test` script:
 Run: `npm test`
 Expected: all tests pass.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add packages/group.core package.json
@@ -1601,333 +1594,129 @@ git commit -m "Express retroactive key compromise as a separate claim"
 
 ---
 
-### Task 8: Signing And Storage Against A Live ONE.core Instance
-
-**Files:**
-- Create: `packages/group.core/signing.js`
-- Create: `packages/group.core/signing.test.js`
-- Modify: `packages/group.core/index.js`
-- Modify: `package.json` (the `test` script)
-
-**Interfaces:**
-- Consumes: every factory from Tasks 1–7, `GroupCoreRecipes` from Task 1.
-- Produces:
-  - `signGroupObject(object, cryptoApi) -> Promise<object>` — a copy with `signature` (base64) added.
-  - `verifyGroupObject(signedObject, publicSignKey) -> boolean`
-  - `storeGroupDefinition({group, cryptoApi}) -> Promise<{idHash, versionHash, signed}>`
-  - `readGroupDefinition(idHash) -> Promise<object>`
-
-ONE.core import paths mirror `packages/project-source.core/index.js`, which
-imports from the sibling checkout at `../../../one/packages/one.core/lib/`.
-
-- [ ] **Step 1: Write the failing test**
-
-Create `packages/group.core/signing.test.js`:
-
-```js
-import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
-import "../../../one/packages/one.core/lib/system/load-nodejs.js";
-import {
-  closeInstance,
-  initInstance,
-  getInstanceOwnerIdHash,
-} from "../../../one/packages/one.core/lib/instance.js";
-import { createCryptoApiFromDefaultKeys } from "../../../one/packages/one.core/lib/keychain/keychain.js";
-import {
-  GroupCoreRecipes,
-  createProjectGroup,
-  createProjectGroupMembership,
-  signGroupObject,
-  verifyGroupObject,
-  storeGroupDefinition,
-} from "./index.js";
-
-const directory = await mkdtemp(path.join(tmpdir(), "projektor-group-"));
-let initialized = false;
-
-try {
-  await initInstance({
-    name: "projektor-group-test",
-    email: "projektor-group-test@example.invalid",
-    secret: "projektor-group-test-secret",
-    wipeStorage: true,
-    encryptStorage: false,
-    directory,
-    initialRecipes: GroupCoreRecipes,
-  });
-  initialized = true;
-
-  const owner = getInstanceOwnerIdHash();
-  assert.ok(owner, "instance owner id hash is available");
-  const cryptoApi = await createCryptoApiFromDefaultKeys(owner);
-
-  const group = createProjectGroup({
-    groupId: "tragwerksplanung",
-    name: "Tragwerksplanung",
-    purpose: "Structural engineers working with the office",
-    issuer: `person:${owner}`,
-  });
-
-  const stored = await storeGroupDefinition({ group, cryptoApi });
-  assert.ok(stored.idHash, "group definition has an id hash");
-  assert.ok(stored.versionHash, "group definition has a content hash");
-  assert.notEqual(stored.idHash, stored.versionHash);
-  assert.ok(stored.signed.signature, "stored definition is signed");
-
-  const membership = createProjectGroupMembership({
-    group: group.groupId,
-    subject: "person:anna@partner.example.invalid",
-    issuer: `person:${owner}`,
-    validFrom: Date.UTC(2026, 0, 1),
-    validUntil: Date.UTC(2026, 11, 1),
-    mayReshare: true,
-    issuedAt: Date.UTC(2026, 0, 1),
-  });
-
-  const signed = await signGroupObject(membership, cryptoApi);
-  assert.ok(signed.signature, "membership is signed");
-  assert.equal(signed.subject, membership.subject);
-  assert.equal(verifyGroupObject(signed, cryptoApi.publicSignKey), true);
-
-  const tampered = { ...signed, mayReshare: false };
-  assert.equal(
-    verifyGroupObject(tampered, cryptoApi.publicSignKey),
-    false,
-    "a mutated signed field must not verify",
-  );
-
-  console.log("group.core signing tests passed");
-} finally {
-  if (initialized) {
-    closeInstance();
-  }
-  await rm(directory, { recursive: true, force: true });
-}
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `node ./packages/group.core/signing.test.js`
-Expected: FAIL with `does not provide an export named 'signGroupObject'`.
-
-- [ ] **Step 3: Write the signing module**
-
-Create `packages/group.core/signing.js`:
-
-```js
-import { stringify as oneStableStringify } from "../../../one/packages/one.core/lib/util/sorted-stringify.js";
-import { signatureVerify } from "../../../one/packages/one.core/lib/crypto/sign.js";
-import {
-  getObjectByIdHash,
-  storeVersionedObject,
-} from "../../../one/packages/one.core/lib/storage-versioned-objects.js";
-
-// The signature covers every field except the signature itself.
-function signablePayload(object) {
-  const { signature, ...rest } = object;
-  return new TextEncoder().encode(oneStableStringify(rest));
-}
-
-function toBase64(bytes) {
-  return Buffer.from(bytes).toString("base64");
-}
-
-function fromBase64(text) {
-  return new Uint8Array(Buffer.from(text, "base64"));
-}
-
-export async function signGroupObject(object, cryptoApi) {
-  if (!object || typeof object !== "object") {
-    throw new Error("signGroupObject: object is required");
-  }
-  if (!cryptoApi || typeof cryptoApi.sign !== "function") {
-    throw new Error("signGroupObject: cryptoApi with a sign method is required");
-  }
-  const signature = cryptoApi.sign(signablePayload(object));
-  return { ...object, signature: toBase64(signature) };
-}
-
-export function verifyGroupObject(signedObject, publicSignKey) {
-  if (!signedObject || typeof signedObject.signature !== "string") {
-    throw new Error("verifyGroupObject: signedObject must carry a signature");
-  }
-  return signatureVerify(
-    signablePayload(signedObject),
-    fromBase64(signedObject.signature),
-    publicSignKey,
-  );
-}
-
-export async function storeGroupDefinition({ group, cryptoApi } = {}) {
-  if (!group) {
-    throw new Error("storeGroupDefinition: group is required");
-  }
-  const signed = await signGroupObject(group, cryptoApi);
-  const result = await storeVersionedObject(signed);
-  return {
-    idHash: result.idHash,
-    versionHash: result.hash,
-    signed,
-  };
-}
-
-export async function readGroupDefinition(idHash) {
-  if (!idHash) {
-    throw new Error("readGroupDefinition: idHash is required");
-  }
-  return getObjectByIdHash(idHash);
-}
-```
-
-- [ ] **Step 4: Export from the barrel**
-
-In `packages/group.core/index.js`, add:
-
-```js
-export * from "./signing.js";
-```
-
-- [ ] **Step 5: Run test to verify it passes**
-
-Run: `node ./packages/group.core/signing.test.js`
-Expected: PASS, prints `group.core signing tests passed`.
-
-If `storeVersionedObject` reports an unknown recipe, confirm `GroupCoreRecipes`
-is passed as `initialRecipes` in the test's `initInstance` call.
-
-- [ ] **Step 6: Register the test in package.json**
-
-In `package.json`, append to the `test` script:
-
-```
- && node ./packages/group.core/signing.test.js
-```
-
-Run: `npm test`
-Expected: all tests pass.
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add packages/group.core package.json
-git commit -m "Sign and store group definitions through ONE.core"
-```
-
----
-
-### Task 9: Document The Package
+### Task 7: Document The Package And Amend The Spec
 
 **Files:**
 - Create: `packages/group.core/README.md`
 - Modify: `README.md` (the `../one` Reuse Rule section)
-
-**Interfaces:**
-- Consumes: the full export surface from Tasks 1–8.
-- Produces: no code.
+- Modify: `docs/superpowers/specs/2026-08-31-group-sharing-design.md`
 
 - [ ] **Step 1: Write the package README**
 
-Create `packages/group.core/README.md` with this content:
+Create `packages/group.core/README.md`:
 
 ````markdown
 # group.core
 
-Group definitions, per-member certificates, access grants, and disclosure
-records. Implements [the group sharing design](../../docs/superpowers/specs/2026-08-31-group-sharing-design.md).
+The time-bounded evidence layer for group sharing. Everything structural is
+already in ONE.core and one.models; this package adds only what those lack.
 
-## Model
+## Reused, not rebuilt
 
-A group is a set of identities. Identities are organization-level, so a group
-carries no project field and no scope field — scope is read off the issuer. The
-project appears only in `ProjectAccessAssertion`.
+| Concern | Type | Where |
+|---|---|---|
+| Group identity | `Group` — versioned, id `{name, owner}` | one.core |
+| The roster, and its pin | `HashGroup` — content-addressed member set | one.core |
+| Roster history and ordering | the `Group` version DAG | `getVersionsNodes` |
+| Signatures | `Signature` — its own object, never a field | one.models |
+| Certificate shape | claim + `License`, via `TrustedKeysManager.certify` | one.models |
+| Authority checks | `TrustedKeysManager.getCertificates` | one.models |
+| Access enforcement | `Access` links to `Group` | one.core |
 
-Membership is one certificate per member, keyed by `{group, subject, issuer}`.
-The roster is a projection derived from those certificates and is never stored
-as authoritative state.
+`HashGroup`'s content hash *is* the roster pin. There is no snapshot type and no
+member list carried alongside a hash that could disagree with it.
+
+## What this package adds
+
+Time. No existing certificate carries a validity window.
+
+- `GroupMembershipCertificate` — issuer, pinned `HashGroup`, person, validity
+  window, and the re-share right.
+- `GroupDisclosureCertificate` — who was shown which roster, under which
+  membership certificate.
+- `ProjectAccessAssertion` — a group granted access to a project record, bound
+  living or pinned. The only project-scoped type here.
+- `KeyCompromiseClaim` — a retroactive trust change that disputes rather than
+  invalidates.
 
 ## Two questions, two functions
 
 ```js
-rosterAsOf(memberships, atTime);
-mayAct(memberships, { subject, group, now, replicaAsOf, maxStalenessMs });
+rosterAsOf(groupIdHash, atTime);
+mayAct({ groupIdHash, subject, now, replicaAsOf, maxStalenessMs });
 ```
 
-`rosterAsOf` answers the evidence question — who was in the group then.
-`mayAct` answers the access question — may this participant act now.
+There is deliberately no `getMembers(group)`. `mayAct` throws `StaleChainError`
+when the replica is older than the freshness policy allows, so a stale chain is
+never read as a deny. `rosterAsOf` throws `ConcurrentVersionsError` when the
+version in force at a time is genuinely ambiguous, rather than picking one.
 
-There is deliberately no `getMembers(group)`. A caller must state which question
-it is asking. `mayAct` throws `StaleChainError` when the local replica is older
-than the freshness policy allows, so a stale chain is never read as a deny.
+## Why a membership certificate cannot go stale
+
+It pins a `HashGroup`, so it proves "was in this roster", never "is in the group
+now". The authoritative present-tense record is the `Group` version DAG. An old
+certificate is not a security hole; it is a true statement about the past.
 
 ## Revocation
 
-Revocation supersedes the certificate with a new version whose `validUntil`
-equals `revokedAt`. It never ends authority before the revocation was issued —
-including not at the time the issuer learned of the trust change, which is
-recorded as `learnedAt` for accountability and has no effect on validity.
-
-A retroactive compromise is a separate `ProjectKeyCompromiseClaim`. It marks
-assertions in its window disputed, leaving them verifiable, rather than deleting
-good evidence in order to reach the bad.
-
-## Access grants
-
-`binding: "living"` follows current membership. `binding: "pinned"` fixes the
-audience to the roster at grant time. The assertion records which was chosen.
+A superseding certificate ends the window at `revokedAt` — never earlier, not
+even at the time the issuer learned of the trust change, which is recorded as
+`learnedAt` for accountability and has no effect on validity. Backdating would
+destroy good-faith assertions made in the gap without discriminating between
+honest and hostile signatures in it.
 
 Revocation ends future sync. It does not retract delivered bytes.
 ````
 
 - [ ] **Step 2: Link the package from the root README**
 
-In `README.md`, in the `../one` Reuse Rule section, add this bullet after the
+In `README.md`, in the `../one` Reuse Rule section, add after the
 `@refinio/trust.core` bullet:
 
 ```markdown
-- `packages/group.core` for group definitions, membership certificates, access grants and disclosure records; it follows the `@refinio/trust.core` certificate-versioning model — supersession through ONE.core versioning — rather than adding a second revocation mechanism, and corrects two of its evaluation rules for evidence use
+- `packages/group.core` for the time-bounded evidence layer over groups: it consumes ONE.core `Group`/`HashGroup` and one.models `Signature`/certificates rather than restating them, and adds only validity windows, the re-share right, disclosure records and compromise claims
 ```
 
-- [ ] **Step 3: Verify the full suite still passes**
+- [ ] **Step 3: Amend the spec to match**
+
+Apply the six deltas at the top of this plan to
+`docs/superpowers/specs/2026-08-31-group-sharing-design.md`: replace the object
+table with the reuse table, delete `ProjectGroup`, `ProjectGroupMembership`,
+`ProjectGroupRoster` and `pinnedSubjects`, and rewrite the hash-discipline
+section around `HashGroup`. Keep the reasoning sections unchanged — the two
+evaluation times, prospective revocation, and the scope argument all still hold.
+
+- [ ] **Step 4: Verify the full suite**
 
 Run: `npm test`
-Expected: all tests pass, including all eight `group.core` test files.
+Expected: all tests pass, including all six `group.core` test files.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add packages/group.core/README.md README.md
-git commit -m "Document the group core package"
+git add packages/group.core/README.md README.md docs/superpowers/specs
+git commit -m "Document the group core package and align the spec"
 ```
 
 ---
 
 ## Deferred
 
-These come from the spec but are not implemented by this plan, because they
-belong to the export/bundle and UI surfaces rather than to `group.core`:
+Out of scope here, and why:
 
 - **Bundle presentation of disputed assertions.** A bundle may contain valid but
-  disputed contractual assertions. The export format must show that prominently
-  rather than as a footnote, or a verifier reads a disputed approval as a clean
-  one. Needs the MR-6 bundle work to exist first.
-- **Bundle as-of time and the question it answers.** Same dependency.
-- **Per-project "which groups reach this project" view.** The UI surface that
-  makes an org-wide group's blast radius visible. Depends on `app.js` cockpit
-  wiring, not on this package.
-- **CHUM propagation and ONE.core `Access` object wiring.** `group.core`
-  produces the assertions; granting the underlying `Access` objects and syncing
-  them is runtime integration.
-- **Public group descriptor publication.** The model supports it (descriptor and
-  memberships are separate objects); publishing under a well-known id is a
-  runtime/access concern handled with the `Access` wiring above. The spec's test
-  "a public group descriptor is readable while its memberships are not" lands
-  there, not here.
-- **Disclosure record readership.** The spec defaults a disclosure to being
-  readable by sharer and recipient only. `group.core` produces the record;
-  restricting who receives it is `Access` wiring.
-- **Never-attested versus attested-but-expired issuers.** The spec lists a test
-  for this. It belongs to the organization attestation tier above `group.core`,
-  which this package consumes rather than implements.
+  disputed contractual assertions; the export format must show that prominently
+  or a verifier reads a disputed approval as a clean one. Needs the MR-6 bundle
+  work first.
+- **Disclosure record readership.** The spec defaults a disclosure to sharer and
+  recipient only. Producing the record is here; restricting who receives it is
+  `Access` wiring.
+- **Public group descriptor publication**, and its test that the descriptor is
+  readable while memberships are not. `Access` wiring.
+- **CHUM propagation.** The reverse maps that make `HashGroup` traversable by
+  person already exist; wiring sync is runtime integration.
+- **Never-attested versus attested-but-expired issuers.** Belongs to the
+  organization attestation tier that `group.core` consumes.
+- **Merge policy for concurrent Group versions.** `rosterAsOf` throws
+  `ConcurrentVersionsError` rather than guessing. Deciding the merge rule needs
+  the multi-writer story, which this prototype does not have yet.
