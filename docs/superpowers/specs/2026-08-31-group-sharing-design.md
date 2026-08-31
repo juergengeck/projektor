@@ -162,13 +162,35 @@ membership today would retroactively invalidate every assertion that member made
 yesterday — the retroactive-destruction outcome MR-3's rationale calls
 indefensible.
 
-Projektor's rule: **revocation ends authority at revocation time, never before
-it.** `validUntil = revokedAt`. A membership version whose `validUntil` precedes
-an assertion it authorized is rejected at write time.
+Projektor's rule: **revocation ends authority at the moment it is issued, never
+before.** `validUntil = revokedAt`. A membership version whose `validUntil`
+precedes an assertion it authorized is rejected at write time.
 
-A genuine "this key was compromised as of last Tuesday" is a **separate signed
-compromise claim**, not a `validUntil` rewrite. A verifier can then weigh the
-affected evidence instead of it silently disappearing.
+*Time of learning does not move `validUntil` either.* If an issuer learns of a
+trust change on Monday and signs the revocation on Wednesday, backdating to
+Monday destroys every good-faith assertion made in the gap — the same defect as
+`now - 24h` with a more defensible timestamp. It also fails to discriminate: it
+invalidates an honest participant's Tuesday approval and an attacker's Tuesday
+signature identically.
+
+The gap is still worth recording, as accountability rather than as validity.
+Three timestamps, one validity rule:
+
+| Field | Carried on | Effect on validity |
+|---|---|---|
+| `validUntil` = `revokedAt` | the revocation version | The only input. Never earlier than issuance. |
+| `learnedAt` | the revocation version | None. Audit metadata: response latency is visible instead of hidden inside a rewritten window. |
+| `compromisedSince` | a separate compromise claim | None. Marks assertions in the window **disputed**, never invalid. |
+
+A genuine "this key was compromised as of last Tuesday" is therefore a
+**separate signed compromise claim**, not a `validUntil` rewrite. It flags the
+affected assertions so a verifier re-weighs them, instead of deleting good
+evidence in order to reach the bad. Backdating cannot make that distinction; a
+claim can.
+
+**Scheduled expiry is not revocation.** A membership ending at the close of
+Leistungsphase 3 is a future `validUntil` set at issuance — a bounded
+certificate, needing none of the above.
 
 **2. `isRevoked(cert)` must not be used for evidence.**
 It treats `validUntil < now` as revoked and reads only the latest version. That
@@ -204,6 +226,10 @@ that matter are those that catch the conflation:
   `rosterAsOf(before)` succeeds while `mayAct(now)` denies.
 - A membership version with `validUntil` earlier than an assertion it authorized
   is rejected at write time.
+- A revocation carrying a `learnedAt` earlier than `revokedAt` still ends
+  authority at `revokedAt`; assertions made in that gap remain valid.
+- A compromise claim marks assertions in its window disputed while leaving them
+  verifiable; it does not alter any certificate version.
 - A disclosure pins a content hash: adding a member afterwards does not change
   what the disclosure proves.
 - Re-share by a member whose certificate lacks `mayReshare` fails closed.
