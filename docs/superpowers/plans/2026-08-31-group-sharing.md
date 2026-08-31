@@ -13,10 +13,10 @@
 ## Design Deltas From The Spec
 
 The [spec](../specs/2026-08-31-group-sharing-design.md) was written before checking what
-the platform already provides. It invented types that exist. These deltas change
-the spec's object model; **the spec needs amending to match, and if any delta is
-rejected this plan changes with it.** The spec's *reasoning* — two evaluation
-times, prospective revocation, disclosure as evidence — is unchanged.
+the platform already provides. It invented types that exist. **The spec has been
+amended to match these deltas**; they are recorded here as the reason it changed.
+Its *reasoning* — two evaluation times, prospective revocation, disclosure as
+evidence — is unchanged.
 
 1. **`ProjectGroup` and `ProjectGroupMembership` are deleted.** The group type is
    ONE.core's [`Group`](/Users/gecko/src/one/packages/one.core/lib/recipes.js:282):
@@ -47,6 +47,13 @@ times, prospective revocation, disclosure as evidence — is unchanged.
    authoritative present-tense record is the `Group` version DAG. This is the
    spec's evidence/access split expressed in the type system rather than in a
    convention.
+
+7. **Effective validity is the narrowest window across a membership lineage.**
+   Found while amending the spec: because one.models certificates are
+   unversioned, a revoking certificate sits *alongside* the original rather than
+   replacing it, so a consumer that accepts any valid certificate would make
+   revocation a no-op. Consumers must combine, never pick. Nothing widens, and a
+   renewal is a new lineage with a later `validFrom`.
 
 **What is genuinely new, and is therefore all this package builds:** no existing
 certificate carries a validity window. `AffirmationCertificate` is `{data,
@@ -542,7 +549,17 @@ open-ended present-tense grant.
   - `GROUP_MEMBERSHIP_CERTIFICATE_TYPE`, `GroupMembershipLicense`, `GroupMembershipCertificateRecipe`, `GroupCoreRecipes`
   - `createGroupMembershipCertificate({group, hashGroup, person, mayReshare, validFrom, validUntil, licenseHash}) -> object`
   - `isMembershipValidAt(certificate, atTime) -> boolean`
+  - `effectiveMembershipWindow(certificates) -> {validFrom, validUntil}` — the narrowest window across one lineage
   - `revokeMembershipCertificate(previous, {revokedAt, learnedAt, reason, endAt}) -> object`
+
+**Why a combining rule is required.** one.models certificates are unversioned, so
+revocation is a second certificate carrying an earlier `validUntil` — and the
+original still exists and still verifies. A consumer that accepts *any* valid
+certificate would keep accepting the original, and revocation would do nothing.
+Effective validity is therefore the **narrowest** window across all certificates
+from the same issuer, for the same person and group, sharing the same
+`validFrom`. Narrowing takes effect; nothing widens. A renewal is a new lineage
+with a later `validFrom`, evaluated on its own.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -554,6 +571,7 @@ import {
   GROUP_MEMBERSHIP_CERTIFICATE_TYPE,
   GroupCoreRecipes,
   createGroupMembershipCertificate,
+  effectiveMembershipWindow,
   isMembershipValidAt,
   revokeMembershipCertificate,
 } from "./index.js";
@@ -625,6 +643,37 @@ assert.throws(
       licenseHash: LICENSE,
     }),
   /validUntil must be after validFrom/,
+);
+
+// Revocation only bites if consumers combine rather than pick: the original
+// certificate still exists alongside the revoking one.
+assert.equal(
+  effectiveMembershipWindow([cert, revoked]).validUntil,
+  MAR,
+  "the narrowest window wins regardless of order",
+);
+assert.equal(effectiveMembershipWindow([revoked, cert]).validUntil, MAR);
+
+// Nothing widens a window another certificate already narrowed.
+const widened = { ...cert, validUntil: Date.UTC(2030, 0, 1) };
+assert.equal(
+  effectiveMembershipWindow([cert, revoked, widened]).validUntil,
+  MAR,
+  "a wider certificate cannot undo a narrowing",
+);
+
+// A renewal is a separate lineage, not an extension.
+const renewal = createGroupMembershipCertificate({
+  group: GROUP,
+  hashGroup: ROSTER,
+  person: PERSON,
+  validFrom: Date.UTC(2027, 0, 1),
+  validUntil: Date.UTC(2027, 11, 1),
+  licenseHash: LICENSE,
+});
+assert.throws(
+  () => effectiveMembershipWindow([cert, renewal]),
+  /one lineage/,
 );
 
 const recipe = GroupCoreRecipes.find(
@@ -748,6 +797,45 @@ export function isMembershipValidAt(certificate, atTime) {
 }
 
 /**
+ * Combine every certificate in one membership lineage into its effective window.
+ *
+ * Certificates are unversioned, so a revocation does not replace the original —
+ * both exist. Accepting whichever happens to be valid would make revocation a
+ * no-op, so effective validity is the narrowest window across the lineage.
+ * Narrowing takes effect and nothing widens, which also means a replayed or
+ * forged "extension" achieves nothing.
+ *
+ * A lineage is one issuer, person, group and `validFrom`. A renewal carries a
+ * later `validFrom` and is a different lineage.
+ */
+export function effectiveMembershipWindow(certificates) {
+  if (!Array.isArray(certificates) || certificates.length === 0) {
+    throw new Error("effectiveMembershipWindow: at least one certificate is required");
+  }
+  const [first] = certificates;
+  for (const certificate of certificates) {
+    if (certificate.$type$ !== GROUP_MEMBERSHIP_CERTIFICATE_TYPE) {
+      throw new Error(
+        "effectiveMembershipWindow: every entry must be a GroupMembershipCertificate",
+      );
+    }
+    if (
+      certificate.group !== first.group ||
+      certificate.person !== first.person ||
+      certificate.validFrom !== first.validFrom
+    ) {
+      throw new Error(
+        "effectiveMembershipWindow: all certificates must belong to one lineage (same group, person and validFrom)",
+      );
+    }
+  }
+  return {
+    validFrom: first.validFrom,
+    validUntil: Math.min(...certificates.map((certificate) => certificate.validUntil)),
+  };
+}
+
+/**
  * Issue a superseding certificate that ends authority now.
  *
  * `revokedAt` is the earliest permitted end. Ending earlier — including at the
@@ -837,12 +925,11 @@ membership certificate **for the group being disclosed**.
   - `authorizeDisclosure(trust, {groupIdHash, sharer, issuer, atTime}) -> Promise<{certificateHash}>`
   - `discloseGroup(trust, {groupIdHash, hashGroup, recipient, sharer, issuer, atTime}) -> Promise<object>`
 
-**Dependency note:** `TrustedKeysManager` takes a `LeuteModel`, so this task is
-where the one.models runtime dependency lands. The root README already sanctions
-one.models "where Leute/contact model is the owning API", which this is. If
-standing up `LeuteModel` proves disproportionate for this prototype, stop and
-raise it — do not substitute a hand-rolled key check, which is the exact defect
-this task exists to fix.
+**Dependency note:** `TrustedKeysManager` takes a `LeuteModel`. Use it — this is
+a decided dependency, sanctioned by the root README's "where Leute/contact model
+is the owning API". The stub below exists only to drive the boundary logic in
+isolation; Step 6 replaces it with the real manager and the assertions must hold
+unchanged. Do not substitute a hand-rolled key check for either.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -945,6 +1032,31 @@ await assert.rejects(
   /no membership certificate/,
 );
 
+// Revocation bites even though the original certificate still exists.
+const revokedAlongsideOriginal = stubTrust([
+  certForGroupA,
+  {
+    ...certForGroupA,
+    certificateHash: "d".repeat(64),
+    certificate: {
+      ...certForGroupA.certificate,
+      validUntil: Date.UTC(2026, 0, 15),
+      revocationReason: "Left the partner office",
+    },
+  },
+]);
+await assert.rejects(
+  () =>
+    authorizeDisclosure(revokedAlongsideOriginal, {
+      groupIdHash: GROUP_A,
+      sharer: SHARER,
+      issuer: ISSUER,
+      atTime: FEB,
+    }),
+  /not valid at/,
+  "the superseded certificate must not keep authorizing",
+);
+
 // Without mayReshare, disclosure fails closed.
 const noReshare = stubTrust([
   {
@@ -978,7 +1090,7 @@ Create `packages/group.core/issuance.js`:
 ```js
 import {
   GROUP_MEMBERSHIP_CERTIFICATE_TYPE,
-  isMembershipValidAt,
+  effectiveMembershipWindow,
 } from "./certificates.js";
 
 export const GROUP_DISCLOSURE_CERTIFICATE_TYPE = "GroupDisclosureCertificate";
@@ -1074,19 +1186,40 @@ export async function authorizeDisclosure(
     );
   }
 
-  const valid = forThisGroup.filter((entry) =>
-    isMembershipValidAt(entry.certificate, atTime),
-  );
-  if (valid.length === 0) {
+  // Combine, never pick. A revocation is a second certificate alongside the
+  // original, so accepting whichever entry happens to be valid would let the
+  // superseded certificate keep authorizing after revocation.
+  const lineages = new Map();
+  for (const entry of forThisGroup) {
+    const key = String(entry.certificate.validFrom);
+    const lineage = lineages.get(key) ?? [];
+    lineage.push(entry);
+    lineages.set(key, lineage);
+  }
+
+  const live = [];
+  for (const lineage of lineages.values()) {
+    const window = effectiveMembershipWindow(
+      lineage.map((entry) => entry.certificate),
+    );
+    if (window.validFrom <= atTime && atTime <= window.validUntil) {
+      live.push(lineage);
+    }
+  }
+  if (live.length === 0) {
     throw new Error(`authorizeDisclosure: certificate is not valid at ${atTime}`);
   }
 
-  const withReshare = valid.filter((entry) => entry.certificate.mayReshare === true);
-  if (withReshare.length === 0) {
+  // The re-share right is read from the lineage the same way: a certificate
+  // that withdraws it must not be outvoted by the one that granted it.
+  const authorizing = live.find((lineage) =>
+    lineage.every((entry) => entry.certificate.mayReshare === true),
+  );
+  if (authorizing === undefined) {
     throw new Error("authorizeDisclosure: certificate does not carry mayReshare");
   }
 
-  return { certificateHash: withReshare[0].certificateHash };
+  return { certificateHash: authorizing[0].certificateHash };
 }
 
 export async function discloseGroup(
@@ -1141,10 +1274,10 @@ Expected: PASS — the recipe assertions still hold against the composed list.
 
 - [ ] **Step 6: Replace the stub with the real manager**
 
-Construct a real `TrustedKeysManager` against a `LeuteModel` in the test, issue a
-membership through `issueMembership`, and re-run. The assertions must hold
-unchanged. If `LeuteModel` setup proves disproportionate, stop and raise it
-rather than weakening the assertions to fit the stub.
+Stand up a `LeuteModel`, construct a real `TrustedKeysManager` against it, issue
+a membership through `issueMembership`, and re-run the same assertions against
+it. They must hold unchanged. If an assertion only passes against the stub, the
+stub is wrong — fix the stub, never the assertion.
 
 - [ ] **Step 7: Register the test in package.json**
 
@@ -1677,14 +1810,12 @@ In `README.md`, in the `../one` Reuse Rule section, add after the
 - `packages/group.core` for the time-bounded evidence layer over groups: it consumes ONE.core `Group`/`HashGroup` and one.models `Signature`/certificates rather than restating them, and adds only validity windows, the re-share right, disclosure records and compromise claims
 ```
 
-- [ ] **Step 3: Amend the spec to match**
+- [ ] **Step 3: Check the spec still matches**
 
-Apply the six deltas at the top of this plan to
-`docs/superpowers/specs/2026-08-31-group-sharing-design.md`: replace the object
-table with the reuse table, delete `ProjectGroup`, `ProjectGroupMembership`,
-`ProjectGroupRoster` and `pinnedSubjects`, and rewrite the hash-discipline
-section around `HashGroup`. Keep the reasoning sections unchanged — the two
-evaluation times, prospective revocation, and the scope argument all still hold.
+The spec was amended when this plan was written, so this is a consistency check
+rather than a rewrite. Confirm that every type name, function signature and rule
+in `docs/superpowers/specs/2026-08-31-group-sharing-design.md` matches what was
+actually built, and correct whichever document is wrong.
 
 - [ ] **Step 4: Verify the full suite**
 

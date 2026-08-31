@@ -1,7 +1,9 @@
 # Group Definitions, Access, And Disclosure Records
 
 Date: 2026-08-31
-Status: Design, approved for planning
+Status: Design, approved for planning. Revised 2026-08-31 to build on the
+existing `Group` / `HashGroup` / `Signature` / certificate primitives rather
+than restate them; the reasoning is unchanged.
 
 ## Problem
 
@@ -55,73 +57,114 @@ required:
 
 ## Object Model
 
-Naming and recipe conventions follow `packages/project-source.core`: `Project*`
-prefix, versioned objects keyed by `isId` props, projections marked explicitly
-non-authoritative.
+Almost all of this exists. The platform provides the group, the roster, the
+roster's pin, signatures, and the certificate pattern. This design adds one
+thing to them: **time**. No existing certificate carries a validity window.
+
+### Reused, not restated
+
+| Concern | Type | Where |
+|---|---|---|
+| Group identity | `Group` — versioned, `isId: {name, owner}`, references a `HashGroup` | one.core |
+| The roster, and its pin | `HashGroup` — unversioned, `{person: Set<referenceToId Person>}` | one.core |
+| Roster history and ordering | the `Group` version DAG (`depth`, `creationTime`, `prev`, merge nodes) | `getVersionsNodes` |
+| Signatures | `Signature` — `{issuer, data, signature}`, its own object | one.models |
+| Certificate shape | an unversioned claim plus a `License`, issued via `TrustedKeysManager.certify` | one.models |
+| Authority checks | `TrustedKeysManager.getCertificates` / `isCertifiedBy` | one.models |
+| Access enforcement | `Access` links to `Group` | one.core |
+
+`Group` carries `name` and `owner` and no project field — `owner` is the issuer
+tier, which is the scope decision above already expressed in the type.
+
+`HashGroup` is content-addressed over its member set, so **its hash is the
+roster**. Not a pointer to a roster, not a descriptor that happens to travel
+with one: the same members always produce the same hash, and any change produces
+a different one. Nothing else is needed to pin membership, and nothing carried
+alongside it could disagree with it.
+
+### Added here
 
 | Object | Kind | Purpose |
 |---|---|---|
-| `ProjectGroup` | versioned, `isId: groupId` | Descriptor: name, purpose, issuer. The publishable part. No project field, no scope field. |
-| `ProjectGroupMembership` | versioned, `isId: {group, subject, issuer}` | Per-member certificate: issuer, subject key, group ref, `validFrom`, `validUntil`, `mayReshare`, signature. |
-| `ProjectGroupRoster` | **projection, not authoritative** | Derived from memberships. Same relationship `ProjectFileIndex` has to `ProjectSourceArtifact`. |
-| `ProjectGroupDisclosure` | immutable assertion | "I disclosed group G **at content hash H** to P at time T, under certificate C." |
-| `ProjectAccessAssertion` | immutable assertion | "I granted group G access to record R at time T," with binding mode. |
-| ONE.core `Access` / `IdAccess` | not ours | Enforcement. CHUM routing, mutable, present-tense. |
+| `GroupMembershipCertificate` | unversioned certificate | Issuer certifies that a person was in the pinned `HashGroup`, for a validity window, with or without `mayReshare`. |
+| `GroupDisclosureCertificate` | unversioned certificate | Who was shown which `HashGroup`, at what time, under which membership certificate. |
+| `ProjectAccessAssertion` | unversioned certificate | A group granted access to a project record, bound living or pinned. The only project-scoped type here. |
+| `KeyCompromiseClaim` | unversioned certificate | A retroactive trust change that disputes assertions rather than invalidating them. |
 
-Membership is per-member certificates rather than one signed roster. This makes a
-group structurally identical to a role certificate — one verification path, one
-supersession rule, one bundle format — and gives per-member supersession plus
-proof of one's own membership without disclosing the roster (MR-4).
+Each carries a `License` whose text names the fields it relies on, following the
+one.models convention. None carries a `signature` field: signatures are separate
+`Signature` objects, and a recipe declaring one is rejected by the serializer.
 
-Because the roster is a projection, no stored object can be mutated to change who
-was in a group at a past time.
+**A membership certificate pins a `HashGroup`, so it proves "was in this roster",
+never "is in the group now".** The authoritative present-tense record is the
+`Group` version DAG. This is what keeps the two evaluation times apart in the
+type system rather than by convention, and it means an old certificate is not a
+security hole — it is a true statement about the past.
 
 ### Hash discipline
 
-- A **disclosure** pins the group's **content hash**: which roster was actually
-  shown.
-- An **access grant** pins the **id hash** when living, or the **content hash**
-  when pinned.
+- A **disclosure** references a `HashGroup` hash: the exact roster shown.
+- A **living access grant** references the `Group` id hash and follows current
+  membership.
+- A **pinned access grant** references a `HashGroup` hash and is fixed to that
+  roster.
 
-Without this, "I shared group G with P" silently means "P sees whatever G
-becomes," and there is no proof of which membership P was told about.
+There is no separate member list anywhere. The pinned audience *is* the
+`HashGroup`, so no two fields can drift apart.
 
 ## Two Functions, Never One
 
 ```
-rosterAsOf(groupIdHash, atTime)               → evidence:  "was this validly asserted then"
-mayAct(subject, groupIdHash, now, freshness)  → access:    "may this participant act now"
+rosterAsOf(groupIdHash, atTime)
+  → evidence: who was in the group then
+
+mayAct({groupIdHash, subject, now, replicaAsOf, maxStalenessMs})
+  → access:   may this participant act now
 ```
 
 There is deliberately no `getMembers(group)`. A caller must state which question
-it is asking. `rosterAsOf` walks version history to the assertion time.
-`mayAct` reads the latest version under a stated freshness policy and fails
-closed when the local chain replica is staler than that policy allows.
+it is asking.
+
+Both read the `Group` version DAG, which is the ordering authority — not a
+timestamp field on the object. `rosterAsOf` selects the version in force at
+`atTime` and reads its `HashGroup`. `mayAct` evaluates the present under a
+stated freshness policy and throws `StaleChainError` when the local replica is
+older than the policy allows, so a stale chain can never be misread as an
+ordinary deny.
+
+Concurrent unmerged versions are an explicit `ConcurrentVersionsError`, not an
+arbitrary pick. Two versions at the same depth with no merge between them means
+the roster genuinely is ambiguous at that time, and guessing would make an
+access decision on a coin flip.
 
 ## Visibility: One Mechanism, Three Presets
 
-The three modes are audiences over `ProjectGroup` and its memberships, not three
-code paths:
+The three modes are audiences over the `Group` object and its `HashGroup`, not
+three code paths:
 
 - **Participants** — audience is the group itself; members read their own roster.
 - **Individuals** — an enumerated Person set. Requires `mayReshare` on the
   sharer's own membership certificate.
-- **Public** — the descriptor is published under a well-known id; memberships
-  remain restricted.
+- **Public** — the `Group` is readable while its `HashGroup` is not.
 
-Public therefore means **public identity, private roster**. Anyone can reference
-the group or verify a claim against it, and a member can prove their own
-membership, without publishing a member list as a personal-data set. The
-descriptor and the membership certificates are already separate objects, so this
-needs no additional concept.
+Public therefore means **public identity, private roster**, and it needs no
+additional concept because `Group` and `HashGroup` are already separate objects.
+Publishing the `Group` publishes a *reference* to the roster, not the roster: a
+verifier can check a claim against the group and a member can prove their own
+membership, without a member list becoming a published personal-data set.
 
 ## Re-Sharing And Delegation
 
 `mayReshare` on a membership certificate states whether that member may disclose
-the definition onward. A `ProjectGroupDisclosure` is valid only if the sharer's
-own certificate granted the right, so the delegation chain verifies offline like
-any other chain. "Shared by individuals" is a granted capability, not an
-assumption.
+the definition onward. A `GroupDisclosureCertificate` may only be issued after
+`TrustedKeysManager` confirms that the sharer holds a valid membership
+certificate **for that group**, issued by the stated issuer, carrying
+`mayReshare`, and valid at the disclosure time. "Shared by individuals" is a
+granted capability, not an assumption.
+
+Authority is read from stored certificates, never from a signature checked
+against a key the caller supplied — verifying a signature against a key someone
+hands you establishes nothing about issuer authority.
 
 `mayReshare` governs disclosure of the definition only. Authority to grant a
 group access to project records comes from the participant's project role
@@ -137,70 +180,82 @@ rather than implying a complete distribution list.
 
 `ProjectAccessAssertion` carries a binding mode:
 
-- **Living** — binds the group id hash. New members gain access automatically.
+- **Living** — binds the `Group` id hash. New members gain access automatically.
   Correct for "all current structural engineers."
-- **Pinned** — binds a content hash. Access is fixed to that exact roster.
-  Correct for a sensitive decision record or a closed jury.
+- **Pinned** — binds a `HashGroup` hash. The audience is that roster, and cannot
+  drift. Correct for a sensitive decision record or a closed jury.
 
 The assertion records which mode was chosen, so an auditor can see whether the
 audience was open or closed at grant time.
 
-## Revocation: Reuse trust.core
+## Revocation
 
-Revocation already exists in `trust.core` (`docs/CERTIFICATE-VERSIONING.md`):
-supersession by a new version under the same id, all versions preserved, CHUM
-urgent propagation, W3C VC export for offline and external verification. That is
-MR-3's "never a deny list, never deletion," already built. `ProjectGroupMembership`
-joins that path — no new revocation infrastructure, and the VC export serves
-MR-6 verification without adopting Projektor.
+One.models certificates are **unversioned**, so revocation cannot be ONE.core
+supersession. It is instead a second certificate for the same membership period
+carrying an earlier `validUntil`.
 
-Two behaviours in that package must **not** be carried over.
+That only works under an explicit combining rule, and without one it does not
+work at all: if a revoking certificate simply exists alongside the original, a
+verifier that accepts *any* valid certificate will keep accepting the original
+and the revocation will do nothing.
 
-**1. Revocation must not backdate `validUntil`.**
-`revokeCertificate` sets `validUntil` to `now - 24h`. Applied here, revoking a
-membership today would retroactively invalidate every assertion that member made
-yesterday — the retroactive-destruction outcome MR-3's rationale calls
-indefensible.
+**Effective validity is the narrowest window across all certificates issued by
+the same issuer, for the same person and group, sharing the same `validFrom`.**
 
-Projektor's rule: **revocation ends authority at the moment it is issued, never
-before.** `validUntil = revokedAt`. A membership version whose `validUntil`
-precedes an assertion it authorized is rejected at write time.
+- Revocation narrows. A later certificate with the same `validFrom` and an
+  earlier `validUntil` takes effect, and every consumer must combine rather than
+  pick.
+- Nothing widens. A certificate cannot extend a window that another certificate
+  already narrowed, so a replayed or forged "extension" achieves nothing.
+- Renewal is a **new** membership period, with a later `validFrom`, evaluated on
+  its own. It is not an extension of the old one.
 
-*Time of learning does not move `validUntil` either.* If an issuer learns of a
-trust change on Monday and signs the revocation on Wednesday, backdating to
-Monday destroys every good-faith assertion made in the gap — the same defect as
-`now - 24h` with a more defensible timestamp. It also fails to discriminate: it
-invalidates an honest participant's Tuesday approval and an attacker's Tuesday
-signature identically.
+This is MR-3's "supersession by a newer end time, never a deny list" expressed
+over unversioned objects. Nothing is deleted, every certificate remains in the
+record, and the narrowing is a pure function of what a verifier holds.
+
+### Revocation ends authority when it is issued, never earlier
+
+`validUntil = revokedAt`. A certificate whose window would end before an
+assertion it authorized is refused at construction.
+
+*The time of learning does not move `validUntil` either.* If an issuer learns of
+a trust change on Monday and signs the revocation on Wednesday, backdating to
+Monday destroys every good-faith assertion made in the gap. It also fails to
+discriminate: it invalidates an honest participant's Tuesday approval and an
+attacker's Tuesday signature identically.
 
 The gap is still worth recording, as accountability rather than as validity.
 Three timestamps, one validity rule:
 
 | Field | Carried on | Effect on validity |
 |---|---|---|
-| `validUntil` = `revokedAt` | the revocation version | The only input. Never earlier than issuance. |
-| `learnedAt` | the revocation version | None. Audit metadata: response latency is visible instead of hidden inside a rewritten window. |
-| `compromisedSince` | a separate compromise claim | None. Marks assertions in the window **disputed**, never invalid. |
+| `validUntil` = `revokedAt` | the revoking certificate | The only input. Never earlier than issuance. |
+| `learnedAt` | the revoking certificate | None. Audit metadata: response latency is visible instead of hidden inside a rewritten window. |
+| `compromisedSince` | a separate `KeyCompromiseClaim` | None. Marks assertions in the window **disputed**, never invalid. |
 
-A genuine "this key was compromised as of last Tuesday" is therefore a
-**separate signed compromise claim**, not a `validUntil` rewrite. It flags the
-affected assertions so a verifier re-weighs them, instead of deleting good
-evidence in order to reach the bad. Backdating cannot make that distinction; a
-claim can.
+A genuine "this key was compromised as of last Tuesday" is therefore a separate
+signed claim, not a `validUntil` rewrite. It flags the affected assertions so a
+verifier re-weighs them, instead of deleting good evidence in order to reach the
+bad. Backdating cannot make that distinction; a claim can.
 
 **Scheduled expiry is not revocation.** A membership ending at the close of
 Leistungsphase 3 is a future `validUntil` set at issuance — a bounded
 certificate, needing none of the above.
 
-**2. `isRevoked(cert)` must not be used for evidence.**
-It treats `validUntil < now` as revoked and reads only the latest version. That
-is a correct access-control check and a wrong evidence check: it takes no
-`atTime`, so it structurally cannot answer "was this valid then," and it conflates
-expiry with revocation, which MR-3 requires be kept distinct. `rosterAsOf` and
-`mayAct` replace it; neither delegates to it.
+### Two lessons from trust.core, which is not the reuse target
 
-Not to be propagated: `getLatestVersion(certId: SHA256Hash<...>)` keys
-latest-version resolution by content hash. Latest-version lookup takes an id hash.
+`trust.core` solves certificate versioning for a different shape of certificate,
+and two of its behaviours must not be carried across:
+
+1. **It backdates on revocation.** `revokeCertificate` sets `validUntil` to
+   `now - 24h`, which is the retroactive-destruction outcome MR-3's rationale
+   calls indefensible.
+2. **`isRevoked(cert)` takes no `atTime`** and reads only the latest version. It
+   is a correct access-control check and a wrong evidence check: it structurally
+   cannot answer "was this valid then", and it conflates expiry with revocation,
+   which MR-3 requires be kept distinct. `rosterAsOf` and `mayAct` replace it and
+   neither delegates to it.
 
 ## Disclosure Record Readership And Bundles
 
@@ -219,25 +274,29 @@ interface must say "ends access going forward" and must never say "unshare."
 
 ## Testing
 
-Per-package `index.test.js`, following the existing repository pattern. The tests
-that matter are those that catch the conflation:
+Standalone `node` test scripts using `node:assert/strict`, registered in the
+`test` script, following the existing repository pattern. The tests that matter
+are those that catch the conflation:
 
-- A membership revoked today still verifies an assertion made yesterday:
-  `rosterAsOf(before)` succeeds while `mayAct(now)` denies.
-- A membership version with `validUntil` earlier than an assertion it authorized
-  is rejected at write time.
+- A member removed today is still in `rosterAsOf` for a time before the removal,
+  while `mayAct` now denies them.
+- `rosterAsOf` reads the `Group` version in force at the evaluated time, so a
+  later version never reaches back into an earlier answer.
+- Concurrent unmerged versions raise `ConcurrentVersionsError` rather than
+  resolving to whichever the storage happened to return first.
+- `mayAct` throws `StaleChainError` when the replica is staler than the policy.
+- A revoking certificate narrows the effective window; the original certificate
+  alongside it does **not** keep the membership alive.
+- No certificate can widen a window another certificate narrowed.
 - A revocation carrying a `learnedAt` earlier than `revokedAt` still ends
   authority at `revokedAt`; assertions made in that gap remain valid.
-- A compromise claim marks assertions in its window disputed while leaving them
-  verifiable; it does not alter any certificate version.
-- A disclosure pins a content hash: adding a member afterwards does not change
-  what the disclosure proves.
-- Re-share by a member whose certificate lacks `mayReshare` fails closed.
-- A public group descriptor is readable while its memberships are not.
-- `mayAct` fails closed when the chain replica is staler than the freshness
-  policy.
+- A certificate for group A does not authorize disclosure of group B, and one
+  belonging to another person, from another issuer, expired, or lacking
+  `mayReshare` each fail closed.
+- A `KeyCompromiseClaim` marks assertions in its window disputed while leaving
+  them verifiable, and alters no certificate.
 - A living grant admits a later-added member; a pinned grant does not.
-- Never-attested and attested-but-expired issuers produce distinct outcomes.
+- A `HashGroup` hash changes with membership, so a pinned grant cannot drift.
 
 ## Assumption
 
