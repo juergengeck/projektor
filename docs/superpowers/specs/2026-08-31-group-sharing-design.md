@@ -64,6 +64,19 @@ bounded by that border rather than universal.
 There is no organization object. A firm appears as the people acting for it under
 a role, which is also what makes the accountable human visible in the record.
 
+**Certificates hold even when the chain of trust arrives later.** A signature is
+made over content by a key; whether that key is trusted is answered separately
+and can be answered afterwards. Work signed before attestation becomes verifiable
+when the attestation lands, with no reissue — which is why verification status is
+receiver-local, versioned, and re-derivable rather than a property of the
+evidence. `pending-authority` is a distinct state from `rejected`: a rejection is
+final, an unmet authority requirement is not.
+
+Two conditions this rests on. Attestation must bind keys the subject already
+holds, so key generation precedes the work it authenticates and attestation never
+substitutes a fresh key. And a late chain establishes *who* signed, never *when* —
+timing is still bounded only by what peers attested near the claim.
+
 **`ReleaseState` is app mechanics, not evidence.** It tracks what has actually
 been released so the application can manage assembly sharing. The disclosure
 certificate attests that a disclosure was made. They answer different questions

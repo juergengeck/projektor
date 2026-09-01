@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>projektor.one — Information for Project Participants</title>
+<style>
+  @page { size: A4; margin: 0; }
+
+  :root {
+    --ink: #2c3445;
+    --muted: #667289;
+    --line: #d7dde8;
+    --accent: #70809e;
+    --soft: #eef2f7;
+    --bg: #ffffff;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    background: #55606f;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    width: 210mm;
+    height: 297mm;
+    background: var(--bg);
+    margin: 0 auto;
+    padding: 11mm 14mm 6mm;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .page::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3.2mm;
+    background: var(--accent);
+  }
+
+  @media print {
+    html, body { background: #fff; }
+    .page { margin: 0; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+
+  /* ---------- header ---------- */
+
+  .head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8mm;
+    padding-top: 2mm;
+  }
+
+  .brand { display: flex; align-items: center; gap: 3.2mm; }
+  .brand svg { width: 11mm; height: 11mm; display: block; }
+  .wordmark { font-size: 15pt; font-weight: 600; letter-spacing: -0.015em; }
+  .wordmark span { color: var(--accent); font-weight: 400; }
+  .tagline {
+    font-size: 7.4pt;
+    color: var(--muted);
+    margin-top: 0.6mm;
+    letter-spacing: 0.01em;
+  }
+
+  .eyebrow {
+    font-size: 7.4pt;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    text-align: right;
+    padding-top: 1.5mm;
+    line-height: 1.5;
+  }
+  .eyebrow em {
+    display: block;
+    font-style: normal;
+    font-weight: 400;
+    letter-spacing: 0.02em;
+    text-transform: none;
+    color: var(--muted);
+    font-size: 7.2pt;
+  }
+
+  /* ---------- headline ---------- */
+
+  .hero { margin-top: 3mm; }
+
+  h1 {
+    font-size: 31pt;
+    line-height: 1.06;
+    letter-spacing: -0.025em;
+    font-weight: 600;
+  }
+
+  .hero .sub {
+    margin-top: 4mm;
+    font-size: 11.2pt;
+    line-height: 1.5;
+    color: var(--ink);
+    max-width: 152mm;
+  }
+
+  .hero .sub b { font-weight: 600; }
+
+  .strap {
+    margin-top: 3mm;
+    font-size: 7.6pt;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  .strap i { font-style: normal; color: var(--line); margin: 0 1.6mm; }
+
+  .rule {
+    height: 1px;
+    background: var(--line);
+    margin: 4mm 0 0;
+  }
+
+  /* ---------- three columns ---------- */
+
+  .cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 0;
+    margin-top: 6mm;
+  }
+
+  .col { padding: 0 5mm; }
+  .col:first-child { padding-left: 0; }
+  .col:last-child { padding-right: 0; }
+  .col + .col { border-left: 1px solid var(--line); }
+
+  .col h2 {
+    font-size: 10.2pt;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    margin-bottom: 3mm;
+  }
+
+  .col h2::before {
+    content: "";
+    display: block;
+    width: 7mm;
+    height: 1.6px;
+    background: var(--accent);
+    margin-bottom: 2.4mm;
+  }
+
+  ul { list-style: none; }
+
+  .col li {
+    font-size: 8.9pt;
+    line-height: 1.5;
+    color: var(--muted);
+    padding-left: 3.4mm;
+    position: relative;
+    margin-bottom: 2.5mm;
+  }
+
+  .col li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 1.5mm;
+    width: 1.5mm;
+    height: 1.5mm;
+    border-radius: 50%;
+    background: var(--line);
+  }
+
+  .col li b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- usp grid ---------- */
+
+  .usp {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 12mm;
+    row-gap: 9.5mm;
+    margin-top: 8mm;
+  }
+
+  .u h2 {
+    font-size: 12.5pt;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin-bottom: 2.8mm;
+  }
+
+  .u h2::before {
+    content: "";
+    display: block;
+    width: 8mm;
+    height: 1.8px;
+    background: var(--accent);
+    margin-bottom: 2.4mm;
+  }
+
+  .u li {
+    font-size: 9.8pt;
+    line-height: 1.55;
+    color: var(--muted);
+    padding-left: 3.6mm;
+    position: relative;
+    margin-bottom: 2.6mm;
+  }
+
+  .u li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 1.6mm;
+    width: 1.5mm;
+    height: 1.5mm;
+    border-radius: 50%;
+    background: var(--line);
+  }
+
+  .u li b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- steps ---------- */
+
+  .steps-block { margin-top: 8.5mm; }
+
+  .section-title {
+    font-size: 12.5pt;
+    font-weight: 600;
+    margin-bottom: 4mm;
+  }
+
+  .steps {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 6mm;
+  }
+
+  .step { display: flex; gap: 3mm; }
+
+  .num {
+    flex: none;
+    width: 6.2mm;
+    height: 6.2mm;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-size: 8.5pt;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+  }
+
+  .step h3 {
+    font-size: 9.8pt;
+    font-weight: 600;
+    margin-bottom: 1.4mm;
+  }
+
+  .step p {
+    font-size: 9.2pt;
+    line-height: 1.55;
+    color: var(--muted);
+  }
+
+  /* ---------- countersign strip ---------- */
+
+  .strip {
+    margin-top: 4.2mm;
+    background: var(--soft);
+    border-left: 2.2mm solid var(--accent);
+    padding: 4mm 5mm;
+    display: flex;
+    gap: 6mm;
+    align-items: flex-start;
+  }
+
+  .strip .label {
+    flex: none;
+    width: 42mm;
+    font-size: 9.8pt;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+
+  .strip p {
+    font-size: 8.8pt;
+    line-height: 1.5;
+    color: var(--muted);
+  }
+
+  .strip p b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- boundary ---------- */
+
+  .boundary { margin-top: 4.5mm; }
+
+  .boundary-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 5mm;
+    margin-top: 3.5mm;
+  }
+
+  .bnd {
+    border: 1px solid var(--line);
+    padding: 3.6mm 4mm;
+  }
+
+  .bnd h4 {
+    font-size: 8.5pt;
+    font-weight: 600;
+    margin-bottom: 1.6mm;
+  }
+
+  .bnd h4::before {
+    content: "—";
+    color: var(--accent);
+    margin-right: 1.6mm;
+  }
+
+  .bnd p {
+    font-size: 7.9pt;
+    line-height: 1.45;
+    color: var(--muted);
+  }
+
+  /* ---------- footer ---------- */
+
+  .foot {
+    margin-top: auto;
+    padding-top: 3mm;
+    border-top: 1px solid var(--line);
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 8mm;
+  }
+
+  .foot .residency {
+    font-size: 8.8pt;
+    line-height: 1.45;
+    color: var(--muted);
+    max-width: 122mm;
+  }
+
+  .foot .residency b { color: var(--ink); font-weight: 600; }
+
+  .foot .mark {
+    font-size: 7.6pt;
+    color: var(--muted);
+    text-align: right;
+    line-height: 1.5;
+    flex: none;
+  }
+
+  .fineprint {
+    margin-top: 3mm;
+    padding-top: 2.6mm;
+    border-top: 1px solid var(--line);
+    font-size: 6.9pt;
+    line-height: 1.45;
+    color: var(--muted);
+  }
+
+  .foot .mark strong { color: var(--ink); font-weight: 600; display: block; font-size: 8.4pt; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="head">
+    <div class="brand">
+      <svg viewBox="0 0 387 387" xmlns="http://www.w3.org/2000/svg" aria-label="projektor.one">
+        <g transform="translate(-3005.388856,-2202.261762)">
+          <g transform="translate(3751.391427,2293.445109)">
+            <g transform="matrix(1.581882,0,0,1.324394,-5602.828551,-3032.184005)">
+              <path d="M3250.7,2375.178L3309.83,2375.178C3312.529,2375.178 3314.717,2377.792 3314.717,2381.015L3314.717,2442.858C3314.717,2446.082 3312.529,2448.695 3309.83,2448.695L3075.17,2448.695C3072.471,2448.695 3070.283,2446.082 3070.283,2442.858L3070.283,2381.015C3070.283,2377.792 3072.471,2375.178 3075.17,2375.178L3134.3,2375.178C3132.925,2369.11 3132.211,2362.802 3132.211,2356.407L3132.211,2356.404C3132.211,2337.345 3138.55,2319.065 3149.834,2305.588C3161.117,2292.111 3176.421,2284.539 3192.378,2284.539L3192.622,2284.539C3208.579,2284.539 3223.883,2292.111 3235.166,2305.588C3246.45,2319.065 3252.789,2337.345 3252.789,2356.404L3252.789,2356.407C3252.789,2362.802 3252.075,2369.11 3250.7,2375.178ZM3186.854,2302.16C3177.235,2312.006 3180.462,2335.383 3194.055,2354.33C3207.649,2373.277 3226.496,2380.666 3236.115,2370.82C3245.734,2360.974 3242.507,2337.597 3228.913,2318.65C3215.319,2299.703 3196.473,2292.314 3186.854,2302.16Z" style="fill:#70809e;"/>
+            </g>
+          </g>
+        </g>
+      </svg>
+      <div>
+        <div class="wordmark">projektor<span>.one</span></div>
+        <div class="tagline">Verifiable project coordination across organizational boundaries</div>
+      </div>
+    </div>
+    <div class="eyebrow">
+      Information for project participants
+      <em>Clients · Authorities · Specialist planners · Contractors</em>
+    </div>
+  </header>
+
+  <section class="hero">
+    <h1>Project data where it belongs<br>&mdash; with you.</h1>
+    <p class="sub">You keep your <b>own project record</b> and share from it what you choose. Every party signs the commitments they make for the others &mdash; so everyone holds the paper trail they need.</p>
+    <div class="strap">In the browser <i>·</i> In minutes <i>·</i> With you</div>
+  </section>
+
+  <div class="rule"></div>
+
+  <section class="usp">
+    <div class="u">
+      <h2>Ready in minutes</h2>
+      <ul>
+        <li>Open the browser &mdash; and you keep your <b>own project record</b>.</li>
+        <li>The browser you already have is all it takes.</li>
+        <li>Carry on with <b>Outlook, your file server and the programs you already use</b>.</li>
+      </ul>
+    </div>
+    <div class="u">
+      <h2>Open and traceable</h2>
+      <ul>
+        <li>Methods and formats are <b>published and documented</b>.</li>
+        <li>For every entry you can see what it rests on: who stated it, when, and on what basis.</li>
+        <li>Where two records contradict each other, <b>both sides are shown it</b>.</li>
+      </ul>
+    </div>
+    <div class="u">
+      <h2>Yours to keep</h2>
+      <ul>
+        <li>Your data sits in your browser, on your machine, under your control.</li>
+        <li>Your record stays yours &mdash; <b>beyond the end of the project, and when a licence lapses</b>.</li>
+        <li>You release deliberately: exactly the state, exactly to the recipient.</li>
+      </ul>
+    </div>
+    <div class="u">
+      <h2>Sound for years</h2>
+      <ul>
+        <li>Every commitment carries the <b>signature of whoever stated it</b> &mdash; with its time and its basis.</li>
+        <li>Alter it afterwards and the signature shows it.</li>
+        <li>The check runs <b>on your own machine</b>, offline, and still works years later.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="steps-block">
+    <div class="section-title">How the paper trail forms</div>
+    <div class="steps">
+      <div class="step">
+        <div class="num">1</div>
+        <div>
+          <h3>Everyone keeps their own</h3>
+          <p>Each office, authority and specialist planner holds their own project record.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">2</div>
+        <div>
+          <h3>Everyone signs what they commit to</h3>
+          <p>Whoever states a commitment, an approval or a date signs it &mdash; and it reaches the others signed.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">3</div>
+        <div>
+          <h3>Everyone holds their proof</h3>
+          <p>What reaches you carries the signature of whoever stated it. That makes every copy as sound as the original.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="foot" style="display:block">
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:8mm">
+      <div class="residency"><b>Where your data lives.</b> On your own machine, under your control. Each participating organization holds its own records. Exactly what you release is shared &mdash; and you can evidence that at any time.</div>
+      <div class="mark"><strong>projektor.one</strong>Please direct questions about the<br>project to your project partner.</div>
+    </div>
+    <div class="fineprint">A confirmation made in the browser is a project acknowledgement between the parties working together, not a qualified electronic signature under eIDAS.</div>
+  </footer>
+
+</div>
+</body>
+</html>

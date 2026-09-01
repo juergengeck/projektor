@@ -53,7 +53,7 @@ and renders only project-facing handoffs. The concrete descriptors are now owned
 by the editor providers:
 
 - [REAKTOR_CONTENT_EDITOR](/Users/gecko/src/reaktor/reaktor.core/src/editorDescriptor.ts)
-- [VGER_TXT_CONTENT_EDITOR](/Users/gecko/src/vger/packages/vger.txt.ui/src/editorDescriptor.ts)
+- [VGER_TXT_CONTENT_EDITOR](/Users/gecko/src/one/packages/vger.txt.ui/src/editorDescriptor.ts)
 
 ## Migration Order
 

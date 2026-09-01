@@ -362,10 +362,31 @@ of a credential.
   before its attestation exists. What an unattested organization cannot do is
   produce evidence that verifies for an outside party against the pinned root.
   Attestation makes work externally verifiable; it does not gate the work.
-- **M** *Never attested* and *attested but expired* are different states and must
-  not be conflated. The second is grandfathered by the as-of-assertion-time rule
-  below; the first is not, and evidence produced during an unattested window
-  requires reissue to become externally verifiable.
+- **M** **Evidence signed before its chain of trust exists becomes externally
+  verifiable when that chain arrives, without reissue.** A signature is made over
+  content by a key; whether that key is trusted is a separate question, answered
+  later without touching what was signed. An organization therefore works first
+  and formalizes afterwards without redoing anything.
+- **M** This holds only because **attestation binds keys the subject already
+  holds.** Key generation must precede the work it authenticates, and attestation
+  must never substitute a fresh key for the one that signed — nothing would link
+  the earlier signatures to the attested identity, and they would be
+  unverifiable permanently.
+- **M** *Awaiting attestation* is therefore a **distinct state from rejected**,
+  and must be represented as such rather than collapsed into failure. A verifier
+  that records "cannot verify" as a rejection makes a later-arriving chain
+  useless, because nothing revisits it.
+- **M** A verification decision is **receiver-local and re-derivable**: it is
+  evaluated at a time, superseded by a later evaluation, and re-run when new
+  chain evidence arrives. It is not a property of the evidence and never a
+  one-shot outcome.
+- **M** *Never attested*, *awaiting attestation*, and *attested but expired*
+  remain three different states. Expiry is grandfathered by the
+  as-of-assertion-time rule below; awaiting attestation resolves when the chain
+  arrives; never attested is the case where no chain will arrive.
+- **M** Retroactive verifiability does not extend to retroactive *timing*. A
+  late-arriving chain establishes who signed, not when. What bounds a claimed
+  time is what independent parties attested near it.
 - **M** Project roles are **bounded certificates** bound to a participant's key,
   each carrying issuer, subject, scope, validity window, and signature.
 - **M** **Issuing a role and vouching for an identity are separate
@@ -461,14 +482,11 @@ Two deltas Projektor must close rather than inherit:
   expiry — the requirements above — are exactly what is absent, and they are what
   makes a role certificate answer the two evaluation times rather than only the
   present.
-- **The unattested-window position may be stronger than stated.** Flexibel runs
-  before its root key is published and treats the same chain as production once
-  publication happens, with no reissue. If refinio's attestation binds the keys an
-  organization already holds, then work done before attestation becomes externally
-  verifiable when the attestation is issued, and the reissue requirement above is
-  too strong. It is correct only where attestation introduces a *different* key.
-  This distinction is commercially material — it decides whether a customer
-  formalizing their arrangement must redo work — and it is gated below.
+- **The unattested-window position was stronger than stated, and is now
+  corrected above.** Flexibel runs before its root key is published and treats the
+  same chain as production once publication happens, with no reissue. That is the
+  decided position: certificates hold even when the chain of trust arrives later.
+  What remains open is only the mechanism that notices — gate 16.
 
 **Attribution tiering.** Onboarding permits a no-password path, which leaves
 private key material unprotected at rest in browser storage. Anyone with device
@@ -933,7 +951,7 @@ specification and validation, tracked below as gates 1, 3, 5, and 7.
 | 13 | Freshness policy for access-control decisions: how current chain state must be to decide on it, and behaviour when it is not | Any access-control claim; revocation effectiveness |
 | 14 | Attestation renewal cadence and what an organization experiences when its window lapses mid-project | The licence-lapse position in MR-3; any continuity claim |
 | 15 | Link-based project-view authorization *for the minimal tier*: what a link grants, what a forwarded link grants, how the recipient is bound to a role without an account, how access is withdrawn, and how MR-4 cryptographic role filtering is enforced on a surface with no enrolled identity | MR-6 minimal tier; any confidentiality claim about the shared view |
-| 16 | Whether evidence produced before attestation requires reissue, or becomes verifiable when the attestation binds the keys already held. Flexibel's precedent suggests the latter where the key is unchanged | The unattested-window position in MR-3; any "work before you formalize" sales claim |
+| 16 | What re-evaluates pending verification decisions when chain evidence arrives, and how a receiver discovers that a bundle it once could not verify is now verifiable. *The states exist* — `pending-authority` is distinct from `rejected` in `trust.projektor`, and status is versioned per receiver and bundle so re-evaluation supersedes. What is open is the trigger. | The "work before you formalize" position in MR-3 |
 | 17 | Role vocabulary and hierarchy for HOAI: the `RoleConfig` equivalent — which role may issue which, and which may vouch for whose identity, distinct from gate 1's phase mapping | Any role-filtering or authority claim |
 
 **Gate 15 belongs to the minimal tier only.** The shared view has to reconcile two

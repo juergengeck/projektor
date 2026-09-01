@@ -46,6 +46,15 @@ the product (Product MRD MR-6). It must never present external adoption,
 invitations, or a peer connection as a precondition for reaching a working
 project.
 
+**There are two onboarding paths, and this document covers one.** MR-6 defines
+the second: a project participant obtaining **their own project record**, with no
+account, no installation, and zero onboarding effort — peer participation is the
+model, not a later upgrade. That path is out of scope here — this document covers
+the office user's first run — but the two must not contradict each other. Neither
+may present the other's ceremony as a precondition, the participant path must not
+inherit any step from this one, and neither may frame a participant as a guest in
+another organization's system.
+
 ## 4. Positioning
 
 projektor.one uses the web as an app store: the browser can install and run
