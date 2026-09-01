@@ -550,11 +550,20 @@ open-ended present-tense grant.
 **Interfaces:**
 - Consumes: `HashGroup` hashes from Task 1.
 - Produces:
-  - `GROUP_MEMBERSHIP_CERTIFICATE_TYPE`, `GroupMembershipLicense`, `GroupMembershipCertificateRecipe`, `GroupCoreRecipes`
-  - `createGroupMembershipCertificate({group, hashGroup, person, mayReshare, validFrom, validUntil, licenseHash}) -> object`
+  - `GROUP_MEMBERSHIP_CERTIFICATE_TYPE`, `GroupMembershipLicense`, `GroupMembershipCertificateRecipe`, `GroupMembershipCertificateReverseMap`, `GroupCoreRecipes`
+  - `createGroupMembershipCertificateData({group, hashGroup, person, mayReshare, validFrom, validUntil}) -> object` — the `certData` argument to `certify`, without `$type$` or `license`
   - `isMembershipValidAt(certificate, atTime) -> boolean`
   - `effectiveMembershipWindow(certificates) -> {validFrom, validUntil}` — the narrowest window across one lineage
   - `revokeMembershipCertificate(previous, {revokedAt, learnedAt, reason, endAt}) -> object`
+
+**Why the factory does not build the finished object.**
+`TrustedKeysManager.certify(type, certData)` builds it: it looks the License up
+in the registry, stores it, then stores `{$type$: type, ...certData, license}`
+and signs the result. A factory that also emitted `$type$` and `license` would
+be supplying fields `certify` overwrites. So these factories validate and shape
+`certData`; `certify` owns the rest. The License must be registered with
+`registerLicense` before the first `certify` call or it throws — that happens in
+Task 4's setup.
 
 **Why a combining rule is required.** one.models certificates are unversioned, so
 revocation is a second certificate carrying an earlier `validUntil` — and the
@@ -574,7 +583,8 @@ import assert from "node:assert/strict";
 import {
   GROUP_MEMBERSHIP_CERTIFICATE_TYPE,
   GroupCoreRecipes,
-  createGroupMembershipCertificate,
+  GroupMembershipCertificateReverseMap,
+  createGroupMembershipCertificateData,
   effectiveMembershipWindow,
   isMembershipValidAt,
   revokeMembershipCertificate,
@@ -588,34 +598,43 @@ const DEC = Date.UTC(2026, 11, 1);
 const GROUP = "0".repeat(64);
 const ROSTER = "1".repeat(64);
 const PERSON = "2".repeat(64);
-const LICENSE = "3".repeat(64);
 
-const cert = createGroupMembershipCertificate({
+// certify() adds $type$ and license, so the factory must not.
+const certData = createGroupMembershipCertificateData({
   group: GROUP,
   hashGroup: ROSTER,
   person: PERSON,
   mayReshare: true,
   validFrom: JAN,
   validUntil: DEC,
-  licenseHash: LICENSE,
 });
+assert.equal("$type$" in certData, false);
+assert.equal("license" in certData, false);
+assert.equal("signature" in certData, false);
 
-assert.equal(cert.$type$, GROUP_MEMBERSHIP_CERTIFICATE_TYPE);
+// The stored shape, as certify would write it. Validity helpers read this.
+const cert = {
+  $type$: GROUP_MEMBERSHIP_CERTIFICATE_TYPE,
+  ...certData,
+  license: "3".repeat(64),
+};
+
 // The certificate pins the exact roster, so it can never mean "is in the group now".
 assert.equal(cert.hashGroup, ROSTER);
-assert.equal(cert.license, LICENSE);
-// Signatures are separate objects, never a field.
-assert.equal("signature" in cert, false);
 
 assert.equal(isMembershipValidAt(cert, FEB), true);
 assert.equal(isMembershipValidAt(cert, Date.UTC(2027, 5, 1)), false);
 
 // Revocation ends authority at issuance, never before.
-const revoked = revokeMembershipCertificate(cert, {
+const revocationData = revokeMembershipCertificate(cert, {
   revokedAt: MAR,
   learnedAt: FEB,
   reason: "Left the partner office",
 });
+assert.equal("$type$" in revocationData, false, "revocation is certData too");
+assert.equal("license" in revocationData, false);
+
+const revoked = { $type$: GROUP_MEMBERSHIP_CERTIFICATE_TYPE, ...revocationData };
 assert.equal(revoked.validUntil, MAR, "validUntil ends at revocation time");
 assert.equal(revoked.learnedAt, FEB, "learning time is recorded");
 assert.equal(revoked.validFrom, JAN, "validFrom is never rewritten");
@@ -638,13 +657,12 @@ assert.throws(
 
 assert.throws(
   () =>
-    createGroupMembershipCertificate({
+    createGroupMembershipCertificateData({
       group: GROUP,
       hashGroup: ROSTER,
       person: PERSON,
       validFrom: DEC,
       validUntil: JAN,
-      licenseHash: LICENSE,
     }),
   /validUntil must be after validFrom/,
 );
@@ -667,14 +685,16 @@ assert.equal(
 );
 
 // A renewal is a separate lineage, not an extension.
-const renewal = createGroupMembershipCertificate({
-  group: GROUP,
-  hashGroup: ROSTER,
-  person: PERSON,
-  validFrom: Date.UTC(2027, 0, 1),
-  validUntil: Date.UTC(2027, 11, 1),
-  licenseHash: LICENSE,
-});
+const renewal = {
+  $type$: GROUP_MEMBERSHIP_CERTIFICATE_TYPE,
+  ...createGroupMembershipCertificateData({
+    group: GROUP,
+    hashGroup: ROSTER,
+    person: PERSON,
+    validFrom: Date.UTC(2027, 0, 1),
+    validUntil: Date.UTC(2027, 11, 1),
+  }),
+};
 assert.throws(
   () => effectiveMembershipWindow([cert, renewal]),
   /one lineage/,
@@ -693,6 +713,10 @@ assert.equal(
   "referenceToId",
 );
 assert.equal(recipe.rule.some((rule) => rule.itemprop === "signature"), false);
+
+// getCertificates cannot find a type with no reverse map.
+assert.equal(GroupMembershipCertificateReverseMap[0], GROUP_MEMBERSHIP_CERTIFICATE_TYPE);
+assert.ok(GroupMembershipCertificateReverseMap[1].has("*"));
 
 console.log("group.core certificate tests passed");
 ```
@@ -748,6 +772,14 @@ export const GroupMembershipCertificateRecipe = {
   ],
 };
 
+// Without a reverse map, TrustedKeysManager.getCertificates cannot find
+// certificates of this type at all, and every authority check fails closed for
+// the wrong reason. Shape matches one.models: [typeName, Set(['*'])].
+export const GroupMembershipCertificateReverseMap = [
+  GROUP_MEMBERSHIP_CERTIFICATE_TYPE,
+  new Set(["*"]),
+];
+
 export const GroupCoreRecipes = [GroupMembershipCertificateRecipe];
 
 function required(value, field) {
@@ -766,14 +798,19 @@ function requiredTime(value, field) {
   return value;
 }
 
-export function createGroupMembershipCertificate({
+/**
+ * Build and validate the `certData` for a membership certificate.
+ *
+ * `$type$` and `license` are deliberately absent: `TrustedKeysManager.certify`
+ * adds both, and emitting them here would supply fields it overwrites.
+ */
+export function createGroupMembershipCertificateData({
   group,
   hashGroup,
   person,
   mayReshare = false,
   validFrom,
   validUntil,
-  licenseHash,
 } = {}) {
   const from = requiredTime(validFrom, "validFrom");
   const until = requiredTime(validUntil, "validUntil");
@@ -784,14 +821,12 @@ export function createGroupMembershipCertificate({
     throw new Error("GroupMembershipCertificate: mayReshare must be a boolean");
   }
   return {
-    $type$: GROUP_MEMBERSHIP_CERTIFICATE_TYPE,
     group: required(group, "group"),
     hashGroup: required(hashGroup, "hashGroup"),
     person: required(person, "person"),
     mayReshare,
     validFrom: from,
     validUntil: until,
-    license: required(licenseHash, "licenseHash"),
   };
 }
 
@@ -862,8 +897,10 @@ export function revokeMembershipCertificate(
       "GroupMembershipCertificate: revokedAt is the earliest permitted end; a validity window may not end before the revocation was issued",
     );
   }
+  // Strip the fields certify owns, so the result is certData like any other.
+  const { $type$: _type, license: _license, ...carried } = previous;
   const revocation = {
-    ...previous,
+    ...carried,
     validUntil: end,
     revocationReason: required(reason, "revocationReason"),
   };
@@ -915,6 +952,7 @@ requires stored-certificate evidence that the sharer holds a valid, issuer-signe
 membership certificate **for the group being disclosed**.
 
 **Files:**
+- Create: `packages/group.core/test-instance.js`
 - Create: `packages/group.core/issuance.js`
 - Create: `packages/group.core/issuance.test.js`
 - Modify: `packages/group.core/certificates.js` (extend `GroupCoreRecipes`)
@@ -929,13 +967,103 @@ membership certificate **for the group being disclosed**.
   - `authorizeDisclosure(trust, {groupIdHash, sharer, issuer, atTime}) -> Promise<{certificateHash}>`
   - `discloseGroup(trust, {groupIdHash, hashGroup, recipient, sharer, issuer, atTime}) -> Promise<object>`
 
-**Dependency note:** `TrustedKeysManager` takes a `LeuteModel`. Use it — this is
-a decided dependency, sanctioned by the root README's "where Leute/contact model
-is the owning API". The stub below exists only to drive the boundary logic in
-isolation; Step 6 replaces it with the real manager and the assertions must hold
-unchanged. Do not substitute a hand-rolled key check for either.
+**Dependency note:** the trust manager is not constructed directly — it is
+`leute.trust` on an initialised `LeuteModel`. This is a decided dependency,
+sanctioned by the root README's "where Leute/contact model is the owning API".
+The stub below drives the boundary logic in isolation; Step 7 runs the same
+assertions against the real manager. Do not substitute a hand-rolled key check
+for either.
 
-- [ ] **Step 1: Write the failing test**
+The setup is modelled on `one.models/test/Certificate-test.ts`. Three things in
+it are easy to miss and each fails in a confusing way:
+
+- **`new LeuteModel('wss://dummy')`** — the commserver URL is only used when
+  building a default endpoint. No network is involved.
+- **Reverse maps must be enabled at `initInstance`.** Without
+  `initiallyEnabledReverseMapTypes` covering `Signature`, the one.models
+  certificates, and our own types, `getCertificates` finds nothing and every
+  authority check fails closed for the wrong reason.
+- **Licenses must be registered before the first `certify`.**
+  `certify` calls `getLicenseForCertificate(type)` and throws if the type is not
+  in the registry.
+
+- [ ] **Step 1: Write the shared test setup**
+
+Create `packages/group.core/test-instance.js`. Tasks 4 and 5 both use it:
+
+```js
+import "../../../one/packages/one.core/lib/system/load-nodejs.js";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import {
+  closeInstance,
+  initInstance,
+} from "../../../one/packages/one.core/lib/instance.js";
+import LeuteModel from "../../../one/packages/one.models/lib/models/Leute/LeuteModel.js";
+import RecipesStable from "../../../one/packages/one.models/lib/recipes/recipes-stable.js";
+import RecipesExperimental from "../../../one/packages/one.models/lib/recipes/recipes-experimental.js";
+import { SignatureReverseMaps } from "../../../one/packages/one.models/lib/recipes/SignatureRecipes.js";
+import { CertificateReverseMaps } from "../../../one/packages/one.models/lib/recipes/Certificates/CertificateRecipes.js";
+import { registerLicense } from "../../../one/packages/one.models/lib/misc/Certificates/LicenseRegistry.js";
+import {
+  GROUP_MEMBERSHIP_CERTIFICATE_TYPE,
+  GroupCoreRecipes,
+  GroupCoreReverseMaps,
+  GroupMembershipLicense,
+} from "./index.js";
+import {
+  GROUP_DISCLOSURE_CERTIFICATE_TYPE,
+  GroupDisclosureLicense,
+} from "./issuance.js";
+
+/**
+ * Stand up an instance with a LeuteModel, and return its trust manager.
+ *
+ * The trust manager is `leute.trust` — it is not constructed separately.
+ */
+export async function startTestInstance(name) {
+  const directory = await mkdtemp(path.join(tmpdir(), `projektor-${name}-`));
+  const leute = new LeuteModel("wss://dummy");
+
+  await initInstance({
+    name: `projektor-${name}`,
+    email: `projektor-${name}@example.invalid`,
+    secret: `projektor-${name}-secret`,
+    wipeStorage: true,
+    encryptStorage: false,
+    directory,
+    initialRecipes: [...RecipesStable, ...RecipesExperimental, ...GroupCoreRecipes],
+    // Without these, getCertificates finds nothing.
+    initiallyEnabledReverseMapTypes: new Map([
+      ...SignatureReverseMaps,
+      ...CertificateReverseMaps,
+      ...GroupCoreReverseMaps,
+    ]),
+  });
+
+  // certify() looks the license up in the registry and throws if it is absent.
+  registerLicense(GroupMembershipLicense, GROUP_MEMBERSHIP_CERTIFICATE_TYPE);
+  registerLicense(GroupDisclosureLicense, GROUP_DISCLOSURE_CERTIFICATE_TYPE);
+
+  await leute.init();
+
+  return {
+    leute,
+    trust: leute.trust,
+    async stop() {
+      await leute.shutdown();
+      closeInstance();
+      await rm(directory, { recursive: true, force: true });
+    },
+  };
+}
+```
+
+`GroupCoreReverseMaps` is composed in `index.js` alongside `GroupCoreRecipes`,
+from each module's exported reverse map.
+
+- [ ] **Step 2: Write the failing test**
 
 Create `packages/group.core/issuance.test.js`:
 
@@ -943,14 +1071,25 @@ Create `packages/group.core/issuance.test.js`:
 import assert from "node:assert/strict";
 import { authorizeDisclosure } from "./index.js";
 
-// A stub standing in for TrustedKeysManager, exercising the boundary without
-// LeuteModel. Step 6 replaces it with the real manager; these assertions must
-// hold unchanged against both.
+// A stub standing in for leute.trust, exercising the boundary without a full
+// instance. Entries match the real CertificateData shape:
+// {signature, signatureHash, certificate, certificateHash, trusted}.
+// Note the issuer is on the signature, not on the entry.
 function stubTrust(entries) {
   return {
     async getCertificates(dataHash) {
       return entries.filter((entry) => entry.certificate.group === dataHash);
     },
+  };
+}
+
+function entryFor(certificate, { issuer, certificateHash, trusted = true }) {
+  return {
+    certificate,
+    certificateHash,
+    trusted,
+    signature: { $type$: "Signature", issuer, data: certificateHash },
+    signatureHash: `s${certificateHash.slice(1)}`,
   };
 }
 
@@ -962,20 +1101,20 @@ const GROUP_B = "b".repeat(64);
 const ROSTER = "1".repeat(64);
 const SHARER = "2".repeat(64);
 
-const certForGroupA = {
+const membershipA = {
+  $type$: "GroupMembershipCertificate",
+  group: GROUP_A,
+  hashGroup: ROSTER,
+  person: SHARER,
+  mayReshare: true,
+  validFrom: Date.UTC(2026, 0, 1),
+  validUntil: Date.UTC(2026, 11, 1),
+  license: "3".repeat(64),
+};
+const certForGroupA = entryFor(membershipA, {
   issuer: ISSUER,
   certificateHash: "c".repeat(64),
-  certificate: {
-    $type$: "GroupMembershipCertificate",
-    group: GROUP_A,
-    hashGroup: ROSTER,
-    person: SHARER,
-    mayReshare: true,
-    validFrom: Date.UTC(2026, 0, 1),
-    validUntil: Date.UTC(2026, 11, 1),
-    license: "3".repeat(64),
-  },
-};
+});
 
 const trust = stubTrust([certForGroupA]);
 
@@ -1039,15 +1178,14 @@ await assert.rejects(
 // Revocation bites even though the original certificate still exists.
 const revokedAlongsideOriginal = stubTrust([
   certForGroupA,
-  {
-    ...certForGroupA,
-    certificateHash: "d".repeat(64),
-    certificate: {
-      ...certForGroupA.certificate,
+  entryFor(
+    {
+      ...membershipA,
       validUntil: Date.UTC(2026, 0, 15),
       revocationReason: "Left the partner office",
     },
-  },
+    { issuer: ISSUER, certificateHash: "d".repeat(64) },
+  ),
 ]);
 await assert.rejects(
   () =>
@@ -1061,12 +1199,32 @@ await assert.rejects(
   "the superseded certificate must not keep authorizing",
 );
 
+// A certificate whose signing key is not trusted authorizes nothing. This is
+// what makes the check about issuer authority rather than about bytes.
+const untrusted = stubTrust([
+  entryFor(membershipA, {
+    issuer: ISSUER,
+    certificateHash: "e".repeat(64),
+    trusted: false,
+  }),
+]);
+await assert.rejects(
+  () =>
+    authorizeDisclosure(untrusted, {
+      groupIdHash: GROUP_A,
+      sharer: SHARER,
+      issuer: ISSUER,
+      atTime: FEB,
+    }),
+  /no membership certificate/,
+);
+
 // Without mayReshare, disclosure fails closed.
 const noReshare = stubTrust([
-  {
-    ...certForGroupA,
-    certificate: { ...certForGroupA.certificate, mayReshare: false },
-  },
+  entryFor(
+    { ...membershipA, mayReshare: false },
+    { issuer: ISSUER, certificateHash: "f".repeat(64) },
+  ),
 ]);
 await assert.rejects(
   () =>
@@ -1082,12 +1240,12 @@ await assert.rejects(
 console.log("group.core issuance tests passed");
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 3: Run test to verify it fails**
 
 Run: `node ./packages/group.core/issuance.test.js`
 Expected: FAIL with `does not provide an export named 'authorizeDisclosure'`.
 
-- [ ] **Step 3: Write the issuance module**
+- [ ] **Step 4: Write the issuance module**
 
 Create `packages/group.core/issuance.js`:
 
@@ -1137,6 +1295,11 @@ export const GroupDisclosureCertificateRecipe = {
   ],
 };
 
+export const GroupDisclosureCertificateReverseMap = [
+  GROUP_DISCLOSURE_CERTIFICATE_TYPE,
+  new Set(["*"]),
+];
+
 export async function issueMembership(
   trust,
   { group, hashGroup, person, mayReshare = false, validFrom, validUntil } = {},
@@ -1182,7 +1345,11 @@ export async function authorizeDisclosure(
       entry.certificate.$type$ === GROUP_MEMBERSHIP_CERTIFICATE_TYPE &&
       entry.certificate.group === groupIdHash &&
       entry.certificate.person === sharer &&
-      entry.issuer === issuer,
+      // The issuer is on the signature, not on the entry.
+      entry.signature.issuer === issuer &&
+      // A certificate signed by a key the trust manager does not vouch for
+      // proves possession of a key, not authority.
+      entry.trusted === true,
   );
   if (forThisGroup.length === 0) {
     throw new Error(
@@ -1246,7 +1413,7 @@ export async function discloseGroup(
 }
 ```
 
-- [ ] **Step 4: Register the disclosure recipe**
+- [ ] **Step 5: Register the disclosure recipe**
 
 In `packages/group.core/index.js`, replace the `GroupCoreRecipes` re-export with
 a composed list so the two modules do not import each other:
@@ -1256,19 +1423,32 @@ export * from "./roster.js";
 export * from "./certificates.js";
 export * from "./issuance.js";
 
-import { GroupMembershipCertificateRecipe } from "./certificates.js";
-import { GroupDisclosureCertificateRecipe } from "./issuance.js";
+import {
+  GroupMembershipCertificateRecipe,
+  GroupMembershipCertificateReverseMap,
+} from "./certificates.js";
+import {
+  GroupDisclosureCertificateRecipe,
+  GroupDisclosureCertificateReverseMap,
+} from "./issuance.js";
 
 export const GroupCoreRecipes = [
   GroupMembershipCertificateRecipe,
   GroupDisclosureCertificateRecipe,
 ];
+
+// Passed to initInstance as initiallyEnabledReverseMapTypes. Without them
+// getCertificates cannot see these types at all.
+export const GroupCoreReverseMaps = [
+  GroupMembershipCertificateReverseMap,
+  GroupDisclosureCertificateReverseMap,
+];
 ```
 
 Remove the `GroupCoreRecipes` export from `certificates.js` so there is one
-definition.
+definition. Later tasks add their recipe and reverse map to both lists.
 
-- [ ] **Step 5: Run test to verify it passes**
+- [ ] **Step 6: Run test to verify it passes**
 
 Run: `node ./packages/group.core/issuance.test.js`
 Expected: PASS, prints `group.core issuance tests passed`.
@@ -1276,14 +1456,17 @@ Expected: PASS, prints `group.core issuance tests passed`.
 Then run: `node ./packages/group.core/certificates.test.js`
 Expected: PASS — the recipe assertions still hold against the composed list.
 
-- [ ] **Step 6: Replace the stub with the real manager**
+- [ ] **Step 7: Run the same assertions against the real manager**
 
-Stand up a `LeuteModel`, construct a real `TrustedKeysManager` against it, issue
-a membership through `issueMembership`, and re-run the same assertions against
-it. They must hold unchanged. If an assertion only passes against the stub, the
-stub is wrong — fix the stub, never the assertion.
+Add a second half to the test using `startTestInstance` from Step 1: issue a
+membership through `issueMembership(trust, ...)`, authorize a disclosure, then
+issue the revoking certificate and assert that authorization now fails. Call
+`stop()` in a `finally`.
 
-- [ ] **Step 7: Register the test in package.json**
+The assertions must hold unchanged. If one passes only against the stub, the stub
+is wrong — fix the stub, never the assertion.
+
+- [ ] **Step 8: Register the test in package.json**
 
 In `package.json`, append to the `test` script:
 
@@ -1294,7 +1477,7 @@ In `package.json`, append to the `test` script:
 Run: `npm test`
 Expected: all tests pass.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add packages/group.core package.json
@@ -1316,9 +1499,10 @@ times work; if it fails, something earlier is wrong regardless of its own tests.
 **Files:**
 - Create: `packages/group.core/end-to-end.test.js`
 - Modify: `package.json` (the `test` script)
+- Uses: `packages/group.core/test-instance.js` from Task 4
 
 **Interfaces:**
-- Consumes: `issueMembership`, `authorizeDisclosure`, `discloseGroup` (Task 4), `revokeMembershipCertificate`, `effectiveMembershipWindow` (Task 3), `rosterAsOf`, `mayAct` (Task 2), a real `TrustedKeysManager` over a `LeuteModel`.
+- Consumes: `startTestInstance` and `issueMembership`, `authorizeDisclosure`, `discloseGroup` (Task 4), `revokeMembershipCertificate` (Task 3), `rosterAsOf`, `mayAct` (Task 2).
 - Produces: nothing importable. This task's output is confidence.
 
 - [ ] **Step 1: Write the failing end-to-end test**
@@ -1328,19 +1512,12 @@ Create `packages/group.core/end-to-end.test.js`. Use the instance and
 
 ```js
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
-import "../../../one/packages/one.core/lib/system/load-nodejs.js";
-import {
-  closeInstance,
-  initInstance,
-  getInstanceOwnerIdHash,
-} from "../../../one/packages/one.core/lib/instance.js";
+import { getInstanceOwnerIdHash } from "../../../one/packages/one.core/lib/instance.js";
 import { storeUnversionedObject } from "../../../one/packages/one.core/lib/storage-unversioned-objects.js";
 import { storeVersionedObject } from "../../../one/packages/one.core/lib/storage-versioned-objects.js";
+import { startTestInstance } from "./test-instance.js";
 import {
-  GroupCoreRecipes,
+  GROUP_MEMBERSHIP_CERTIFICATE_TYPE,
   authorizeDisclosure,
   discloseGroup,
   issueMembership,
@@ -1349,24 +1526,12 @@ import {
   rosterAsOf,
 } from "./index.js";
 
-const directory = await mkdtemp(path.join(tmpdir(), "projektor-e2e-"));
-let initialized = false;
 const DAY = 24 * 60 * 60 * 1000;
+const instance = await startTestInstance("e2e");
+const { trust } = instance;
 
 try {
-  await initInstance({
-    name: "projektor-group-e2e",
-    email: "projektor-group-e2e@example.invalid",
-    secret: "projektor-group-e2e-secret",
-    wipeStorage: true,
-    encryptStorage: false,
-    directory,
-    initialRecipes: GroupCoreRecipes,
-  });
-  initialized = true;
-
   const owner = getInstanceOwnerIdHash();
-  const trust = await buildTrustedKeysManager(); // as confirmed in Task 4
 
   // --- 1. A group with one member.
   const roster = await storeUnversionedObject({
@@ -1416,7 +1581,8 @@ try {
     learnedAt: admitted + DAY,
     reason: "Left the partner office",
   });
-  await trust.certify("GroupMembershipCertificate", revocation);
+  // revokeMembershipCertificate returns certData; certify adds $type$ and license.
+  await trust.certify(GROUP_MEMBERSHIP_CERTIFICATE_TYPE, revocation);
 
   const emptyRoster = await storeUnversionedObject({
     $type$: "HashGroup",
@@ -1483,10 +1649,7 @@ try {
 
   console.log("group.core end-to-end test passed");
 } finally {
-  if (initialized) {
-    closeInstance();
-  }
-  await rm(directory, { recursive: true, force: true });
+  await instance.stop();
 }
 ```
 
@@ -1712,8 +1875,11 @@ export async function resolveGrantAudience(assertion, atTime) {
 
 - [ ] **Step 4: Export from the barrel**
 
-In `packages/group.core/index.js`, add `export * from "./grants.js";` and add
-`ProjectAccessAssertionRecipe` to the composed `GroupCoreRecipes` list.
+In `packages/group.core/index.js`, add `export * from "./grants.js";`, add
+`ProjectAccessAssertionRecipe` to `GroupCoreRecipes`, and add
+`ProjectAccessAssertionReverseMap` to `GroupCoreReverseMaps`. Export that reverse
+map from `grants.js` as `[PROJECT_ACCESS_ASSERTION_TYPE, new Set(["*"])]`, and
+register `ProjectAccessLicense` for the type in `test-instance.js`.
 
 - [ ] **Step 5: Run test to verify it passes**
 
@@ -1922,8 +2088,11 @@ export function markDisputedAssertions(claim, assertions) {
 
 - [ ] **Step 4: Export from the barrel**
 
-In `packages/group.core/index.js`, add `export * from "./compromise.js";` and add
-`KeyCompromiseClaimRecipe` to the composed `GroupCoreRecipes` list.
+In `packages/group.core/index.js`, add `export * from "./compromise.js";`, add
+`KeyCompromiseClaimRecipe` to `GroupCoreRecipes`, and add
+`KeyCompromiseClaimReverseMap` to `GroupCoreReverseMaps`. Export that reverse map
+from `compromise.js` as `[KEY_COMPROMISE_CLAIM_TYPE, new Set(["*"])]`, and
+register `KeyCompromiseLicense` for the type in `test-instance.js`.
 
 - [ ] **Step 5: Run test to verify it passes**
 
