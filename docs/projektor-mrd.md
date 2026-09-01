@@ -456,11 +456,18 @@ evaluating evidence at assertion time.*
   recovery ceremonies that do not invalidate previously issued evidence. Over a
   multi-year evidence horizon, key loss is a certainty, not an edge case, and
   recovery must be an explicit ceremony rather than a silent fallback.
+**Custody is not authority.** Authority is local to the *person*. An instance is
+a custodian: it holds key material, it does not own the identity, and signing is
+an act of the person that the instance mediates. Two requirements follow, and
+they are consequences of that boundary rather than accommodations of any
+particular onboarding choice.
+
 - **M** The **local password is a vault credential, not a security boundary of
-  its own.** It unlocks locally held key material. Confidentiality,
-  attribution, and evidentiary weight derive from the certificate chain, not
-  from the password. Product and onboarding language must say exactly this and
-  must not imply that the password is what makes project data trustworthy.
+  its own.** It governs custody — whether this instance can currently release
+  the person's key material — and nothing else. Confidentiality, attribution and
+  evidentiary weight derive from the certificate chain. Product and onboarding
+  language must say exactly this and must not imply that the password is what
+  makes project data trustworthy.
 - **S** Vault state must be distinguishable to the user: locked, unlocked,
   missing, recovery-needed.
 
@@ -488,11 +495,16 @@ Two deltas Projektor must close rather than inherit:
   decided position: certificates hold even when the chain of trust arrives later.
   What remains open is only the mechanism that notices — gate 16.
 
-**Attribution tiering.** Onboarding permits a no-password path, which leaves
-private key material unprotected at rest in browser storage. Anyone with device
-access could then sign assertions as that participant. The resolution is not to
-forbid the path but to make the data model reflect what the key material
-actually proves:
+**Attribution tiering.** An instance acting alone is never the person acting.
+The record must therefore distinguish an act the person participated in from one
+the instance performed with custody of their key, because those carry different
+weight against a third party regardless of how the vault is configured.
+
+The no-password onboarding path makes this visible rather than causing it: it
+leaves key material unprotected at rest, so anyone with device access can sign as
+that participant. But tiering would be required even without that path — an
+unlocked vault, a shared workstation and a borrowed session produce the same
+gap. What the data model must reflect is what the key material actually proves:
 
 - **M** Two distinct classes of authorship, distinguished in the data model and
   in every export, not merely in the interface:
@@ -515,10 +527,13 @@ actually proves:
   produce, and reach the vault or authenticator setup from the point where the
   tier blocks them — not through a settings hunt.
 
-*Rationale: forbidding the no-password path would break the onboarding promise
-that a user reaches a working project without ceremony. Tiering keeps that
-promise while ensuring the weakness is expressed as reduced evidentiary weight
-rather than as a silent liability.*
+*Rationale: tiering is not a concession purchased to keep the no-password
+onboarding promise. It states what custody proves and what participation proves,
+which differ whatever the vault is configured to do. That it also allows a user
+to reach a working project without ceremony is a consequence, not the argument:
+the weakness of an unprotected vault is expressed as reduced evidentiary weight
+rather than as a silent liability, and the same expression covers every other way
+an instance can act without its person.*
 - **S** Certificate format should follow or map cleanly to an established
   standard, so third parties can verify without adopting Projektor (MR-6).
 - **C** Cross-project or organization-wide identity federation.
