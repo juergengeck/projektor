@@ -1,11 +1,13 @@
+import { csvRows } from "../table.core/csv.js";
+
 export const NGO_CAPABILITY = {
   capabilityId: "projektor.ngo",
   label: "NGO",
   kind: "project-type",
   domains: ["ngo.donors", "ngo.participants", "ngo.safeguarding", "ngo.visa-deadlines"],
-  inputShapes: ["ngo-backup", "ngo-csv"],
-  outputShapes: ["ngo-person-export", "ngo-donation-export", "ngo-participant-export", "ngo-backup"],
-  effects: ["manage", "search", "sort", "filter", "export", "backup", "restore"],
+  inputShapes: ["ngo-csv"],
+  outputShapes: ["ngo-person-export", "ngo-donation-export", "ngo-participant-export"],
+  effects: ["manage", "search", "sort", "filter", "export"],
   tags: ["local-first", "donation-ledger", "participant-program", "gdpr-retention"],
 };
 
@@ -484,20 +486,6 @@ export function csvFromNgoParticipants(data, today = TODAY_UTC) {
     "Selbstverpflichtung unterschrieben",
     "Notizen",
   ], rows);
-}
-
-export function createNgoBackup(data) {
-  return {
-    kind: "projektor.one/ngo-backup",
-    schemaVersion: "0.1.0",
-    exportedAt: new Date().toISOString(),
-    ngo: normalizeNgoProjectData(data),
-  };
-}
-
-export function restoreNgoBackup(payload) {
-  if (payload?.kind === "projektor.one/ngo-backup") return normalizeNgoProjectData(payload.ngo);
-  return normalizeNgoProjectData(payload?.ngo || payload);
 }
 
 export class NgoPlan {
@@ -1066,11 +1054,5 @@ function roundMoney(value) {
 }
 
 function csv(headers, rows) {
-  return [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\n");
-}
-
-function csvCell(value) {
-  const text = String(value ?? "");
-  const safeText = /^[=+\-@]/.test(text) ? `'${text}` : text;
-  return `"${safeText.replaceAll('"', '""')}"`;
+  return csvRows(headers, rows);
 }

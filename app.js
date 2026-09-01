@@ -22,7 +22,6 @@ import {
   addNgoDonor,
   addNgoDonation,
   addNgoParticipant,
-  createNgoBackup,
   createNgoProjectData,
   csvFromNgoDonations,
   csvFromNgoParticipants,
@@ -32,7 +31,6 @@ import {
   participantMetrics,
   queryNgoDonors,
   queryNgoParticipants,
-  restoreNgoBackup,
 } from "./packages/ngo.core/index.js";
 import {
   createProjectSourceBundle,
@@ -61,8 +59,6 @@ const state = {
   syncCount: 18,
   journalExtra: 0,
   imapStatus: "idle",
-  importStatus: "idle",
-  importFileName: "",
   datasetCreatorStatus: "bereit",
   runnerStatus: "idle",
   runnerSessionId: localStorage.getItem("projektor-runner-session") || "",
@@ -85,6 +81,7 @@ const state = {
 };
 
 const runtimeWindowId = `projektor-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+const runnerChannel = new BroadcastChannel("projektor-cube-runner");
 const runnerWindowRefs = new Map();
 let activeRunnerAbort = false;
 const runnerRoleParam = new URLSearchParams(window.location.search).get("runnerRole");
@@ -385,9 +382,8 @@ const i18n = {
     flowsEyebrow: "Projektflows",
     flowsTitle: "Verbindliche Abläufe für Dokumente, Termine und Änderungen",
     dataEyebrow: "Projektdateien",
-    dataTitle: "Datenimport, Vorschau und Projekt-Export",
+    dataTitle: "Projektquellen und Tabellenprojektionen",
     template: "Template",
-    export: "Export",
     aiEyebrow: "Projektassistenz",
     aiTitle: "Prüfung von Lücken, Risiken und nächsten Schritten",
     advanceRun: "Nächsten Schritt prüfen",
@@ -405,11 +401,6 @@ const i18n = {
       "Der Fragebogen sammelt priorisierte Rückmeldungen zu Schmerz, Kosten, Integrationen, Pilotbereitschaft und Datenschutz.",
     feedbackOpen: "Separat öffnen",
     testImap: "IMAP prüfen",
-    importPick: "Importdatei wählen",
-    importHint: "XLSX/CSV aus Projektliste, Terminplan oder Kontaktliste",
-    simulateImport: "Import simulieren",
-    dataPreviewTitle: "Vorschau vor Schreibzugriff",
-    dataPreviewText: "Projektor prüft die Datei zuerst und zeigt Änderungen an, bevor Daten übernommen werden.",
     sourceBundleTitle: "Git-Quelle",
     sourceBundleText: "Projektdateien, offene Änderungen und ignorierte Laufzeitpfade.",
     sourceAdapter: "Adapter",
@@ -418,8 +409,6 @@ const i18n = {
     sourceFiles: "Dateien",
     sourceDirty: "Offen",
     sourceIgnored: "Ignoriert",
-    exportBundleTitle: "Export-Bundle",
-    exportBundleText: "Der Export sammelt Kontakte, Rollen, Termine, Dokumente, Mailbezug und Journal in einer nachvollziehbaren Projektdatei.",
     ngoEyebrow: "NGO Capability",
     ngoTitle: "Spender und Teilnehmerinnen-Programm",
     roleAllowed: "erlaubt",
@@ -430,12 +419,6 @@ const i18n = {
     accessNone: "kein Zugriff",
     accessCycle: "Zugriff ändern",
     status: "Status",
-    parser: "Dateityp",
-    importSource: "Quelle",
-    noImportFile: "Keine Importdatei gewählt",
-    importReady: "bereit zur Vorschau",
-    importPreview: "Vorschau erzeugt, 4 Konflikte prüfen",
-    imported: "Demo-Import journalisiert",
   },
   en: {
     navCockpit: "Cockpit",
@@ -463,9 +446,8 @@ const i18n = {
     flowsEyebrow: "Project flows",
     flowsTitle: "Binding workflows for documents, dates and changes",
     dataEyebrow: "Project files",
-    dataTitle: "Data import, preview and project export",
+    dataTitle: "Project sources and table projections",
     template: "Template",
-    export: "Export",
     aiEyebrow: "Project assistant",
     aiTitle: "Review gaps, risks and next steps",
     advanceRun: "Check next step",
@@ -483,11 +465,6 @@ const i18n = {
       "The questionnaire collects prioritized feedback on pain, costs, integrations, pilot readiness and data protection.",
     feedbackOpen: "Open separately",
     testImap: "Check IMAP",
-    importPick: "Choose import file",
-    importHint: "XLSX/CSV from a project list, schedule or contact list",
-    simulateImport: "Simulate import",
-    dataPreviewTitle: "Preview before write access",
-    dataPreviewText: "Projektor checks the file first and previews changes before anything is imported.",
     sourceBundleTitle: "Git source",
     sourceBundleText: "Project files, open changes and ignored runtime paths.",
     sourceAdapter: "Adapter",
@@ -496,8 +473,6 @@ const i18n = {
     sourceFiles: "Files",
     sourceDirty: "Open",
     sourceIgnored: "Ignored",
-    exportBundleTitle: "Export bundle",
-    exportBundleText: "The export collects contacts, roles, dates, documents, mail references and journal entries in one traceable project file.",
     ngoEyebrow: "NGO capability",
     ngoTitle: "Donors and participant program",
     roleAllowed: "allowed",
@@ -508,12 +483,6 @@ const i18n = {
     accessNone: "no access",
     accessCycle: "Change access",
     status: "Status",
-    parser: "File type",
-    importSource: "Source",
-    noImportFile: "No import file selected",
-    importReady: "ready for preview",
-    importPreview: "Preview created, review 4 conflicts",
-    imported: "Demo import journaled",
   },
   fr: {
     navCockpit: "Cockpit",
@@ -541,9 +510,8 @@ const i18n = {
     flowsEyebrow: "Flux projet",
     flowsTitle: "Processus contraignants pour documents, dates et changements",
     dataEyebrow: "Fichiers projet",
-    dataTitle: "Import, aperçu et export du projet",
+    dataTitle: "Sources projet et projections tabulaires",
     template: "Modèle",
-    export: "Exporter",
     aiEyebrow: "Assistant projet",
     aiTitle: "Vérifier les manques, risques et prochaines étapes",
     advanceRun: "Vérifier l'étape suivante",
@@ -561,11 +529,6 @@ const i18n = {
       "Le questionnaire recueille des retours priorisés sur la douleur, les coûts, les intégrations, la disposition au pilote et la protection des données.",
     feedbackOpen: "Ouvrir séparément",
     testImap: "Vérifier IMAP",
-    importPick: "Choisir un fichier",
-    importHint: "XLSX/CSV depuis une liste projet, un planning ou une liste de contacts",
-    simulateImport: "Simuler l'import",
-    dataPreviewTitle: "Aperçu avant écriture",
-    dataPreviewText: "Projektor vérifie d'abord le fichier et affiche les changements avant toute importation.",
     sourceBundleTitle: "Source git",
     sourceBundleText: "Fichiers projet, changements ouverts et chemins d'exécution ignorés.",
     sourceAdapter: "Adaptateur",
@@ -574,8 +537,6 @@ const i18n = {
     sourceFiles: "Fichiers",
     sourceDirty: "Ouverts",
     sourceIgnored: "Ignorés",
-    exportBundleTitle: "Bundle d'export",
-    exportBundleText: "L'export rassemble contacts, rôles, dates, documents, références mail et journal dans un fichier projet traçable.",
     ngoEyebrow: "Capability NGO",
     ngoTitle: "Donateurs et programme participantes",
     roleAllowed: "autorisé",
@@ -586,12 +547,6 @@ const i18n = {
     accessNone: "aucun accès",
     accessCycle: "Modifier l'accès",
     status: "Statut",
-    parser: "Type de fichier",
-    importSource: "Source import",
-    noImportFile: "Aucun fichier sélectionné",
-    importReady: "prêt pour l'aperçu",
-    importPreview: "Aperçu créé, 4 conflits à vérifier",
-    imported: "Import démo journalisé",
   },
   es: {
     navCockpit: "Panel",
@@ -619,9 +574,8 @@ const i18n = {
     flowsEyebrow: "Flujos del proyecto",
     flowsTitle: "Procesos vinculantes para documentos, fechas y cambios",
     dataEyebrow: "Archivos de proyecto",
-    dataTitle: "Importación, vista previa y exportación del proyecto",
+    dataTitle: "Fuentes del proyecto y proyecciones tabulares",
     template: "Plantilla",
-    export: "Exportar",
     aiEyebrow: "Asistente de proyecto",
     aiTitle: "Revisar vacíos, riesgos y próximos pasos",
     advanceRun: "Revisar siguiente paso",
@@ -639,11 +593,6 @@ const i18n = {
       "El cuestionario recoge comentarios priorizados sobre dolor, costes, integraciones, disposición a piloto y protección de datos.",
     feedbackOpen: "Abrir por separado",
     testImap: "Comprobar IMAP",
-    importPick: "Elegir archivo",
-    importHint: "XLSX/CSV de lista de proyecto, cronograma o lista de contactos",
-    simulateImport: "Simular importación",
-    dataPreviewTitle: "Vista previa antes de escribir",
-    dataPreviewText: "Projektor revisa primero el archivo y muestra los cambios antes de importar datos.",
     sourceBundleTitle: "Fuente git",
     sourceBundleText: "Archivos del proyecto, cambios abiertos y rutas de ejecución ignoradas.",
     sourceAdapter: "Adaptador",
@@ -652,8 +601,6 @@ const i18n = {
     sourceFiles: "Archivos",
     sourceDirty: "Abiertos",
     sourceIgnored: "Ignorados",
-    exportBundleTitle: "Paquete de exportación",
-    exportBundleText: "La exportación reúne contactos, roles, fechas, documentos, referencias de correo y diario en un archivo trazable.",
     ngoEyebrow: "Capacidad NGO",
     ngoTitle: "Donantes y programa de participantes",
     roleAllowed: "permitido",
@@ -664,12 +611,6 @@ const i18n = {
     accessNone: "sin acceso",
     accessCycle: "Cambiar acceso",
     status: "Estado",
-    parser: "Tipo de archivo",
-    importSource: "Fuente import",
-    noImportFile: "Ningún archivo seleccionado",
-    importReady: "listo para vista previa",
-    importPreview: "Vista previa creada, revisar 4 conflictos",
-    imported: "Importación demo registrada",
   },
 };
 
@@ -1040,11 +981,7 @@ let projectSource = createProjectSourceBundle({
   status: "dirty",
   generatedAt: "2026-06-03T09:30:00.000Z",
   ignoredPaths: ["dist", ".wrangler", "node_modules", ".env"],
-  files: [
-    { path: "projects/demo-kita-2028/project.json", kind: "project-graph", owner: "Architekt", phase: "LP1-LP9", status: "tracked" },
-    { path: "projects/demo-kita-2028/schedule.json", kind: "schedule", owner: "Projektsteuerer", phase: "LP3", status: "tracked" },
-    { path: "projects/demo-kita-2028/journal.ndjson", kind: "journal", owner: "Architekt", phase: "laufend", status: "modified" },
-  ],
+  files: [],
 });
 
 let journalBase = [
@@ -1058,7 +995,6 @@ let journalBase = [
 
 let ngoWorkspace = createNgoProjectData();
 
-const PROJECT_STORAGE_KEY = "projektor-active-project";
 const datasetPlans = listDemoDatasetPlans();
 
 let demoDatasetCreator = {
@@ -1069,8 +1005,7 @@ let demoDatasetCreator = {
 };
 
 function deepClone(value) {
-  if (typeof structuredClone === "function") return structuredClone(value);
-  return JSON.parse(JSON.stringify(value));
+  return structuredClone(value);
 }
 
 function isPlainObject(value) {
@@ -1092,11 +1027,7 @@ function createDefaultProjectSourceBundle(projectId = demoProject.id || "project
     status: "dirty",
     generatedAt: "2026-06-03T09:30:00.000Z",
     ignoredPaths: ["dist", ".wrangler", "node_modules", ".env"],
-    files: [
-      { path: `projects/${projectId}/project.json`, kind: "project-graph", owner: "Projektleitung", phase: "LP1-LP9", status: "tracked" },
-      { path: `projects/${projectId}/schedule.json`, kind: "schedule", owner: "Projektsteuerung", phase: "laufend", status: "tracked" },
-      { path: `projects/${projectId}/journal.ndjson`, kind: "journal", owner: "Projektleitung", phase: "laufend", status: "modified" },
-    ],
+    files: [],
   });
 }
 
@@ -1158,56 +1089,18 @@ function createProjectDatatype() {
   };
 }
 
-function projectFromLegacyExport(payload) {
-  const fallback = createProjectDatatype();
-  if (!isPlainObject(payload?.project)) return null;
-
-  return {
-    ...fallback,
-    project: {
-      ...fallback.project,
-      id: payload.project.id || fallback.project.id,
-      titles: payload.project.title ? { ...fallback.project.titles, de: payload.project.title } : fallback.project.titles,
-      subtitles: payload.project.subtitle ? { ...fallback.project.subtitles, de: payload.project.subtitle } : fallback.project.subtitles,
-    },
-    roleModel: {
-      ...fallback.roleModel,
-      roles: isPlainObject(payload.roles) ? payload.roles : fallback.roleModel.roles,
-      sharedTrieRoots: Array.isArray(payload.sharedTrieRoots) ? payload.sharedTrieRoots : fallback.roleModel.sharedTrieRoots,
-    },
-    settings: isPlainObject(payload.settings)
-      ? {
-          ui: payload.settings.ui || fallback.settings.ui,
-          imap: payload.settings.sourceImap || payload.settings.imap || fallback.settings.imap,
-        }
-      : fallback.settings,
-    projectSource: isPlainObject(payload.projectSource)
-      ? payload.projectSource
-      : createDefaultProjectSourceBundle(payload.project.id || fallback.project.id),
-    importModel: isPlainObject(payload.importModel) ? payload.importModel : fallback.importModel,
-    assistant: isPlainObject(payload.ai) ? payload.ai : fallback.assistant,
-    runtime: {
-      ...fallback.runtime,
-      activePhase: payload.project.activePhase || fallback.runtime.activePhase,
-      syncAgeMinutes: payload.project.syncAgeMinutes || fallback.runtime.syncAgeMinutes,
-    },
-  };
-}
-
 function normalizeProjectDatatype(payload) {
   if (payload?.kind === PROJECT_DATATYPE_KIND) {
     if (payload.schemaVersion !== PROJECT_DATATYPE_VERSION) {
       throw new Error(`Unsupported project schema version: ${payload.schemaVersion}`);
     }
     if (!isPlainObject(payload.project) || !payload.project.id) {
-      throw new Error("Project file has no project id.");
+      throw new Error("Project data has no project id.");
     }
     return payload;
   }
 
-  const legacyProject = projectFromLegacyExport(payload);
-  if (legacyProject) return legacyProject;
-  throw new Error("This is not a projektor.one project file.");
+  throw new Error("This is not a projektor.one project datatype.");
 }
 
 function projectRootPath() {
@@ -1359,7 +1252,6 @@ function cycleRoleAccess(rootIndex, roleKey) {
   const current = root.visibility[roleKey] || "none";
   const next = roleAccessCycle[(roleAccessCycle.indexOf(current) + 1) % roleAccessCycle.length] || roleAccessCycle[0];
   root.visibility[roleKey] = next;
-  persistActiveProjectDatatype();
   renderRoles();
 }
 
@@ -1543,18 +1435,18 @@ function assistantForProject(projectData) {
   const assistant = projectData.assistant || {};
   if (projectData.project?.projectType !== "ngo") return assistant;
 
-  const assistantText = JSON.stringify(assistant);
-  const hasConstructionAssistantText =
-    assistantText.includes("HOAI-Kontext") ||
-    assistantText.includes("Kostenfreigaben") ||
-    assistantText.includes("Betreiberpflichten") ||
-    assistantText.includes("LP3") ||
-    assistantText.includes("Bauherr");
+  const constructionTerms = ["HOAI-Kontext", "Kostenfreigaben", "Betreiberpflichten", "LP3", "Bauherr"];
+  const containsConstructionTerm = (value) => {
+    if (typeof value === "string") return constructionTerms.some((term) => value.includes(term));
+    if (Array.isArray(value)) return value.some(containsConstructionTerm);
+    if (value && typeof value === "object") return Object.values(value).some(containsConstructionTerm);
+    return false;
+  };
 
-  return hasConstructionAssistantText ? createNgoAssistant(projectData.project.id) : assistant;
+  return containsConstructionTerm(assistant) ? createNgoAssistant(projectData.project.id) : assistant;
 }
 
-function installProjectDatatype(projectData, { persist = false } = {}) {
+function installProjectDatatype(projectData) {
   const normalized = normalizeProjectDatatype(projectData);
   const normalizedPlanning = planningForProject(normalized);
   const normalizedAssistant = assistantForProject(normalized);
@@ -1595,27 +1487,9 @@ function installProjectDatatype(projectData, { persist = false } = {}) {
   state.runnerStatus = "idle";
   state.activeNgoView = "donors";
 
-  if (persist) {
-    localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(createProjectDatatype()));
-  }
 }
 
-function persistActiveProjectDatatype() {
-  localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(createProjectDatatype()));
-}
-
-function loadStoredProjectDatatype() {
-  const stored = localStorage.getItem(PROJECT_STORAGE_KEY);
-  if (!stored) return null;
-  try {
-    return normalizeProjectDatatype(JSON.parse(stored));
-  } catch {
-    localStorage.removeItem(PROJECT_STORAGE_KEY);
-    return null;
-  }
-}
-
-installProjectDatatype(loadStoredProjectDatatype() || createProjectDatatype());
+installProjectDatatype(createProjectDatatype());
 
 function el(tag, options = {}, children = []) {
   const node = document.createElement(tag);
@@ -1891,7 +1765,6 @@ function renderStaticText() {
   setText("dataEyebrow", tr("dataEyebrow"));
   setText("data-title", tr("dataTitle"));
   setText("downloadTemplate", tr("template"));
-  setText("exportBundle", tr("export"));
   setText("ngoEyebrow", tr("ngoEyebrow"));
   setText("ngo-title", tr("ngoTitle"));
   setText("aiEyebrow", tr("aiEyebrow"));
@@ -1904,7 +1777,6 @@ function renderStaticText() {
   setText("settings-title", tr("settingsTitle"));
   setText("settingsFeedbackButton", tr("settingsFeedback"));
   setText("testImap", tr("testImap"));
-  setText("simulateImport", tr("simulateImport"));
   renderBreadcrumbs();
 }
 
@@ -2150,7 +2022,7 @@ function renderScheduleBoard() {
 
   let update;
   try {
-    update = createProjectScheduleStateDagUpdate(projectSchedule, { managedTaskId: managedScheduleTaskId() });
+    update = createManagedProjectScheduleUpdate();
   } catch (error) {
     root.replaceChildren(
       el("article", { className: "schedule-card schedule-error" }, [
@@ -2496,7 +2368,7 @@ function renderProjectVisuals() {
 
   let update;
   try {
-    update = createProjectScheduleStateDagUpdate(projectSchedule, { managedTaskId: managedScheduleTaskId() });
+    update = createManagedProjectScheduleUpdate();
   } catch (error) {
     root.replaceChildren(
       el("article", { className: "visual-card schedule-error" }, [
@@ -2719,52 +2591,6 @@ function renderProjectSourceSummary() {
 }
 
 function renderData() {
-  const fileDrop = document.querySelector(".file-drop");
-  fileDrop.querySelector("strong").textContent = tr("importPick");
-  fileDrop.querySelector("span").textContent = tr("importHint");
-
-  const statusText = {
-    idle: state.importFileName ? `${state.importFileName} ${tr("importReady")}` : tr("noImportFile"),
-    preview: tr("importPreview"),
-    imported: tr("imported"),
-  }[state.importStatus];
-
-  document.querySelector("#importStatus").replaceChildren(
-    el("ul", { className: "object-list compact-list" }, [
-      el("li", {}, [el("span", { text: tr("status") }), el("strong", { text: statusText })]),
-      el("li", {}, [el("span", { text: tr("parser") }), el("strong", { text: "Tabellenimport" })]),
-      el("li", {}, [el("span", { text: tr("importSource") }), el("strong", { text: dataImportModel.source })]),
-    ]),
-  );
-
-  document.querySelector("#importPreview").replaceChildren(
-    bookTop(dataImportModel.type, projectRef()),
-    el("h3", { text: tr("dataPreviewTitle") }),
-    el("p", { text: tr("dataPreviewText") }),
-    el("ul", { className: "topic-list" }, dataImportModel.workbookSheets.map(([sheet, object, count, purpose]) =>
-      el("li", {}, [
-        el("strong", { text: `${sheet} · ${count}` }),
-        el("span", { text: `${object} · ${purpose}` }),
-      ]),
-    )),
-    el("div", { className: "preview-table-wrap" }, [renderPreviewTable()]),
-  );
-
-  document.querySelector("#exportSummary").replaceChildren(
-    bookTop(exportBundleModel.type, projectRef()),
-    el("h3", { text: tr("exportBundleTitle") }),
-    el("p", { text: tr("exportBundleText") }),
-    el("ul", { className: "topic-list" }, exportBundleModel.sections.map(([section, purpose]) =>
-      el("li", {}, [
-        el("strong", { text: section }),
-        el("span", { text: purpose }),
-      ]),
-    )),
-    el("ul", { className: "object-list warning-list" }, exportBundleModel.warnings.map((warning) =>
-      el("li", {}, [el("span", { text: warning }), el("strong", { text: "Hinweis" })]),
-    )),
-  );
-
   renderProjectSourceSummary();
   renderProjectTableBoard();
   renderDatasetCreatorBoard();
@@ -2803,7 +2629,6 @@ function renderDatasetCreatorBoard() {
         ]),
         el("div", { className: "settings-actions dataset-actions" }, [
           el("button", { className: "primary-action", type: "button", "data-dataset-plan": plan.id, text: "Plan anwenden" }),
-          el("button", { className: "secondary-action", type: "button", "data-dataset-export": plan.id, text: "Plan exportieren" }),
         ]),
       ]),
     )),
@@ -2820,17 +2645,25 @@ function managedScheduleTaskId() {
     : projectSchedule.tasks?.[0]?.id || "fallback";
 }
 
+function createManagedProjectScheduleUpdate() {
+  return createProjectScheduleStateDagUpdate(projectSchedule, { managedTaskId: managedScheduleTaskId() });
+}
+
+function createFallbackProjectScheduleUpdate() {
+  return createProjectScheduleStateDagUpdate({
+    projectId: demoProject.id || "project",
+    projectStart: projectSchedule.projectStart,
+    tasks: [{ id: "fallback", label: "Fallback", durationDays: 0 }],
+    dependencies: [],
+  }, { managedTaskId: "fallback" });
+}
+
 function createActiveProjectTableProjection() {
   let update;
   try {
-    update = createProjectScheduleStateDagUpdate(projectSchedule, { managedTaskId: managedScheduleTaskId() });
+    update = createManagedProjectScheduleUpdate();
   } catch {
-    update = createProjectScheduleStateDagUpdate({
-      projectId: demoProject.id || "project",
-      projectStart: projectSchedule.projectStart,
-      tasks: [{ id: "fallback", label: "Fallback", durationDays: 0 }],
-      dependencies: [],
-    }, { managedTaskId: "fallback" });
+    update = createFallbackProjectScheduleUpdate();
   }
 
   return createProjectDagExcelProjection(update, {
@@ -2847,13 +2680,14 @@ function createActiveProjectTableProjection() {
 
 function renderProjectTable(sheet) {
   const table = el("table", { className: "matrix-table project-sheet-table" });
+  table.append(el("colgroup", {}, sheet.columns.map(([key]) => el("col", { "data-column-key": key }))));
   table.append(
     el("thead", {}, [
-      el("tr", {}, sheet.columns.map(([, label, type]) => el("th", { "data-column-type": type, text: label }))),
+      el("tr", {}, sheet.columns.map(([key, label, type]) => el("th", { "data-column-key": key, "data-column-type": type, text: label }))),
     ]),
     el("tbody", {}, sheet.rows.map((row) =>
       el("tr", {}, sheet.columns.map(([key, , type]) =>
-        el("td", { "data-column-type": type, text: row[key] == null ? "" : String(row[key]) }),
+        el("td", { "data-column-key": key, "data-column-type": type, text: row[key] == null ? "" : String(row[key]) }),
       )),
     )),
   );
@@ -3370,16 +3204,6 @@ function renderNgoParticipants() {
   ]);
 }
 
-function renderNgoBackupActions() {
-  return el("div", { className: "ngo-backup-actions" }, [
-    el("button", { className: "secondary-action", type: "button", "data-ngo-action": "backup", text: "Sichern" }),
-    el("label", { className: "secondary-action ngo-restore-label" }, [
-      el("input", { id: "ngoRestoreFile", type: "file", accept: ".json,application/json" }),
-      el("span", { text: "Wiederherstellen" }),
-    ]),
-  ]);
-}
-
 function hasNgoWorkspaceData(donorStats, participantStats) {
   return donorStats.supporterCount > 0 || participantStats.participantCount > 0;
 }
@@ -3424,7 +3248,6 @@ function renderNgo() {
     ...(!hasNgoWorkspaceData(donorStats, participantStats) ? [renderNgoActivationCard()] : []),
     el("div", { className: "ngo-board-head" }, [
       renderNgoTabs(),
-      renderNgoBackupActions(),
     ]),
     state.activeNgoView === "participants" ? renderNgoParticipants() : renderNgoDonors(),
     el("article", { className: "ngo-compliance-card" }, [
@@ -3436,24 +3259,6 @@ function renderNgo() {
       ].map(([title, text]) => el("li", {}, [el("strong", { text: title }), el("span", { text })]))),
     ]),
   );
-}
-
-function renderPreviewTable() {
-  const table = el("table", { className: "matrix-table compact-table" });
-  table.append(
-    el("thead", {}, [
-      el("tr", {}, [
-        el("th", { text: "Name" }),
-        el("th", { text: "Rolle" }),
-        el("th", { text: "Bereichspfad" }),
-        el("th", { text: "Zugriff" }),
-      ]),
-    ]),
-    el("tbody", {}, dataImportModel.previewRows.map((row) =>
-      el("tr", {}, row.map((cell) => el("td", { text: cell }))),
-    )),
-  );
-  return table;
 }
 
 function bookTop(type, ref) {
@@ -3618,7 +3423,6 @@ function updateSummarySettingField(field, value) {
     localStorage.setItem("projektor-profile-email", state.onboarding.email.toLowerCase());
   }
   mirrorSettingFormField(field, value);
-  persistActiveProjectDatatype();
 }
 
 function cycleSummarySetting(action) {
@@ -3626,7 +3430,6 @@ function cycleSummarySetting(action) {
     state.theme = cycleValue(state.theme, ["light", "dark"]);
     localStorage.setItem("projektor-theme", state.theme);
     settingsModel.ui.theme = state.theme;
-    persistActiveProjectDatatype();
     renderTheme();
     renderSettingsSummary();
     return;
@@ -3636,7 +3439,6 @@ function cycleSummarySetting(action) {
     state.language = cycleValue(state.language, Object.keys(languages));
     localStorage.setItem("projektor-language", state.language);
     settingsModel.ui.language = state.language;
-    persistActiveProjectDatatype();
     render();
     return;
   }
@@ -3748,7 +3550,7 @@ function publishRunnerEvent(event) {
     sourceWindowId: runtimeWindowId,
     at: new Date().toISOString(),
   };
-  localStorage.setItem("projektor-trie-runner-event", JSON.stringify(payload));
+  runnerChannel.postMessage(payload);
   handleRunnerEvent(payload);
 }
 
@@ -3793,14 +3595,7 @@ function handleRunnerEvent(event) {
 }
 
 function bindRunnerEvents() {
-  window.addEventListener("storage", (event) => {
-    if (event.key !== "projektor-trie-runner-event" || !event.newValue) return;
-    try {
-      handleRunnerEvent(JSON.parse(event.newValue));
-    } catch {
-      // Ignore malformed prototype events; real runtime events will be typed objects.
-    }
-  });
+  runnerChannel.addEventListener("message", (event) => handleRunnerEvent(event.data));
 }
 
 function openRunnerRoleWindows() {
@@ -4028,7 +3823,6 @@ function updateSettingsFromForm() {
   settingsModel.imap.mailbox = document.querySelector("#imapMailbox").value.trim();
   settingsModel.imap.hasPassword = Boolean(document.querySelector("#imapSecret").value.trim());
   state.imapStatus = "idle";
-  persistActiveProjectDatatype();
   renderSettingsSummary();
 }
 
@@ -4038,7 +3832,6 @@ function validateImapSettings() {
   const valid = Boolean(imap.accountId && imap.host && imap.user && imap.mailbox && imap.port > 0 && imap.hasPassword);
   state.imapStatus = valid ? "ok" : "failed";
   state.journalExtra += 1;
-  persistActiveProjectDatatype();
   renderSettingsSummary();
   renderJournal();
 }
@@ -4092,70 +3885,11 @@ function downloadTemplate() {
   downloadTextFile("projektor-one-import-template.csv", "text/csv;charset=utf-8", csv);
 }
 
-function exportProjectBundle() {
-  state.journalExtra += 1;
-  const bundle = {
-    ...createProjectDatatype(),
-    exportedAt: new Date().toISOString(),
-  };
-  const projectId = demoProject.id || "project";
-  renderJournal();
-  downloadTextFile(`projektor-one-${projectId}.project.json`, "application/vnd.projektor.project+json", JSON.stringify(bundle, null, 2));
-}
-
-function simulateDataImport() {
-  state.importStatus = "imported";
-  state.journalExtra += 1;
-  renderData();
-  renderJournal();
-}
-
 function applyDatasetPlan(planId) {
   const dataset = createDemoDatasetProject(planId);
-  installProjectDatatype(dataset, { persist: true });
+  installProjectDatatype(dataset);
   state.datasetCreatorStatus = "angewendet";
-  state.importStatus = "imported";
-  state.importFileName = `${dataset.creator?.plan?.label || planId}.project.json`;
   applyNavigationTarget({ panel: dataset.project?.projectType === "ngo" ? "ngo" : "data" });
-}
-
-function exportDatasetPlan(planId) {
-  const dataset = createDemoDatasetProject(planId);
-  state.datasetCreatorStatus = "exportiert";
-  renderDatasetCreatorBoard();
-  downloadTextFile(
-    `projektor-one-${dataset.project.id}.project.json`,
-    "application/vnd.projektor.project+json",
-    JSON.stringify(dataset, null, 2),
-  );
-}
-
-async function importProjectFile(file) {
-  state.importFileName = file?.name || "";
-  if (!file) {
-    state.importStatus = "idle";
-    renderData();
-    return;
-  }
-
-  if (!file.name.toLowerCase().endsWith(".json")) {
-    state.importStatus = "preview";
-    renderData();
-    return;
-  }
-
-  try {
-    const projectData = normalizeProjectDatatype(JSON.parse(await file.text()));
-    installProjectDatatype(projectData, { persist: true });
-    state.importFileName = file.name;
-    state.importStatus = "imported";
-    state.journalExtra += 1;
-    render();
-  } catch (error) {
-    state.importStatus = "idle";
-    renderData();
-    window.alert(error.message || "Project import failed.");
-  }
 }
 
 function exportNgoPeople() {
@@ -4168,23 +3902,6 @@ function exportNgoDonations() {
 
 function exportNgoParticipants() {
   downloadTextFile(`projektor-one-${demoProject.id || "project"}-ngo-teilnehmerinnen.csv`, "text/csv;charset=utf-8", csvFromNgoParticipants(ngoWorkspace));
-}
-
-function backupNgoWorkspace() {
-  downloadTextFile(`projektor-one-${demoProject.id || "project"}-ngo-backup.json`, "application/json", JSON.stringify(createNgoBackup(ngoWorkspace), null, 2));
-}
-
-async function restoreNgoWorkspace(file) {
-  if (!file) return;
-  try {
-    ngoWorkspace = restoreNgoBackup(JSON.parse(await file.text()));
-    state.journalExtra += 1;
-    persistActiveProjectDatatype();
-    renderNgo();
-    renderJournal();
-  } catch (error) {
-    window.alert(error.message || "NGO Wiederherstellung fehlgeschlagen.");
-  }
 }
 
 function addDonorFromQuickEntry() {
@@ -4202,7 +3919,6 @@ function addDonorFromQuickEntry() {
     state.donorOnlyOpen = false;
     clearNgoMetricFilter();
     state.journalExtra += 1;
-    persistActiveProjectDatatype();
     renderNgo();
     renderJournal();
   } catch (error) {
@@ -4234,7 +3950,6 @@ function addDonationFromQuickEntry(donorId) {
     state.donorOnlyOpen = false;
     clearNgoMetricFilter();
     state.journalExtra += 1;
-    persistActiveProjectDatatype();
     renderNgo();
     renderJournal();
   } catch (error) {
@@ -4259,7 +3974,6 @@ function addParticipantFromQuickEntry() {
     state.participantSort = "name";
     clearNgoMetricFilter();
     state.journalExtra += 1;
-    persistActiveProjectDatatype();
     renderNgo();
     renderJournal();
   } catch (error) {
@@ -4405,9 +4119,6 @@ function bindActions() {
       state.participantSort = event.target.value;
       renderNgo();
     }
-    if (event.target.id === "ngoRestoreFile") {
-      void restoreNgoWorkspace(event.target.files?.[0]);
-    }
   });
 
   document.querySelector("#onboardingRoot").addEventListener("click", (event) => {
@@ -4481,7 +4192,6 @@ function bindActions() {
       if (action === "export-people") exportNgoPeople();
       if (action === "export-donations") exportNgoDonations();
       if (action === "export-participants") exportNgoParticipants();
-      if (action === "backup") backupNgoWorkspace();
       if (action === "apply-demo") applyDatasetPlan("ngo-supporter-program");
       if (action === "clear-metric-filter") {
         clearNgoMetricFilter();
@@ -4508,11 +4218,6 @@ function bindActions() {
     const datasetPlanButton = event.target.closest("[data-dataset-plan]");
     if (datasetPlanButton) {
       applyDatasetPlan(datasetPlanButton.dataset.datasetPlan);
-      return;
-    }
-    const datasetExportButton = event.target.closest("[data-dataset-export]");
-    if (datasetExportButton) {
-      exportDatasetPlan(datasetExportButton.dataset.datasetExport);
       return;
     }
   });
@@ -4550,12 +4255,6 @@ function bindActions() {
   });
 
   document.querySelector("#downloadTemplate").addEventListener("click", downloadTemplate);
-  document.querySelector("#exportBundle").addEventListener("click", exportProjectBundle);
-  document.querySelector("#simulateImport").addEventListener("click", simulateDataImport);
-  document.querySelector("#dataImportFile").addEventListener("change", (event) => {
-    void importProjectFile(event.target.files?.[0]);
-  });
-
   document.querySelector("#imapForm").addEventListener("input", updateSettingsFromForm);
   document.querySelector("#testImap").addEventListener("click", validateImapSettings);
 }

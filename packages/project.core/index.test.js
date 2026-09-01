@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
-import { createProjectScheduleStateDagUpdate, scheduleProject, topologicalSort } from "./index.js";
+import {
+  createProjectScheduleStateDagUpdate,
+  projectScheduleTaskStateId,
+  scheduleProject,
+  taskIdFromProjectScheduleStateId,
+  topologicalSort,
+} from "./index.js";
 
 const tasks = [
   { id: "a", durationDays: 2 },
@@ -47,6 +53,8 @@ assert.equal(update.bundle.plan.topologicalStateIds.length, 4);
 assert.equal(update.bundle.workload.skillContracts[0].skillId, "project.core.cpm-scheduler");
 assert.equal(update.oneIntegration.oneModels.modelClass, "Model");
 assert.match(update.oneIntegration.oneCore.stableStringifier, /one\.core/);
+assert.equal(projectScheduleTaskStateId("test", "a"), "project:test:schedule-task:a");
+assert.equal(taskIdFromProjectScheduleStateId("project:test:schedule-task:a"), "a");
 
 assert.throws(
   () =>

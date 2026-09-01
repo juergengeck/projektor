@@ -2079,12 +2079,15 @@ h3 {
 
 .project-sheet-wrap {
   max-height: 520px;
+  overflow: auto;
   border: 1px solid var(--line);
   border-radius: 8px;
 }
 
 .project-sheet-table {
-  min-width: 980px;
+  width: max-content;
+  min-width: 1320px;
+  table-layout: fixed;
 }
 
 .project-sheet-table th {
@@ -2099,6 +2102,7 @@ h3 {
   left: 0;
   z-index: 1;
   background: var(--panel);
+  box-shadow: 1px 0 0 var(--line);
 }
 
 .project-sheet-table th:first-child {
@@ -2106,9 +2110,63 @@ h3 {
   background: var(--subtle);
 }
 
+.project-sheet-table th,
 .project-sheet-table td {
-  max-width: 280px;
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: auto;
+}
+
+.project-sheet-table td {
+  line-height: 1.35;
+}
+
+.project-sheet-table [data-column-key] {
+  width: 132px;
+}
+
+.project-sheet-table [data-column-key$="_id"],
+.project-sheet-table [data-column-key="role_key"],
+.project-sheet-table [data-column-key="edge_id"] {
+  width: 190px;
   overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+}
+
+.project-sheet-table [data-column-key="task"],
+.project-sheet-table [data-column-key="reason"],
+.project-sheet-table [data-column-key="explanation"],
+.project-sheet-table [data-column-key="responsibility"],
+.project-sheet-table [data-column-key="permissions"],
+.project-sheet-table [data-column-key="handoff"] {
+  width: 240px;
+}
+
+.project-sheet-table [data-column-key="owner"],
+.project-sheet-table [data-column-key="status"],
+.project-sheet-table [data-column-key="capability"],
+.project-sheet-table [data-column-key="access_scope"] {
+  width: 170px;
+}
+
+.project-sheet-table [data-column-key="progress_pct"],
+.project-sheet-table [data-column-key="duration_days"],
+.project-sheet-table [data-column-key="float_days"],
+.project-sheet-table [data-column-key="lag_days"],
+.project-sheet-table [data-column-key="ordinal"],
+.project-sheet-table [data-column-key="depends_on_steps"],
+.project-sheet-table [data-column-key="match_score"],
+.project-sheet-table [data-column-key="skill_contracts"],
+.project-sheet-table [data-column-key="constraints"],
+.project-sheet-table [data-column-key="visible_roots"],
+.project-sheet-table [data-column-key="critical"],
+.project-sheet-table [data-column-key="critical_edge"],
+.project-sheet-table [data-column-key="read"],
+.project-sheet-table [data-column-key="target"],
+.project-sheet-table [data-column-key="mutable"] {
+  width: 104px;
 }
 
 .project-sheet-table [data-column-type="number"],

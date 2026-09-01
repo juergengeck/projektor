@@ -8,7 +8,7 @@
     "build": "./deploy.sh --build-only",
     "deploy": "./deploy.sh",
     "source:git": "node ./scripts/project-source-from-git.mjs --project-id demo-kita-2028",
-    "test": "node ./packages/project.core/index.test.js && node ./packages/table.core/index.test.js && node ./packages/project-source.core/index.test.js && node ./packages/ngo.core/index.test.js && node ./packages/projektor-mcp.core/index.test.js && node ./hoai.core.test.js && node ./demo-dataset.creator.test.js"
+    "test": "node ./packages/project.core/index.test.js && node ./packages/table.core/index.test.js && node ./packages/project-source.core/index.test.js && node ./packages/project-source.core/ingestion.test.js && node ./scripts/project-source-from-git.test.mjs && node ./packages/questionnaire.core/index.test.js && node ./packages/ngo.core/index.test.js && node ./packages/projektor-mcp.core/index.test.js && node ./packages/group.core/spike.test.js && node ./packages/group.core/roster.test.js && node ./packages/trust.projektor/index.test.js && node ./packages/trust.projektor/recipes.test.js && node ./packages/trust.projektor/issuance.test.js && node ./packages/trust.projektor/end-to-end.test.js && node ./packages/trust.projektor/project-access.test.js && node ./packages/trust.projektor/disputes.test.js && node ./hoai.core.test.js && node ./demo-dataset.creator.test.js"
   },
   "repository": {
     "type": "git",

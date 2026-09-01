@@ -8,8 +8,7 @@ import { PropertyTree } from "../../../one/packages/one.models/lib/models/Settin
 const DEPENDENCY_TYPES = new Set(["FS", "SS", "FF", "SF"]);
 
 function clone(value) {
-  if (typeof structuredClone === "function") return structuredClone(value);
-  return JSON.parse(JSON.stringify(value));
+  return structuredClone(value);
 }
 
 function assertPlainArray(value, name) {
@@ -157,11 +156,11 @@ function unique(values) {
   return [...new Set(values.map((value) => String(value).trim()).filter(Boolean))];
 }
 
-function taskStateId(projectId, taskId) {
+export function projectScheduleTaskStateId(projectId, taskId) {
   return `project:${projectId || "project"}:schedule-task:${taskId}`;
 }
 
-function taskIdFromStateId(stateId) {
+export function taskIdFromProjectScheduleStateId(stateId) {
   return String(stateId).split(":schedule-task:").at(-1);
 }
 
@@ -184,8 +183,8 @@ function stableTaskContentHash(task, incomingDependencies) {
 
 function scheduleDependencyEdges(plan) {
   return plan.dependencies.map((dependency) => ({
-    fromStateId: taskStateId(plan.projectId, dependency.from),
-    toStateId: taskStateId(plan.projectId, dependency.to),
+    fromStateId: projectScheduleTaskStateId(plan.projectId, dependency.from),
+    toStateId: projectScheduleTaskStateId(plan.projectId, dependency.to),
     reason: `${dependency.type}${dependency.lagDays ? ` ${dependency.lagDays}d` : ""}`,
   }));
 }
@@ -259,7 +258,7 @@ export function createProjectSchedulePlannerGoal(input, options = {}) {
   });
 
   const targetStateRefs = plan.tasks.map((task) => ({
-    stateId: taskStateId(plan.projectId, task.id),
+    stateId: projectScheduleTaskStateId(plan.projectId, task.id),
     contentHash: stableTaskContentHash(task, dependenciesByTarget.get(task.id) || []),
     role: "target",
     description: task.label || task.id,
@@ -310,15 +309,15 @@ export function createProjectScheduleStateDagUpdate(input, options = {}) {
     now,
   });
   const dependencyEdges = scheduleDependencyEdges(planInput);
-  const allStateIds = planInput.tasks.map((task) => taskStateId(planInput.projectId, task.id));
+  const allStateIds = planInput.tasks.map((task) => projectScheduleTaskStateId(planInput.projectId, task.id));
   const changedStateIds = options.changedTaskIds?.length
-    ? options.changedTaskIds.map((taskId) => taskStateId(planInput.projectId, taskId))
+    ? options.changedTaskIds.map((taskId) => projectScheduleTaskStateId(planInput.projectId, taskId))
     : allStateIds;
   const diagnostics = [
     {
       kind: "critical-path",
       message: `${schedule.criticalPath.length} critical task states`,
-      stateIds: schedule.criticalPath.map((taskId) => taskStateId(planInput.projectId, taskId)),
+      stateIds: schedule.criticalPath.map((taskId) => projectScheduleTaskStateId(planInput.projectId, taskId)),
     },
     ...(options.diagnostics || []),
   ];
@@ -373,7 +372,7 @@ export function createProjectScheduleStateDagUpdate(input, options = {}) {
   const update = options.managedTaskId
     ? createStateDagNodeUpdate({
       ...updateParams,
-      managedStateId: taskStateId(planInput.projectId, options.managedTaskId),
+      managedStateId: projectScheduleTaskStateId(planInput.projectId, options.managedTaskId),
     })
     : createStateDagUpdate(updateParams);
   return {

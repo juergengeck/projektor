@@ -7,8 +7,8 @@ import {
   addNgoDonation,
   addNgoDonationVersion,
   addNgoParticipant,
-  createNgoBackup,
   createNgoDemoProjectData,
+  createNgoProjectData,
   createNgoModule,
   createNgoRecipeRuntimeConfig,
   csvFromNgoDonations,
@@ -18,7 +18,6 @@ import {
   participantMetrics,
   queryNgoDonors,
   queryNgoParticipants,
-  restoreNgoBackup,
 } from "./index.js";
 import {
   createNgoOneCoreSupply,
@@ -73,9 +72,15 @@ assert.equal(addedParticipant.participants.at(-1).program.currentStage, "Erstkon
 assert.ok(csvFromNgoPeople(data).includes("Spendenquittung benötigt"));
 assert.ok(csvFromNgoDonations(data).includes("Bildung / Ausbildung"));
 assert.ok(csvFromNgoParticipants(data).includes("Selbstverpflichtung erforderlich"));
-
-const backup = createNgoBackup(data);
-assert.equal(restoreNgoBackup(backup).donors.length, data.donors.length);
+assert.match(csvFromNgoDonations(createNgoProjectData({
+  donors: [
+    {
+      id: "donor-risky-export",
+      name: "Risky Export",
+      donations: [{ type: "Spende", amount: 1, date: "2026-06-03", purpose: "=HYPERLINK()" }],
+    },
+  ],
+})), /"'=HYPERLINK\(\)"/);
 
 const oneCore = {
   hasRecipe,

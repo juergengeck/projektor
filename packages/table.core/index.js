@@ -1,4 +1,11 @@
 import { stringify as oneStableStringify } from "../../../one/packages/one.core/lib/util/sorted-stringify.js";
+import {
+  projectScheduleTaskStateId,
+  taskIdFromProjectScheduleStateId,
+} from "../project.core/index.js";
+import { csvCell, csvRows } from "./csv.js";
+
+export { csvCell, csvRows };
 
 export const PROJECT_DAG_EXCEL_PROJECTION_TYPE = "ProjectDagExcelProjection";
 export const PROJECT_DAG_EXCEL_SCHEMA_VERSION = "0.1.0";
@@ -136,14 +143,6 @@ function projectPhaseNumber(value) {
   return match ? Number(match[1]) : 99;
 }
 
-function taskIdFromStateId(stateId) {
-  return String(stateId || "").split(":schedule-task:").at(-1) || String(stateId || "");
-}
-
-function taskStateId(projectId, taskId) {
-  return `project:${projectId || "project"}:schedule-task:${taskId}`;
-}
-
 function projectDayToDate(projectStart, day) {
   const start = new Date(`${projectStart || "2026-06-01"}T00:00:00Z`);
   start.setUTCDate(start.getUTCDate() + Math.round(Number(day || 0)));
@@ -192,7 +191,7 @@ function scheduleRows(update, activePhaseId) {
   const projectId = update.schedule.projectId || "project";
   return update.schedule.tasks.map((task) => ({
     task_id: task.id,
-    state_id: taskStateId(projectId, task.id),
+    state_id: projectScheduleTaskStateId(projectId, task.id),
     task: task.label || task.id,
     phase: task.phase || "",
     owner: task.owner || "",
@@ -211,15 +210,15 @@ function dagEdgeRows(update) {
   const tasksById = new Map(update.schedule.tasks.map((task) => [task.id, task]));
   const dependenciesByEdge = new Map(
     update.schedule.dependencies.map((dependency) => [
-      `${taskStateId(projectId, dependency.from)}>${taskStateId(projectId, dependency.to)}`,
+      `${projectScheduleTaskStateId(projectId, dependency.from)}>${projectScheduleTaskStateId(projectId, dependency.to)}`,
       dependency,
     ]),
   );
 
   return update.dependencyEdges.map((edge, index) => {
     const dependency = dependenciesByEdge.get(`${edge.fromStateId}>${edge.toStateId}`) || {};
-    const fromTask = taskIdFromStateId(edge.fromStateId);
-    const toTask = taskIdFromStateId(edge.toStateId);
+    const fromTask = taskIdFromProjectScheduleStateId(edge.fromStateId);
+    const toTask = taskIdFromProjectScheduleStateId(edge.toStateId);
     return {
       edge_id: stableId("edge", [edge.fromStateId, edge.toStateId, edge.reason, index]),
       from_task: fromTask,
@@ -237,7 +236,7 @@ function dagEdgeRows(update) {
 function plannerStepRows(update) {
   return update.bundle.plan.steps.map((step) => ({
     ordinal: step.ordinal,
-    task_id: taskIdFromStateId(step.stateId),
+    task_id: taskIdFromProjectScheduleStateId(step.stateId),
     state_id: step.stateId,
     status: step.status,
     depends_on_steps: step.dependsOnStepIds?.length || 0,
@@ -256,7 +255,7 @@ function workloadRows(update) {
 
   return stateIds.map((stateId) => ({
     state_id: stateId,
-    task_id: taskIdFromStateId(stateId),
+    task_id: taskIdFromProjectScheduleStateId(stateId),
     read: read.has(stateId),
     target: target.has(stateId),
     mutable: mutable.has(stateId),
@@ -374,15 +373,9 @@ export function getProjectDagExcelSheet(projection, sheetId) {
   return projection.sheets[activeSheetId];
 }
 
-export function csvCell(value) {
-  const text = String(value ?? "");
-  const safeText = /^[=+\-@]/.test(text) ? `'${text}` : text;
-  return `"${safeText.replaceAll('"', '""')}"`;
-}
-
 export function csvFromProjectDagExcelSheet(sheet) {
   assertPlainObject(sheet, "Project DAG Excel sheet");
   const header = sheet.columns.map(([, label]) => label);
   const rows = sheet.rows.map((row) => sheet.columns.map(([key]) => row[key]));
-  return [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\n");
+  return csvRows(header, rows);
 }
