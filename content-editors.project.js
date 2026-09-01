@@ -6,7 +6,7 @@ import {
   summarizeEditorAlignment,
 } from "../one/packages/editor.core/src/index.ts";
 import { REAKTOR_CONTENT_EDITOR } from "../reaktor/reaktor.core/src/editorDescriptor.ts";
-import { VGER_TXT_CONTENT_EDITOR } from "../vger/packages/vger.txt.ui/src/editorDescriptor.ts";
+import { VGER_TXT_CONTENT_EDITOR } from "../one/packages/vger.txt.ui/src/editorDescriptor.ts";
 
 const editorRegistry = createContentEditorRegistry([
   REAKTOR_CONTENT_EDITOR,

@@ -78,18 +78,26 @@ When a primitive already exists in `../one`, `projektor.one` should consume it r
 - `@refinio/one.models` only where runtime models, Leute/contact model or MultiUser wiring are still the owning API
 - `@refinio/settings.core` for `UISettings`, `SettingsPlan` and `SecretsPlan`
 - `@refinio/source.core` for `Source`, `SourceEntry`, `SourceRun`, `Book` and provenance contracts
-- `@refinio/source.git` patterns from `../vger` for git source discovery, tracked-file inventory, dirty snapshots, and governed worktrees
-- `@refinio/trust.core` for trust relationships, role evidence, revocation and verification
+- `@refinio/source.git` from `../one` for git source discovery, tracked-file inventory, dirty snapshots, and governed worktrees
+- `@refinio/trust.core` for typed attestation, exact signature/key verification,
+  issuer-key lifecycle evidence, trust relationships and role evidence
 - `@refinio/calendar.core` and `@refinio/chat.core` for calendar/chat primitives
 - `@refinio/refinio.api` for ModuleRegistry demand/supply and public operation registration
 
-This is not a live ONE.core runtime yet. The current code intentionally keeps the object names, identity hints, trie roots, sharing policy, and AI lifecycle visible so the next step can turn the prototype vocabulary into recipes and registered runtime surfaces.
+The source-ingestion slice now runs against a live ONE.core instance: it registers typed source recipes, stores ingested bytes as SHA-256-addressed BLOBs, and stores immutable `ProjectSourceArtifact` objects that reference those BLOBs. Other visible prototype surfaces are not implied to have the same runtime integration; support is asserted per documented, executable flow.
+
+Group sharing follows the same ownership rule. `packages/group.core` reads
+ONE.core `Group`/`HashGroup` history only. `packages/trust.projektor` owns the
+membership, disclosure, project-access and dispute semantics, while consuming
+the narrow typed-attestation service from `../one/packages/trust.core`. Neither
+package stands up `LeuteModel`; an application that already owns an
+authenticated identity graph supplies its trust.core dependencies at runtime.
 
 ## Project Files
 
 Git should manage project-file bytes, revisions, diffs, branches and isolated worktrees. Projektor project objects should manage meaning: roles, document provenance, approvals, journal events, AI workloads and access policy.
 
-The current prototype models that boundary in `packages/project-source.core`. Demo `.project.json` exports now include a `ProjectGitSource` plus `ProjectFileIndex`, while generated bundles still avoid secrets, build output, local caches and runtime folders.
+The current implementation models that boundary in `packages/project-source.core`. `ProjectGitSource` and `ProjectSourceArtifact` are registered ONE objects. An artifact references its source by ID and its immutable bytes with a native `referenceToBlob`; `ProjectFileIndex` is only a read-model projection and is not registered as authoritative storage. Project interchange is not a JSON bundle.
 
 Preview the live git-backed source surface for this repo:
 
@@ -97,7 +105,9 @@ Preview the live git-backed source surface for this repo:
 npm run source:git
 ```
 
-That read-only bridge calls `../vger/packages/source.git` and adapts its discovery, tracked inventory and dirty worktree snapshot into Projektor's `ProjectGitSource` / `ProjectFileIndex` shape.
+That read-only command calls `../one/packages/source.git` and adapts its discovery, tracked inventory and dirty worktree snapshot into Projektor's source projection. The tested ingestion adapter `ingestProjectFileFromGitSource` then reads a selected repository file, enforces the repository boundary, writes the bytes through ONE.core, and persists its typed provenance object. Inventory never presents Git object IDs or merely observed digests as stored BLOB references.
+
+The owning runtime initializes ONE.core with `ProjectSourceCoreRecipes` before calling the adapter and supplies explicit `ingestedAt` and `ingestedBy` provenance. The adapter returns the source ID hash, exact artifact hash, and BLOB hash; `readProjectSourceArtifact` resolves the typed artifact, source identity, and original bytes without a JSON storage or interchange envelope.
 
 ## projektor.cube Test Runner Home
 
@@ -105,6 +115,7 @@ That read-only bridge calls `../vger/packages/source.git` and adapts its discove
 
 ## Product Docs
 
+- [Product MRD](./docs/projektor-mrd.md)
 - [Onboarding MRD](./docs/projektor-onboarding-mrd.md)
 - [Onboarding PRD](./docs/projektor-onboarding-prd.md)
 - [admin.cube PRD](./docs/projektor-admin-cube-prd.md)

@@ -1,13 +1,28 @@
 import { stringify as oneStableStringify } from "../../../one/packages/one.core/lib/util/sorted-stringify.js";
+import {
+  readBlobAsUint8Array,
+  storeArrayBufferAsBlob,
+} from "../../../one/packages/one.core/lib/storage-blob.js";
+import {
+  getObject,
+  storeUnversionedObject,
+} from "../../../one/packages/one.core/lib/storage-unversioned-objects.js";
+import {
+  getObjectByIdHash,
+  storeVersionedObject,
+} from "../../../one/packages/one.core/lib/storage-versioned-objects.js";
 
 export const PROJECT_GIT_SOURCE_TYPE = "ProjectGitSource";
+export const PROJECT_SOURCE_ARTIFACT_TYPE = "ProjectSourceArtifact";
 export const PROJECT_FILE_INDEX_TYPE = "ProjectFileIndex";
-export const PROJECT_SOURCE_SCHEMA_VERSION = "0.1.0";
+export const PROJECT_SOURCE_SCHEMA_VERSION = "0.2.0";
 
 export const ProjectGitSourceRecipe = {
   $type$: "Recipe",
   name: PROJECT_GIT_SOURCE_TYPE,
   rule: [
+    { itemprop: "$type$", itemtype: { type: "string", regexp: /^ProjectGitSource$/ } },
+    { itemprop: "$version$", itemtype: { type: "string", regexp: /^v1$/ } },
     { itemprop: "sourceId", itemtype: { type: "string" }, isId: true },
     { itemprop: "projectId", itemtype: { type: "string" } },
     { itemprop: "adapter", itemtype: { type: "string" } },
@@ -21,24 +36,33 @@ export const ProjectGitSourceRecipe = {
   ],
 };
 
-export const ProjectFileIndexRecipe = {
+export const ProjectSourceArtifactRecipe = {
   $type$: "Recipe",
-  name: PROJECT_FILE_INDEX_TYPE,
+  name: PROJECT_SOURCE_ARTIFACT_TYPE,
   rule: [
-    { itemprop: "indexId", itemtype: { type: "string" }, isId: true },
-    { itemprop: "sourceId", itemtype: { type: "string" } },
-    { itemprop: "projectId", itemtype: { type: "string" } },
-    { itemprop: "branch", itemtype: { type: "string" } },
-    { itemprop: "head", itemtype: { type: "string" } },
-    { itemprop: "status", itemtype: { type: "string" } },
-    { itemprop: "files", itemtype: { type: "array", item: { type: "object" } } },
-    { itemprop: "ignoredPaths", itemtype: { type: "array", item: { type: "string" } } },
-    { itemprop: "generatedAt", itemtype: { type: "string" } },
+    { itemprop: "$type$", itemtype: { type: "string", regexp: /^ProjectSourceArtifact$/ } },
+    {
+      itemprop: "source",
+      itemtype: {
+        type: "referenceToId",
+        allowedTypes: new Set([PROJECT_GIT_SOURCE_TYPE]),
+      },
+    },
+    { itemprop: "path", itemtype: { type: "string" } },
+    { itemprop: "revision", itemtype: { type: "string" } },
+    { itemprop: "blob", itemtype: { type: "referenceToBlob" } },
+    { itemprop: "byteLength", itemtype: { type: "number" } },
+    { itemprop: "mediaType", itemtype: { type: "string" }, optional: true },
+    { itemprop: "sourceEntryId", itemtype: { type: "string" }, optional: true },
+    { itemprop: "sourceModifiedAt", itemtype: { type: "number" }, optional: true },
+    { itemprop: "ingestedAt", itemtype: { type: "number" } },
+    { itemprop: "ingestedBy", itemtype: { type: "string" } },
     { itemprop: "schemaVersion", itemtype: { type: "string" } },
   ],
 };
 
-export const ProjectSourceCoreRecipes = [ProjectGitSourceRecipe, ProjectFileIndexRecipe];
+// ProjectFileIndex is a read-model projection. Only recipe-backed domain objects belong here.
+export const ProjectSourceCoreRecipes = [ProjectGitSourceRecipe, ProjectSourceArtifactRecipe];
 export const ProjectSourceCoreReverseMaps = [];
 export const ProjectSourceCoreReverseMapsForIdObjects = [];
 
@@ -46,8 +70,7 @@ const FILE_STATUSES = new Set(["tracked", "modified", "added", "deleted", "renam
 const DEFAULT_IGNORED_PATH_GLOBS = ["dist/**", "node_modules/**", ".wrangler/**", ".env*", "*.log", ".DS_Store"];
 
 function clone(value) {
-  if (typeof structuredClone === "function") return structuredClone(value);
-  return JSON.parse(JSON.stringify(value));
+  return structuredClone(value);
 }
 
 function assertPlainObject(value, name) {
@@ -65,6 +88,36 @@ function requiredText(value, name) {
 function optionalText(value) {
   const text = String(value || "").trim();
   return text || undefined;
+}
+
+function requiredSha256(value, name) {
+  const hash = requiredText(value, name);
+  if (!/^[a-f0-9]{64}$/.test(hash)) {
+    throw new TypeError(`${name} must be a lowercase SHA-256 hash.`);
+  }
+  return hash;
+}
+
+function nonNegativeInteger(value, name) {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new TypeError(`${name} must be a non-negative safe integer.`);
+  }
+  return value;
+}
+
+function nonNegativeNumber(value, name) {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new TypeError(`${name} must be a non-negative finite number.`);
+  }
+  return value;
+}
+
+function normalizeBytes(value) {
+  if (value instanceof ArrayBuffer) return new Uint8Array(value);
+  if (ArrayBuffer.isView(value)) {
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  }
+  throw new TypeError("bytes must be an ArrayBuffer or typed-array view.");
 }
 
 function uniqueStrings(values) {
@@ -112,6 +165,7 @@ export function createProjectGitSource(input = {}) {
 
   return {
     $type$: PROJECT_GIT_SOURCE_TYPE,
+    $version$: "v1",
     sourceId: input.sourceId || buildProjectGitSourceId(projectId, repoUrl, rootPath),
     projectId,
     adapter: "source.git",
@@ -150,7 +204,7 @@ function normalizeProjectFile(input) {
     owner: optionalText(input.owner) || "",
     phase: optionalText(input.phase) || "",
     status,
-    ...(optionalText(input.contentHash) ? { contentHash: optionalText(input.contentHash) } : {}),
+    ...(optionalText(input.blob) ? { blob: requiredSha256(input.blob, "Project file blob") } : {}),
     ...(optionalText(input.sourceEntryId) ? { sourceEntryId: optionalText(input.sourceEntryId) } : {}),
   };
 }
@@ -159,8 +213,85 @@ export function buildProjectFileIndexId(sourceId, head, files) {
   return hashId("project-file-index", [
     sourceId,
     head,
-    files.map((file) => [file.path, file.status, file.contentHash || ""]),
+    files.map((file) => [file.path, file.status, file.blob || ""]),
   ]);
+}
+
+export function createProjectSourceArtifact(input = {}) {
+  assertPlainObject(input, "Project source artifact");
+  const artifact = {
+    $type$: PROJECT_SOURCE_ARTIFACT_TYPE,
+    source: requiredSha256(input.source, "source"),
+    path: normalizeProjectPath(input.path),
+    revision: requiredText(input.revision, "revision"),
+    blob: requiredSha256(input.blob, "blob"),
+    byteLength: nonNegativeInteger(input.byteLength, "byteLength"),
+    ...(optionalText(input.mediaType) ? { mediaType: optionalText(input.mediaType) } : {}),
+    ...(optionalText(input.sourceEntryId) ? { sourceEntryId: optionalText(input.sourceEntryId) } : {}),
+    ...(input.sourceModifiedAt === undefined
+      ? {}
+      : { sourceModifiedAt: nonNegativeNumber(input.sourceModifiedAt, "sourceModifiedAt") }),
+    ingestedAt: nonNegativeNumber(input.ingestedAt, "ingestedAt"),
+    ingestedBy: requiredText(input.ingestedBy, "ingestedBy"),
+    schemaVersion: PROJECT_SOURCE_SCHEMA_VERSION,
+  };
+  return artifact;
+}
+
+export async function ingestProjectSourceArtifact(input = {}) {
+  assertPlainObject(input, "Project source ingestion");
+  const source = normalizeProjectGitSource(input.source);
+  const bytes = normalizeBytes(input.bytes);
+
+  // Validate all caller-owned provenance before any storage mutation.
+  const provenance = {
+    path: normalizeProjectPath(input.path),
+    revision: requiredText(input.revision, "revision"),
+    ...(optionalText(input.mediaType) ? { mediaType: optionalText(input.mediaType) } : {}),
+    ...(optionalText(input.sourceEntryId) ? { sourceEntryId: optionalText(input.sourceEntryId) } : {}),
+    ...(input.sourceModifiedAt === undefined
+      ? {}
+      : { sourceModifiedAt: nonNegativeNumber(input.sourceModifiedAt, "sourceModifiedAt") }),
+    ingestedAt: nonNegativeNumber(input.ingestedAt, "ingestedAt"),
+    ingestedBy: requiredText(input.ingestedBy, "ingestedBy"),
+  };
+
+  const storedSource = await storeVersionedObject(source);
+  const storedBlob = await storeArrayBufferAsBlob(bytes);
+  const artifact = createProjectSourceArtifact({
+    ...provenance,
+    source: storedSource.idHash,
+    blob: storedBlob.hash,
+    byteLength: bytes.byteLength,
+  });
+  const storedArtifact = await storeUnversionedObject(artifact);
+
+  return {
+    source,
+    sourceIdHash: storedSource.idHash,
+    sourceVersionHash: storedSource.hash,
+    artifact,
+    artifactHash: storedArtifact.hash,
+    blobHash: storedBlob.hash,
+  };
+}
+
+export async function readProjectSourceArtifact(artifactHash) {
+  const hash = requiredSha256(artifactHash, "artifactHash");
+  const artifact = await getObject(hash);
+  if (artifact?.$type$ !== PROJECT_SOURCE_ARTIFACT_TYPE) {
+    throw new TypeError(`Object ${hash} is not a ${PROJECT_SOURCE_ARTIFACT_TYPE}.`);
+  }
+  const [bytes, storedSource] = await Promise.all([
+    readBlobAsUint8Array(artifact.blob),
+    getObjectByIdHash(artifact.source),
+  ]);
+  return {
+    artifact,
+    bytes,
+    source: storedSource.obj,
+    sourceVersionHash: storedSource.hash,
+  };
 }
 
 export function createProjectFileIndex(input = {}) {
@@ -301,7 +432,6 @@ export function createProjectSourceBundleFromGitSource(input = {}) {
       owner: "",
       phase: "",
       status: "tracked",
-      contentHash: file.blobSha,
       ...(sourceEntry?.id ? { sourceEntryId: sourceEntry.id } : {}),
     });
   });
@@ -317,7 +447,6 @@ export function createProjectSourceBundleFromGitSource(input = {}) {
     filesByPath.set(entry.path, {
       ...current,
       status: statusFromGitWorktreeEntry(entry),
-      ...(entry.contentSha256 ? { contentHash: entry.contentSha256 } : {}),
     });
   });
 
