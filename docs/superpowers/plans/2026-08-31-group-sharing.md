@@ -1,22 +1,65 @@
 # Group Sharing Implementation Plan
 
+> **SUPERSEDED — 2026-09-01. Do not execute.**
+>
+> This plan targets `packages/group.core`. The work was carried out instead in
+> [`packages/trust.projektor`](../../../packages/trust.projektor/README.md),
+> which is ahead of this plan and differs from it deliberately:
+>
+> - Membership evidence is split into three layers — a portable attestation
+>   bundle, a receiver-local verification status, and a versioned effective
+>   projection — rather than the single certificate type below.
+> - The narrowing rule covers `mayReshare` as well as `validUntil`: the most
+>   restrictive value in a lineage wins.
+> - Attestation types are named in `ProjektorAttestationDefinitions` and read
+>   through trust.core's `TypedAttestationService`, instead of the wildcard
+>   reverse maps this plan copied from one.models.
+> - There is no Leute/contact model dependency. Task 4 below requires one; that
+>   requirement was dropped.
+> - Disclosure authority is stricter here than below: the verified signer must be
+>   the Group owner, the roster pin must match, and the sharer must still be in
+>   the structural roster at action time.
+>
+> Kept for the reasoning in its task notes — particularly the certificate
+> combining rule and the API contracts recorded against one.core and one.models.
+> The current design is [the spec](../specs/2026-08-31-group-sharing-design.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add the time-bounded evidence layer that ONE.core and one.models do not already provide for group sharing — membership validity windows, the re-share right, disclosure records, and the two evaluation times — on top of the existing `Group` / `HashGroup` / `Signature` / certificate primitives.
+**Goal:** Add the missing generic typed-attestation service to `trust.core`,
+keep structural roster history in `group.core`, and build Projektor's
+time-bounded trust claims and authorization projections in `trust.projektor`:
+membership validity windows, the re-share right, disclosure records, exact
+group/roster binding and the two evaluation times.
 
-**Architecture:** Groups are `Group` (versioned, id `{name, owner}`) referencing `HashGroup` (unversioned, content-addressed member set). The roster history is the `Group` version DAG; `HashGroup`'s content hash is the roster pin. Signatures are separate `Signature` objects. Certificates follow the one.models pattern — an unversioned claim object plus a `License`, issued and checked through `TrustedKeysManager`. This package adds only what those types lack: time.
+**Architecture:** Groups are `Group` (versioned, id `{name, owner}`) referencing
+`HashGroup` (unversioned, content-addressed member set). The roster history is
+the `Group` version DAG; `HashGroup`'s content hash is the roster pin.
+`trust.core` owns typed attestation issuance, lookup, signature verification and
+issuer-key evidence. `group.core` owns the structural `Group`/`HashGroup`
+history and time-indexed roster queries. `trust.projektor` owns Projektor's
+domain claims, immutable evidence bundles, receiver-local statuses, effective
+membership projections and admission rules: the signer must be the group owner,
+the claim must name the exact roster, membership lineages are time-bounded, and
+`mayReshare` governs disclosure. Neither product package constructs or imports
+`LeuteModel` or `TrustedKeysManager`.
 
-**Tech Stack:** Plain ESM JavaScript, no build step. Tests are standalone `node` scripts using `node:assert/strict`, registered in the `test` script in `package.json`. ONE.core and one.models are consumed from the sibling checkout at `../../../one/packages/`.
+**Tech Stack:** Plain ESM JavaScript in Projektor (`group.core` and
+`trust.projektor`), TypeScript in sibling `assembly.core`/`trust.core`, and
+standalone `node` tests registered in `package.json`. ONE.core, one.models
+crypto primitives and trust.core are consumed from the sibling checkout at
+`../../../one/packages/`.
 
 ---
 
 ## Design Deltas From The Spec
 
 The [spec](../specs/2026-08-31-group-sharing-design.md) was written before checking what
-the platform already provides. It invented types that exist. **The spec has been
-amended to match these deltas**; they are recorded here as the reason it changed.
-Its *reasoning* — two evaluation times, prospective revocation, disclosure as
-evidence — is unchanged.
+the platform already provides. It invented types that exist. It was amended for
+the ONE.core model once; Task 8 must amend it again for the trust.core boundary
+defined here. Until that consistency pass is complete, this plan is authoritative
+about package ownership. Its *reasoning* — two evaluation times, prospective
+revocation, disclosure as evidence — is unchanged.
 
 1. **`ProjectGroup` and `ProjectGroupMembership` are deleted.** The group type is
    ONE.core's [`Group`](/Users/gecko/src/one/packages/one.core/lib/recipes.js:282):
@@ -32,12 +75,16 @@ evidence — is unchanged.
    `creationTime` and `prev`, and `VersionNodeMerge` makes concurrent versions an
    explicit case rather than an array-order accident.
 4. **Signatures are `Signature` objects**, `{issuer, data: SHA256Hash,
-   signature}`, created with `sign(dataHash)`. A `signature` field on a recipe is
-   rejected by the serializer (`O2M-COBJ2: Unknown properties`), which is correct
-   behaviour rather than an obstacle.
-5. **Authorization is `TrustedKeysManager.isCertifiedBy` / `getCertificates`**,
-   not a signature check against a caller-supplied key. Verifying a signature
-   against a key the caller handed you establishes nothing about issuer authority.
+   signature}`. A `signature` field on a recipe is rejected by the serializer
+   (`O2M-COBJ2: Unknown properties`), which is correct behaviour rather than an
+   obstacle. Raw signing is a ONE.core/one.models primitive; attestation
+   authorship and verification belong to `trust.core`.
+5. **Authorization is a `trust.core` result with exact evidence**, not a
+   `TrustedKeysManager` boolean and not a signature check against a
+   caller-supplied key. `trust.core` verifies the signer/key credential;
+   `trust.projektor` separately proves that the verified signer is `Group.owner`
+   and that the claim names the exact `HashGroup` being disclosed, using
+   `group.core` for roster history.
 6. **A membership certificate proves membership of a pinned `HashGroup`, not
    open-ended membership of a group.** This is the significant change. It makes
    the certificate a portable *proof* rather than the authoritative membership
@@ -55,10 +102,25 @@ evidence — is unchanged.
    revocation a no-op. Consumers must combine, never pick. Nothing widens, and a
    renewal is a new lineage with a later `validFrom`.
 
-**What is genuinely new, and is therefore all this package builds:** no existing
-certificate carries a validity window. `AffirmationCertificate` is `{data,
-license}`; `RelationCertificate` is `{app, relation, person1, person2, license}`.
-Time is the gap.
+8. **Projektor trust evidence lives in `trust.projektor`, not `group.core` or
+   `trust.core`.** The canonical trust architecture requires the semantic claim
+   owner to own immutable bundles, receiver-local statuses and effective
+   projections. `group.core` supplies roster facts; `trust.core` supplies exact
+   authorship and issuer-key truth; `trust.projektor` joins them under Projektor
+   policy.
+
+9. **Evidence time is signed claim data, not unsigned bundle metadata.** The
+   membership claim carries `issuedAt`; membership import requires
+   `bundle.authoredAt === claim.issuedAt`. Disclosure already carries the signed
+   `disclosedAt` and likewise requires equality with bundle authorship time.
+   Without this binding, a valid claim/signature could be repackaged at a
+   different historical authority or roster time.
+
+**What is genuinely new in `trust.projektor`:** the reused one.models domain
+certificate shapes carry no membership validity window.
+`AffirmationCertificate` is `{data, license}`; `RelationCertificate` is `{app,
+relation, person1, person2, license}`. Time, exact roster binding and the
+Projektor bundle/status/projection are the gap.
 
 ---
 
@@ -69,14 +131,27 @@ Time is the gap.
   re-share right.
 - New type names carry no `Project` prefix unless genuinely project-scoped.
   `ProjectAccessAssertion` earns it; nothing else here does.
-- Certificates follow the one.models shape: unversioned, `{...claim, license:
-  SHA256Hash<License>}`, issued via `TrustedKeysManager.certify`. Never a
-  `signature` field.
+- Projektor domain claims and their bundle/status/projection schemas belong to
+  `trust.projektor`. Claims are typed ONE objects with separate signatures and
+  exact trust provenance, authored and cryptographically verified through the
+  `trust.core` facade. Never put a `signature` field on a claim recipe.
+- `group.core` and `trust.projektor` must not import, construct, initialize or
+  accept a `LeuteModel`/`TrustedKeysManager`. A Projektor runtime that already
+  owns an authenticated model graph may adapt its identity material into
+  `trust.core`; that adapter is runtime integration, not a product-domain
+  dependency.
+- Typed lookup is informed: query one exact certificate type through its
+  explicit reverse-map property. Do not call `getCertificates()` and do not use
+  wildcard reverse maps for group-domain types.
+- Key trust and Projektor authority remain separate. A verified signer
+  credential does not authorize that signer to administer an arbitrary group;
+  that admission decision is reduced in `trust.projektor`.
 - Reference-typed fields use `referenceToId` / `referenceToObj` with
   `allowedTypes`, never a bare string standing in for a hash.
 - `validUntil` is the only input to validity. `learnedAt` and `compromisedSince`
   never affect it. Revocation ends authority at issuance, never earlier.
-- There is no `getMembers(group)`. Only `rosterAsOf` and `mayAct`.
+- There is no `getMembers(group)` or structural `mayAct`. `group.core` exposes
+  only `rosterAsOf` and `isRosterMemberAt`; trust.projektor owns authorization.
 - Fail fast and throw. No fallback values, no silent defaults for required input.
 - Commit messages: imperative, sentence case, no prefix, no AI attribution.
 
@@ -101,7 +176,8 @@ into later tasks before starting them.
 Specifically unverified, to be confirmed on first run:
 - whether storing a `Group` requires its `HashGroup` stored first
 - the exact field names on `storeVersionedObject` / `storeUnversionedObject` results
-- whether `sign()` works with only an initialised instance, or needs `LeuteModel`
+- whether raw `sign()` needs anything beyond the initialized ONE instance (this
+  proves only the crypto primitive; Task 4 owns attestation semantics)
 - what `getVersionsNodes` returns, and in what order
 
 **Files:**
@@ -269,11 +345,12 @@ the correction in that task's commit message.
 
 ---
 
-### Task 2: rosterAsOf And mayAct Over The Version DAG
+### Task 2: Structural Roster Queries Over The Version DAG
 
 **Files:**
 - Create: `packages/group.core/roster.js`
 - Create: `packages/group.core/index.js`
+- Create: `packages/group.core/package.json`
 - Create: `packages/group.core/roster.test.js`
 - Modify: `package.json` (the `test` script)
 
@@ -283,7 +360,7 @@ the correction in that task's commit message.
   - `StaleChainError` — class extending `Error`, `name === "StaleChainError"`
   - `ConcurrentVersionsError` — class extending `Error`, thrown when the version in force at a time is ambiguous
   - `rosterAsOf(groupIdHash, atTime) -> Promise<string[]>` — sorted Person id hashes
-  - `mayAct({groupIdHash, subject, now, replicaAsOf, maxStalenessMs}) -> Promise<boolean>`
+  - `isRosterMemberAt({groupIdHash, subject, atTime, replicaAsOf, maxStalenessMs}) -> Promise<boolean>`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -302,7 +379,7 @@ import {
 } from "../../../one/packages/one.core/lib/instance.js";
 import { storeUnversionedObject } from "../../../one/packages/one.core/lib/storage-unversioned-objects.js";
 import { storeVersionedObject } from "../../../one/packages/one.core/lib/storage-versioned-objects.js";
-import { StaleChainError, rosterAsOf, mayAct } from "./index.js";
+import { StaleChainError, rosterAsOf, isRosterMemberAt } from "./index.js";
 
 const directory = await mkdtemp(path.join(tmpdir(), "projektor-roster-"));
 let initialized = false;
@@ -355,12 +432,12 @@ try {
   // Before the group existed, the roster is empty rather than an error.
   assert.deepEqual(await rosterAsOf(v1.idHash, 0), []);
 
-  // Access: evaluated now, under a freshness policy.
+  // Structural roster membership at the evaluation time, under a freshness policy.
   assert.equal(
-    await mayAct({
+    await isRosterMemberAt({
       groupIdHash: v1.idHash,
       subject: owner,
-      now: afterV2,
+      atTime: afterV2,
       replicaAsOf: afterV2 - DAY,
       maxStalenessMs: 7 * DAY,
     }),
@@ -370,10 +447,10 @@ try {
   // A replica staler than the policy fails closed, distinguishably from a deny.
   await assert.rejects(
     () =>
-      mayAct({
+      isRosterMemberAt({
         groupIdHash: v1.idHash,
         subject: owner,
-        now: afterV2,
+        atTime: afterV2,
         replicaAsOf: afterV2 - 30 * DAY,
         maxStalenessMs: 7 * DAY,
       }),
@@ -381,7 +458,7 @@ try {
   );
 
   await assert.rejects(
-    () => mayAct({ groupIdHash: v1.idHash, subject: owner, now: afterV2 }),
+    () => isRosterMemberAt({ groupIdHash: v1.idHash, subject: owner, atTime: afterV2 }),
     /replicaAsOf is required/,
   );
   await assert.rejects(() => rosterAsOf(v1.idHash), /atTime is required/);
@@ -469,36 +546,36 @@ export async function rosterAsOf(groupIdHash, atTime) {
 }
 
 /**
- * The access question: may this participant act now?
+ * Structural question: was this participant in the roster at the named time?
  *
  * A replica older than the freshness policy allows throws rather than returning
  * false, so a stale chain can never be misread as an ordinary deny.
  */
-export async function mayAct({
+export async function isRosterMemberAt({
   groupIdHash,
   subject,
-  now,
+  atTime,
   replicaAsOf,
   maxStalenessMs,
 } = {}) {
   if (!subject) {
-    throw new Error("mayAct: subject is required");
+    throw new Error("isRosterMemberAt: subject is required");
   }
-  if (!Number.isFinite(now)) {
-    throw new Error("mayAct: now is required");
+  if (!Number.isFinite(atTime)) {
+    throw new Error("isRosterMemberAt: atTime is required");
   }
   if (!Number.isFinite(replicaAsOf)) {
-    throw new Error("mayAct: replicaAsOf is required");
+    throw new Error("isRosterMemberAt: replicaAsOf is required");
   }
   if (!Number.isFinite(maxStalenessMs)) {
-    throw new Error("mayAct: maxStalenessMs is required");
+    throw new Error("isRosterMemberAt: maxStalenessMs is required");
   }
-  if (now - replicaAsOf > maxStalenessMs) {
+  if (atTime - replicaAsOf > maxStalenessMs) {
     throw new StaleChainError(
-      `mayAct: chain replica is ${now - replicaAsOf}ms old, policy allows ${maxStalenessMs}ms`,
+      `isRosterMemberAt: chain replica is ${atTime - replicaAsOf}ms old, policy allows ${maxStalenessMs}ms`,
     );
   }
-  const roster = await rosterAsOf(groupIdHash, now);
+  const roster = await rosterAsOf(groupIdHash, atTime);
   return roster.includes(subject);
 }
 ```
@@ -508,6 +585,9 @@ Create `packages/group.core/index.js`:
 ```js
 export * from "./roster.js";
 ```
+
+Create the package manifest following the existing Projektor convention:
+`@projektor/group.core`, private ESM, main/export `./index.js`.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -534,7 +614,7 @@ git commit -m "Read group rosters from the version DAG at two evaluation times"
 
 ---
 
-### Task 3: The Membership Certificate And Its Validity Window
+### Task 3: Define Projektor's Membership Claim And Validity Semantics
 
 The only genuinely new evidence type. It states: *the issuer certifies that this
 person was in this exact roster, for this window, with or without the right to
@@ -542,28 +622,28 @@ re-share the definition.* It pins `HashGroup`, so it can never be read as an
 open-ended present-tense grant.
 
 **Files:**
-- Create: `packages/group.core/certificates.js`
-- Create: `packages/group.core/certificates.test.js`
-- Modify: `packages/group.core/index.js`
+- Create: `packages/trust.projektor/membership.js`
+- Create: `packages/trust.projektor/membership.test.js`
+- Create: `packages/trust.projektor/index.js`
+- Create: `packages/trust.projektor/package.json`
+- Create: `packages/trust.projektor/@OneObjectInterfaces.d.ts`
 - Modify: `package.json` (the `test` script)
 
 **Interfaces:**
 - Consumes: `HashGroup` hashes from Task 1.
 - Produces:
-  - `GROUP_MEMBERSHIP_CERTIFICATE_TYPE`, `GroupMembershipLicense`, `GroupMembershipCertificateRecipe`, `GroupMembershipCertificateReverseMap`, `GroupCoreRecipes`
-  - `createGroupMembershipCertificateData({group, hashGroup, person, mayReshare, validFrom, validUntil}) -> object` — the `certData` argument to `certify`, without `$type$` or `license`
+  - `GROUP_MEMBERSHIP_CERTIFICATE_TYPE`, `GroupMembershipLicense`, `GroupMembershipCertificateRecipe`, `GroupMembershipCertificateReverseMap`, `GroupMembershipRecipes`
+  - `createGroupMembershipCertificateData({group, hashGroup, person, mayReshare, issuedAt, validFrom, validUntil}) -> object` — the `certData` argument to trust.core `attest`, without `$type$` or `license`
   - `isMembershipValidAt(certificate, atTime) -> boolean`
   - `effectiveMembershipWindow(certificates) -> {validFrom, validUntil}` — the narrowest window across one lineage
   - `revokeMembershipCertificate(previous, {revokedAt, learnedAt, reason, endAt}) -> object`
 
 **Why the factory does not build the finished object.**
-`TrustedKeysManager.certify(type, certData)` builds it: it looks the License up
-in the registry, stores it, then stores `{$type$: type, ...certData, license}`
-and signs the result. A factory that also emitted `$type$` and `license` would
-be supplying fields `certify` overwrites. So these factories validate and shape
-`certData`; `certify` owns the rest. The License must be registered with
-`registerLicense` before the first `certify` call or it throws — that happens in
-Task 4's setup.
+The trust.core attestation boundary built in Task 4 stores the License, builds
+`{$type$: type, ...certData, license}` and authors the signed attestation with
+exact issuer provenance. A factory that also emitted `$type$` and `license`
+would supply fields the attestation service owns. These factories therefore
+validate and shape `certData`; trust.core owns the attested envelope.
 
 **Why a combining rule is required.** one.models certificates are unversioned, so
 revocation is a second certificate carrying an earlier `validUntil` — and the
@@ -576,13 +656,13 @@ with a later `validFrom`, evaluated on its own.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `packages/group.core/certificates.test.js`:
+Create `packages/trust.projektor/membership.test.js`:
 
 ```js
 import assert from "node:assert/strict";
 import {
   GROUP_MEMBERSHIP_CERTIFICATE_TYPE,
-  GroupCoreRecipes,
+  ProjektorTrustRecipes,
   GroupMembershipCertificateReverseMap,
   createGroupMembershipCertificateData,
   effectiveMembershipWindow,
@@ -599,7 +679,7 @@ const GROUP = "0".repeat(64);
 const ROSTER = "1".repeat(64);
 const PERSON = "2".repeat(64);
 
-// certify() adds $type$ and license, so the factory must not.
+// trust.core attestation adds $type$ and license, so the factory must not.
 const certData = createGroupMembershipCertificateData({
   group: GROUP,
   hashGroup: ROSTER,
@@ -612,7 +692,7 @@ assert.equal("$type$" in certData, false);
 assert.equal("license" in certData, false);
 assert.equal("signature" in certData, false);
 
-// The stored shape, as certify would write it. Validity helpers read this.
+// The stored shape, as trust.core attest would write it. Validity helpers read this.
 const cert = {
   $type$: GROUP_MEMBERSHIP_CERTIFICATE_TYPE,
   ...certData,
@@ -700,7 +780,7 @@ assert.throws(
   /one lineage/,
 );
 
-const recipe = GroupCoreRecipes.find(
+const recipe = ProjektorTrustRecipes.find(
   (entry) => entry.name === GROUP_MEMBERSHIP_CERTIFICATE_TYPE,
 );
 assert.ok(recipe, "certificate recipe is registered");
@@ -714,21 +794,25 @@ assert.equal(
 );
 assert.equal(recipe.rule.some((rule) => rule.itemprop === "signature"), false);
 
-// getCertificates cannot find a type with no reverse map.
+// Typed lookup requires the exact indexed reverse-map property.
 assert.equal(GroupMembershipCertificateReverseMap[0], GROUP_MEMBERSHIP_CERTIFICATE_TYPE);
-assert.ok(GroupMembershipCertificateReverseMap[1].has("*"));
+assert.deepEqual(
+  [...GroupMembershipCertificateReverseMap[1]],
+  ["group"],
+  "lookup is informed by the exact indexed property",
+);
 
-console.log("group.core certificate tests passed");
+console.log("trust.projektor membership tests passed");
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `node ./packages/group.core/certificates.test.js`
-Expected: FAIL with `does not provide an export named 'createGroupMembershipCertificate'`.
+Run: `node ./packages/trust.projektor/membership.test.js`
+Expected: FAIL with `does not provide an export named 'createGroupMembershipCertificateData'`.
 
 - [ ] **Step 3: Write the certificates module**
 
-Create `packages/group.core/certificates.js`:
+Create `packages/trust.projektor/membership.js`:
 
 ```js
 export const GROUP_MEMBERSHIP_CERTIFICATE_TYPE = "GroupMembershipCertificate";
@@ -772,15 +856,14 @@ export const GroupMembershipCertificateRecipe = {
   ],
 };
 
-// Without a reverse map, TrustedKeysManager.getCertificates cannot find
-// certificates of this type at all, and every authority check fails closed for
-// the wrong reason. Shape matches one.models: [typeName, Set(['*'])].
+// Typed trust.core lookup is by the group reference. Index that property only;
+// do not enumerate all reference properties through a wildcard reverse map.
 export const GroupMembershipCertificateReverseMap = [
   GROUP_MEMBERSHIP_CERTIFICATE_TYPE,
-  new Set(["*"]),
+  new Set(["group"]),
 ];
 
-export const GroupCoreRecipes = [GroupMembershipCertificateRecipe];
+export const GroupMembershipRecipes = [GroupMembershipCertificateRecipe];
 
 function required(value, field) {
   if (value === undefined || value === null || value === "") {
@@ -801,8 +884,8 @@ function requiredTime(value, field) {
 /**
  * Build and validate the `certData` for a membership certificate.
  *
- * `$type$` and `license` are deliberately absent: `TrustedKeysManager.certify`
- * adds both, and emitting them here would supply fields it overwrites.
+ * `$type$` and `license` are deliberately absent: the trust.core attestation
+ * service adds both, and emitting them here would duplicate its envelope.
  */
 export function createGroupMembershipCertificateData({
   group,
@@ -897,7 +980,7 @@ export function revokeMembershipCertificate(
       "GroupMembershipCertificate: revokedAt is the earliest permitted end; a validity window may not end before the revocation was issued",
     );
   }
-  // Strip the fields certify owns, so the result is certData like any other.
+  // Strip the fields trust.core attest owns, so the result is certData like any other.
   const { $type$: _type, license: _license, ...carried } = previous;
   const revocation = {
     ...carried,
@@ -913,23 +996,39 @@ export function revokeMembershipCertificate(
 
 - [ ] **Step 4: Export from the barrel**
 
-In `packages/group.core/index.js`, add:
+Create `packages/trust.projektor/index.js` with the aggregate lists that later
+tasks extend:
 
 ```js
-export * from "./certificates.js";
+import {
+  GroupMembershipCertificateRecipe,
+  GroupMembershipCertificateReverseMap,
+} from "./membership.js";
+
+export * from "./membership.js";
+
+export const ProjektorTrustRecipes = [GroupMembershipCertificateRecipe];
+export const ProjektorTrustReverseMaps = [GroupMembershipCertificateReverseMap];
 ```
+
+Create the package manifest as `@projektor/trust.projektor`, private ESM with
+main/export `./index.js` and types `./@OneObjectInterfaces.d.ts`, following the
+existing `@projektor/*.core` manifests.
+Declare the membership claim in `OneUnversionedObjectInterfaces`; later tasks
+extend this file for bundles and versioned status/projection objects. Use branded
+`SHA256IdHash`/`SHA256Hash` fields rather than plain strings in declarations.
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `node ./packages/group.core/certificates.test.js`
-Expected: PASS, prints `group.core certificate tests passed`.
+Run: `node ./packages/trust.projektor/membership.test.js`
+Expected: PASS, prints `trust.projektor membership tests passed`.
 
 - [ ] **Step 6: Register the test in package.json**
 
 In `package.json`, append to the `test` script:
 
 ```
- && node ./packages/group.core/certificates.test.js
+ && node ./packages/trust.projektor/membership.test.js
 ```
 
 Run: `npm test`
@@ -938,750 +1037,419 @@ Expected: all tests pass.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add packages/group.core package.json
-git commit -m "Add time-bounded group membership certificates"
+git add packages/trust.projektor package.json
+git commit -m "Define Projektor membership trust claims"
 ```
 
 ---
 
-### Task 4: Issuance And The Authorization Boundary
+### Task 4: Put Typed Attestation At The trust.core Boundary
 
-The constructors in Task 3 are pure and prove nothing. This task supplies the
-authority: issuing goes through `TrustedKeysManager.certify`, and disclosing
-requires stored-certificate evidence that the sharer holds a valid, issuer-signed
-membership certificate **for the group being disclosed**.
+This task corrects the package boundary before Projektor authorization is built.
+Typed certificate lookup, attestation/signing, and trusted signer-key
+verification are trust semantics. They belong to `trust.core`, not to
+`trust.projektor` and not to an ad hoc `LeuteModel` created by a package test.
+
+Raw mechanisms remain below that boundary:
+
+- ONE.core stores objects and maintains explicit reverse maps.
+- ONE.core/one.models provides detached-signature and keychain primitives.
+- `trust.core` turns those mechanisms into typed, verified attestation evidence.
+- `group.core` supplies structural roster facts.
+- `trust.projektor` decides whether verified evidence authorizes a Projektor
+  operation and persists the domain bundle/status/projection.
+
+The existing `trust.core` pieces are inputs, not substitutes for the missing
+service:
+
+- `findExplicitlyVerifiedSignature` proves an exact signature/key match.
+- `IssuerKeyVerifier` and `EffectiveIssuerKeyProvider` prove issuer-key
+  authority and retain exact chain/root provenance.
+- The existing `GroupAttestation` recipe is legacy: it duplicates a member
+  array, uses a bare group string and carries issuer inline. Do not reuse it as
+  a second group model. Deprecate it separately or migrate it to the
+  `Group`/`HashGroup` model.
+
+#### Task 4A: Add the narrow service to trust.core
+
+**Repository:** `/Users/gecko/src/one`
 
 **Files:**
-- Create: `packages/group.core/test-instance.js`
-- Create: `packages/group.core/issuance.js`
-- Create: `packages/group.core/issuance.test.js`
-- Modify: `packages/group.core/certificates.js` (extend `GroupCoreRecipes`)
-- Modify: `packages/group.core/index.js`
-- Modify: `package.json` (the `test` script)
-
-**Interfaces:**
-- Consumes: `TrustedKeysManager` from one.models, Task 3 factories.
-- Produces:
-  - `GROUP_DISCLOSURE_CERTIFICATE_TYPE`, `GroupDisclosureLicense`, `GroupDisclosureCertificateRecipe`
-  - `issueMembership(trust, {group, hashGroup, person, mayReshare, validFrom, validUntil}) -> Promise<{certificate, signature, license}>`
-  - `authorizeDisclosure(trust, {groupIdHash, sharer, issuer, atTime}) -> Promise<{certificateHash}>`
-  - `discloseGroup(trust, {groupIdHash, hashGroup, recipient, sharer, issuer, atTime}) -> Promise<object>`
-
-**Dependency note:** the trust manager is not constructed directly — it is
-`leute.trust` on an initialised `LeuteModel`. This is a decided dependency,
-sanctioned by the root README's "where Leute/contact model is the owning API".
-The stub below drives the boundary logic in isolation; Step 7 runs the same
-assertions against the real manager. Do not substitute a hand-rolled key check
-for either.
-
-The setup is modelled on `one.models/test/Certificate-test.ts`. Three things in
-it are easy to miss and each fails in a confusing way:
-
-- **`new LeuteModel('wss://dummy')`** — the commserver URL is only used when
-  building a default endpoint. No network is involved.
-- **Reverse maps must be enabled at `initInstance`.** Without
-  `initiallyEnabledReverseMapTypes` covering `Signature`, the one.models
-  certificates, and our own types, `getCertificates` finds nothing and every
-  authority check fails closed for the wrong reason.
-- **Licenses must be registered before the first `certify`.**
-  `certify` calls `getLicenseForCertificate(type)` and throws if the type is not
-  in the registry.
-
-- [ ] **Step 1: Write the shared test setup**
-
-Create `packages/group.core/test-instance.js`. Tasks 4 and 5 both use it:
-
-```js
-import "../../../one/packages/one.core/lib/system/load-nodejs.js";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
-import {
-  closeInstance,
-  initInstance,
-} from "../../../one/packages/one.core/lib/instance.js";
-import LeuteModel from "../../../one/packages/one.models/lib/models/Leute/LeuteModel.js";
-import RecipesStable from "../../../one/packages/one.models/lib/recipes/recipes-stable.js";
-import RecipesExperimental from "../../../one/packages/one.models/lib/recipes/recipes-experimental.js";
-import { SignatureReverseMaps } from "../../../one/packages/one.models/lib/recipes/SignatureRecipes.js";
-import { CertificateReverseMaps } from "../../../one/packages/one.models/lib/recipes/Certificates/CertificateRecipes.js";
-import { registerLicense } from "../../../one/packages/one.models/lib/misc/Certificates/LicenseRegistry.js";
-import {
-  GROUP_MEMBERSHIP_CERTIFICATE_TYPE,
-  GroupCoreRecipes,
-  GroupCoreReverseMaps,
-  GroupMembershipLicense,
-} from "./index.js";
-import {
-  GROUP_DISCLOSURE_CERTIFICATE_TYPE,
-  GroupDisclosureLicense,
-} from "./issuance.js";
-
-/**
- * Stand up an instance with a LeuteModel, and return its trust manager.
- *
- * The trust manager is `leute.trust` — it is not constructed separately.
- */
-export async function startTestInstance(name) {
-  const directory = await mkdtemp(path.join(tmpdir(), `projektor-${name}-`));
-  const leute = new LeuteModel("wss://dummy");
-
-  await initInstance({
-    name: `projektor-${name}`,
-    email: `projektor-${name}@example.invalid`,
-    secret: `projektor-${name}-secret`,
-    wipeStorage: true,
-    encryptStorage: false,
-    directory,
-    initialRecipes: [...RecipesStable, ...RecipesExperimental, ...GroupCoreRecipes],
-    // Without these, getCertificates finds nothing.
-    initiallyEnabledReverseMapTypes: new Map([
-      ...SignatureReverseMaps,
-      ...CertificateReverseMaps,
-      ...GroupCoreReverseMaps,
-    ]),
-  });
-
-  // certify() looks the license up in the registry and throws if it is absent.
-  registerLicense(GroupMembershipLicense, GROUP_MEMBERSHIP_CERTIFICATE_TYPE);
-  registerLicense(GroupDisclosureLicense, GROUP_DISCLOSURE_CERTIFICATE_TYPE);
-
-  await leute.init();
-
-  return {
-    leute,
-    trust: leute.trust,
-    async stop() {
-      await leute.shutdown();
-      closeInstance();
-      await rm(directory, { recursive: true, force: true });
-    },
-  };
-}
-```
-
-`GroupCoreReverseMaps` is composed in `index.js` alongside `GroupCoreRecipes`,
-from each module's exported reverse map.
-
-- [ ] **Step 2: Write the failing test**
-
-Create `packages/group.core/issuance.test.js`:
-
-```js
-import assert from "node:assert/strict";
-import { authorizeDisclosure } from "./index.js";
-
-// A stub standing in for leute.trust, exercising the boundary without a full
-// instance. Entries match the real CertificateData shape:
-// {signature, signatureHash, certificate, certificateHash, trusted}.
-// Note the issuer is on the signature, not on the entry.
-function stubTrust(entries) {
-  return {
-    async getCertificates(dataHash) {
-      return entries.filter((entry) => entry.certificate.group === dataHash);
-    },
-  };
-}
-
-function entryFor(certificate, { issuer, certificateHash, trusted = true }) {
-  return {
-    certificate,
-    certificateHash,
-    trusted,
-    signature: { $type$: "Signature", issuer, data: certificateHash },
-    signatureHash: `s${certificateHash.slice(1)}`,
-  };
-}
-
-const FEB = Date.UTC(2026, 1, 1);
-const ISSUER = "9".repeat(64);
-const OTHER_ISSUER = "8".repeat(64);
-const GROUP_A = "a".repeat(64);
-const GROUP_B = "b".repeat(64);
-const ROSTER = "1".repeat(64);
-const SHARER = "2".repeat(64);
-
-const membershipA = {
-  $type$: "GroupMembershipCertificate",
-  group: GROUP_A,
-  hashGroup: ROSTER,
-  person: SHARER,
-  mayReshare: true,
-  validFrom: Date.UTC(2026, 0, 1),
-  validUntil: Date.UTC(2026, 11, 1),
-  license: "3".repeat(64),
-};
-const certForGroupA = entryFor(membershipA, {
-  issuer: ISSUER,
-  certificateHash: "c".repeat(64),
-});
-
-const trust = stubTrust([certForGroupA]);
-
-// The happy path names the exact certificate relied on.
-const authorized = await authorizeDisclosure(trust, {
-  groupIdHash: GROUP_A,
-  sharer: SHARER,
-  issuer: ISSUER,
-  atTime: FEB,
-});
-assert.equal(authorized.certificateHash, "c".repeat(64));
-
-// A certificate for group A must not authorize disclosure of group B.
-await assert.rejects(
-  () =>
-    authorizeDisclosure(trust, {
-      groupIdHash: GROUP_B,
-      sharer: SHARER,
-      issuer: ISSUER,
-      atTime: FEB,
-    }),
-  /no membership certificate/,
-);
-
-// An expired certificate does not authorize.
-await assert.rejects(
-  () =>
-    authorizeDisclosure(trust, {
-      groupIdHash: GROUP_A,
-      sharer: SHARER,
-      issuer: ISSUER,
-      atTime: Date.UTC(2027, 5, 1),
-    }),
-  /not valid at/,
-);
-
-// A certificate from a different issuer does not authorize.
-await assert.rejects(
-  () =>
-    authorizeDisclosure(trust, {
-      groupIdHash: GROUP_A,
-      sharer: SHARER,
-      issuer: OTHER_ISSUER,
-      atTime: FEB,
-    }),
-  /no membership certificate/,
-);
-
-// A certificate belonging to someone else does not authorize.
-await assert.rejects(
-  () =>
-    authorizeDisclosure(trust, {
-      groupIdHash: GROUP_A,
-      sharer: "7".repeat(64),
-      issuer: ISSUER,
-      atTime: FEB,
-    }),
-  /no membership certificate/,
-);
-
-// Revocation bites even though the original certificate still exists.
-const revokedAlongsideOriginal = stubTrust([
-  certForGroupA,
-  entryFor(
-    {
-      ...membershipA,
-      validUntil: Date.UTC(2026, 0, 15),
-      revocationReason: "Left the partner office",
-    },
-    { issuer: ISSUER, certificateHash: "d".repeat(64) },
-  ),
-]);
-await assert.rejects(
-  () =>
-    authorizeDisclosure(revokedAlongsideOriginal, {
-      groupIdHash: GROUP_A,
-      sharer: SHARER,
-      issuer: ISSUER,
-      atTime: FEB,
-    }),
-  /not valid at/,
-  "the superseded certificate must not keep authorizing",
-);
-
-// A certificate whose signing key is not trusted authorizes nothing. This is
-// what makes the check about issuer authority rather than about bytes.
-const untrusted = stubTrust([
-  entryFor(membershipA, {
-    issuer: ISSUER,
-    certificateHash: "e".repeat(64),
-    trusted: false,
-  }),
-]);
-await assert.rejects(
-  () =>
-    authorizeDisclosure(untrusted, {
-      groupIdHash: GROUP_A,
-      sharer: SHARER,
-      issuer: ISSUER,
-      atTime: FEB,
-    }),
-  /no membership certificate/,
-);
-
-// Without mayReshare, disclosure fails closed.
-const noReshare = stubTrust([
-  entryFor(
-    { ...membershipA, mayReshare: false },
-    { issuer: ISSUER, certificateHash: "f".repeat(64) },
-  ),
-]);
-await assert.rejects(
-  () =>
-    authorizeDisclosure(noReshare, {
-      groupIdHash: GROUP_A,
-      sharer: SHARER,
-      issuer: ISSUER,
-      atTime: FEB,
-    }),
-  /does not carry mayReshare/,
-);
-
-console.log("group.core issuance tests passed");
-```
-
-- [ ] **Step 3: Run test to verify it fails**
-
-Run: `node ./packages/group.core/issuance.test.js`
-Expected: FAIL with `does not provide an export named 'authorizeDisclosure'`.
-
-- [ ] **Step 4: Write the issuance module**
-
-Create `packages/group.core/issuance.js`:
-
-```js
-import {
-  GROUP_MEMBERSHIP_CERTIFICATE_TYPE,
-  effectiveMembershipWindow,
-} from "./certificates.js";
-
-export const GROUP_DISCLOSURE_CERTIFICATE_TYPE = "GroupDisclosureCertificate";
-
-export const GroupDisclosureLicense = {
-  $type$: "License",
-  name: "GroupDisclosure",
-  description:
-    "The [signature.issuer] records that the roster [hashGroup] of group [group] was disclosed to [recipient] at [disclosedAt], under the membership certificate [underCertificate].",
-};
-
-export const GroupDisclosureCertificateRecipe = {
-  $type$: "Recipe",
-  name: GROUP_DISCLOSURE_CERTIFICATE_TYPE,
-  rule: [
-    {
-      itemprop: "group",
-      itemtype: { type: "referenceToId", allowedTypes: new Set(["Group"]) },
-    },
-    {
-      itemprop: "hashGroup",
-      itemtype: { type: "referenceToObj", allowedTypes: new Set(["HashGroup"]) },
-    },
-    {
-      itemprop: "recipient",
-      itemtype: { type: "referenceToId", allowedTypes: new Set(["Person"]) },
-    },
-    { itemprop: "disclosedAt", itemtype: { type: "number" } },
-    {
-      itemprop: "underCertificate",
-      itemtype: {
-        type: "referenceToObj",
-        allowedTypes: new Set([GROUP_MEMBERSHIP_CERTIFICATE_TYPE]),
-      },
-    },
-    {
-      itemprop: "license",
-      itemtype: { type: "referenceToObj", allowedTypes: new Set(["License"]) },
-    },
-  ],
-};
-
-export const GroupDisclosureCertificateReverseMap = [
-  GROUP_DISCLOSURE_CERTIFICATE_TYPE,
-  new Set(["*"]),
-];
-
-export async function issueMembership(
-  trust,
-  { group, hashGroup, person, mayReshare = false, validFrom, validUntil } = {},
-) {
-  if (!trust || typeof trust.certify !== "function") {
-    throw new Error("issueMembership: a TrustedKeysManager is required");
-  }
-  return trust.certify(GROUP_MEMBERSHIP_CERTIFICATE_TYPE, {
-    group,
-    hashGroup,
-    person,
-    mayReshare,
-    validFrom,
-    validUntil,
-  });
-}
-
-/**
- * Establish that `sharer` may disclose `groupIdHash`, and return the exact
- * certificate relied on.
- *
- * Authority is read from stored certificates through the trust manager.
- * Verifying a signature against a key the caller supplied would establish
- * nothing about issuer authority. Every failure path is closed.
- */
-export async function authorizeDisclosure(
-  trust,
-  { groupIdHash, sharer, issuer, atTime } = {},
-) {
-  if (!trust || typeof trust.getCertificates !== "function") {
-    throw new Error("authorizeDisclosure: a TrustedKeysManager is required");
-  }
-  if (!groupIdHash || !sharer || !issuer) {
-    throw new Error("authorizeDisclosure: groupIdHash, sharer and issuer are required");
-  }
-  if (!Number.isFinite(atTime)) {
-    throw new Error("authorizeDisclosure: atTime is required");
-  }
-
-  const entries = await trust.getCertificates(groupIdHash);
-  const forThisGroup = entries.filter(
-    (entry) =>
-      entry.certificate.$type$ === GROUP_MEMBERSHIP_CERTIFICATE_TYPE &&
-      entry.certificate.group === groupIdHash &&
-      entry.certificate.person === sharer &&
-      // The issuer is on the signature, not on the entry.
-      entry.signature.issuer === issuer &&
-      // A certificate signed by a key the trust manager does not vouch for
-      // proves possession of a key, not authority.
-      entry.trusted === true,
-  );
-  if (forThisGroup.length === 0) {
-    throw new Error(
-      `authorizeDisclosure: no membership certificate for ${sharer} in group ${groupIdHash} issued by ${issuer}`,
-    );
-  }
-
-  // Combine, never pick. A revocation is a second certificate alongside the
-  // original, so accepting whichever entry happens to be valid would let the
-  // superseded certificate keep authorizing after revocation.
-  const lineages = new Map();
-  for (const entry of forThisGroup) {
-    const key = String(entry.certificate.validFrom);
-    const lineage = lineages.get(key) ?? [];
-    lineage.push(entry);
-    lineages.set(key, lineage);
-  }
-
-  const live = [];
-  for (const lineage of lineages.values()) {
-    const window = effectiveMembershipWindow(
-      lineage.map((entry) => entry.certificate),
-    );
-    if (window.validFrom <= atTime && atTime <= window.validUntil) {
-      live.push(lineage);
-    }
-  }
-  if (live.length === 0) {
-    throw new Error(`authorizeDisclosure: certificate is not valid at ${atTime}`);
-  }
-
-  // The re-share right is read from the lineage the same way: a certificate
-  // that withdraws it must not be outvoted by the one that granted it.
-  const authorizing = live.find((lineage) =>
-    lineage.every((entry) => entry.certificate.mayReshare === true),
-  );
-  if (authorizing === undefined) {
-    throw new Error("authorizeDisclosure: certificate does not carry mayReshare");
-  }
-
-  return { certificateHash: authorizing[0].certificateHash };
-}
-
-export async function discloseGroup(
-  trust,
-  { groupIdHash, hashGroup, recipient, sharer, issuer, atTime } = {},
-) {
-  const { certificateHash } = await authorizeDisclosure(trust, {
-    groupIdHash,
-    sharer,
-    issuer,
-    atTime,
-  });
-  return trust.certify(GROUP_DISCLOSURE_CERTIFICATE_TYPE, {
-    group: groupIdHash,
-    hashGroup,
-    recipient,
-    disclosedAt: atTime,
-    underCertificate: certificateHash,
-  });
-}
-```
-
-- [ ] **Step 5: Register the disclosure recipe**
-
-In `packages/group.core/index.js`, replace the `GroupCoreRecipes` re-export with
-a composed list so the two modules do not import each other:
-
-```js
-export * from "./roster.js";
-export * from "./certificates.js";
-export * from "./issuance.js";
-
-import {
-  GroupMembershipCertificateRecipe,
-  GroupMembershipCertificateReverseMap,
-} from "./certificates.js";
-import {
-  GroupDisclosureCertificateRecipe,
-  GroupDisclosureCertificateReverseMap,
-} from "./issuance.js";
-
-export const GroupCoreRecipes = [
-  GroupMembershipCertificateRecipe,
-  GroupDisclosureCertificateRecipe,
-];
-
-// Passed to initInstance as initiallyEnabledReverseMapTypes. Without them
-// getCertificates cannot see these types at all.
-export const GroupCoreReverseMaps = [
-  GroupMembershipCertificateReverseMap,
-  GroupDisclosureCertificateReverseMap,
-];
-```
-
-Remove the `GroupCoreRecipes` export from `certificates.js` so there is one
-definition. Later tasks add their recipe and reverse map to both lists.
-
-- [ ] **Step 6: Run test to verify it passes**
-
-Run: `node ./packages/group.core/issuance.test.js`
-Expected: PASS, prints `group.core issuance tests passed`.
-
-Then run: `node ./packages/group.core/certificates.test.js`
-Expected: PASS — the recipe assertions still hold against the composed list.
-
-- [ ] **Step 7: Run the same assertions against the real manager**
-
-Add a second half to the test using `startTestInstance` from Step 1: issue a
-membership through `issueMembership(trust, ...)`, authorize a disclosure, then
-issue the revoking certificate and assert that authorization now fails. Call
-`stop()` in a `finally`.
-
-The assertions must hold unchanged. If one passes only against the stub, the stub
-is wrong — fix the stub, never the assertion.
-
-- [ ] **Step 8: Register the test in package.json**
-
-In `package.json`, append to the `test` script:
-
-```
- && node ./packages/group.core/issuance.test.js
-```
-
-Run: `npm test`
-Expected: all tests pass.
-
-- [ ] **Step 9: Commit**
+- Create: `packages/trust.core/src/services/TypedAttestationService.ts`
+- Create: `packages/trust.core/src/services/TypedAttestationService.test.ts`
+- Modify: `packages/trust.core/src/services/index.ts`
+- Port from `/Users/gecko/src/one-experimental`:
+  - `packages/assembly.core/src/modules/AssemblyModule.ts`
+  - `packages/assembly.core/src/services/CertificateAssemblyAdapter.ts`
+  - their module/service barrel exports
+  - the required `CertificateAssemblyAdapter` demand and disposal path in
+    `packages/trust.core/src/modules/IssuerKeyLifecycleModule.ts`
+- Modify the owning trust module if the facade is supplied through
+  ModuleRegistry.
+
+The Assembly wiring is a prerequisite, not optional cleanup. The canonical
+[trust architecture](/Users/gecko/src/one/packages/trust.core/ARCHITECTURE.md)
+identifies the missing adapter demand/registration/disposal as a concrete
+runtime defect. Port that validated path before putting another facade over the
+lifecycle provider.
+
+**Produces:** a typed attestation service with three responsibilities:
+
+- `attest({type, certData, issuer, purpose, assertedAt})` stores the License,
+  builds the typed claim, signs the exact claim and returns an exact authorship
+  value containing the claim, signature, `Keys`, issuer-key bundle and any
+  applicable Assembly occurrence hashes;
+- `findByType({subject, type})` performs one informed lookup for one configured
+  type and reverse-map property;
+- `verify({receiver, claimHash, signatureHash, signingKeysHash,
+  issuerKeyBundleHashes, expectedIssuer, purpose, authorityMode, atTime,
+  assemblyOccurrence})` returns
+  `verified`, `pending-authority` or `rejected` with exact lifecycle
+  provenance. `authorityMode` is explicitly `evidence-time` or `current`.
+
+The names may change to match local trust.core style; the semantics may not.
+
+`receiver` is the local Person whose root selection and effective issuer-key
+heads are being consulted. This cannot be implicit: issuer authority is
+receiver-local, so omitting it would make the same call silently depend on an
+unidentified trust view.
+
+The service is constructed with an immutable map of attestation definitions.
+Each definition names one type, its License and the one reverse-map property
+used for lookup. `findByType` rejects an unknown type instead of enumerating the
+instance's enabled types; `attest` rejects data whose type is not defined. This
+is explicit dependency configuration, not a mutable process-global registry.
+
+The facade returns exact authorship evidence but does **not** invent a generic
+persisted bundle, receiver-local status or effective projection. Section 10 of
+the trust architecture assigns those schemas to the semantic claim owner.
+Task 4B therefore persists the group-owned bundle/status/projection. The facade
+must not add `TypedAttestationEvidence`, reuse `CertificateRegistry`, or turn
+legacy `GroupAttestation` into a generic container.
+
+**Constraints:**
+
+- `findByType` performs one informed lookup for one requested type. It does not
+  enumerate enabled certificate types.
+- Each attestation recipe declares the precise reverse-map property used by its
+  query. The service does not require `new Set(["*"])`.
+- `verify` returns structured state and exact provenance. It never reduces
+  authority to a context-free `trusted: boolean`.
+- `verify` checks that every supplied signature, key, bundle and occurrence
+  names the exact claim/issuer/purpose. Missing recursively referenced evidence
+  fails hard and stores no status. Complete evidence with an unselected root is
+  `pending-authority`; malformed or unauthorized evidence is `rejected` with a
+  stable reason.
+- Bundle construction rejects missing evidence and unrelated extra evidence.
+  Do not accept an open-ended bag of plausible certificates or keys.
+- `attest` requires an explicit issuer and a configured type definition with a
+  License. It never derives an issuer from `leute.me()` or the current instance
+  by default.
+- The service does not import or construct `LeuteModel` or
+  `TrustedKeysManager`.
+- If issuer credential material is supplied by an authenticated identity graph,
+  it enters through a narrow trust.core demand such as
+  `EffectiveIssuerKeyProvider`; the graph itself stays outside the service.
+- Public callable operations belong in one trust.core OperationRegistry domain;
+  in-process dependencies are ModuleRegistry supplies/demands.
+- `IssuerKeyLifecycleModule` must require the Assembly adapter, register it
+  before lifecycle initialization, and dispose the registration on init failure
+  and shutdown. Do not add manual application registration.
+- Return producer-owned provenance at authorship so the domain can persist it
+  immediately. Do not reconstruct issuer evidence later with a scan.
+
+- [ ] **Step 1: Port and test the Assembly ModuleRegistry wiring**
+
+Port the exact validated demand/supply path named above. Tests must prove that
+initialization fails without `CertificateAssemblyAdapter`, registration occurs
+before issuer-key lifecycle init, and the disposer runs on failure and
+shutdown. Preserve `PostStoreImportBatch` as a required ordering boundary.
+
+- [ ] **Step 2: Write failing facade tests**
+
+Cover:
+
+1. typed lookup requests exactly one object type;
+2. an unrelated certificate type is never read;
+3. a signature with a matching but unauthorized key is rejected;
+4. verified output contains exact claim, signature, signing-key, issuer-bundle,
+   root-selection/status and occurrence references;
+5. missing or conflicting issuer authority is distinguishable from invalid
+   signature;
+6. `evidence-time` and `current` verification produce distinct results when a
+   once-authorized key is no longer current;
+7. issuance refuses an omitted issuer;
+8. evidence that names a different claim is rejected;
+9. an unknown/unconfigured type is rejected rather than discovered by a scan;
+10. missing evidence fails hard without a partial status;
+11. unrelated extra evidence is rejected;
+12. no Leute/contact model is constructed.
+
+- [ ] **Step 3: Implement the facade from existing trust.core owners**
+
+Compose existing explicit signature verification and effective issuer-key
+evidence. Use the supplied Assembly adapter for applicable versioned evidence.
+Do not copy their algorithms or create a second issuer-key head.
+
+- [ ] **Step 4: Export and, where needed, supply the service**
+
+Export the service from `services/index.ts`. If a runtime-owned instance is
+required, add one ModuleRegistry supply and narrow demands for its
+storage/signing, `EffectiveIssuerKeyProvider` and Assembly adapter. Do not
+demand `LeuteModel` from the facade.
+
+- [ ] **Step 5: Run assembly.core and trust.core tests**
+
+Run from `/Users/gecko/src/one/packages/assembly.core`:
 
 ```bash
-git add packages/group.core package.json
-git commit -m "Check disclosure authority against stored certificates"
+pnpm test -- src/modules/AssemblyModule.test.ts
+pnpm build
+```
+
+Then from `/Users/gecko/src/one/packages/trust.core`:
+
+```bash
+pnpm test -- src/__tests__/issuer-key-lifecycle.test.ts src/services/TypedAttestationService.test.ts
+pnpm build
+```
+
+Then run `pnpm test` for the full trust.core suite. The package's actual scripts
+are `vitest run` and `tsc`; no guessed workspace command is needed.
+
+- [ ] **Step 6: Commit in the one repository**
+
+```bash
+git add packages/assembly.core packages/trust.core
+git commit -m "Consolidate exact attestation verification in trust core"
+```
+
+Do not continue to Task 4B until this public contract exists in the built
+sibling package. Rebuild the sibling package before consuming it from Projektor.
+
+#### Task 4B: Build the trust.projektor evidence reducer
+
+**Repository:** `/Users/gecko/src/projektor`
+
+The canonical trust architecture validates a three-object boundary: immutable
+bundle, receiver-local status and versioned effective projection. These are
+Projektor semantics, so `trust.projektor` owns them. `trust.core` supplies exact
+authorship/issuer-key verification; `group.core` supplies roster history.
+
+**Files:**
+- Create: `packages/trust.projektor/evidence.js`
+- Create: `packages/trust.projektor/membership-model.js`
+- Create: `packages/trust.projektor/issuance.js`
+- Create: `packages/trust.projektor/issuance.test.js`
+- Modify: `packages/trust.projektor/membership.js`
+- Modify: `packages/trust.projektor/@OneObjectInterfaces.d.ts`
+- Modify: `packages/trust.projektor/index.js`
+- Modify: `package.json`
+
+**Domain-owned ONE objects:**
+
+1. `GroupMembershipAttestationBundle` — immutable. It references one exact
+   `GroupMembershipCertificate`, detached `Signature`, signing `Keys`, the
+   complete issuer-key bundle set, purpose and authorship time. The bundle
+   rejects missing and unrelated extra evidence.
+2. `GroupMembershipBundleStatus` — versioned and receiver-local, stably
+   identified by `{receiver, bundle}`. It records `verified`,
+   `pending-authority` or `rejected`, a stable reason, and every exact trust.core
+   result/root/status hash used. Missing graph children fail import and do not
+   create a partial status.
+3. `EffectiveGroupMembership` — versioned and receiver-local, stably identified
+   by `{receiver, group, hashGroup, person, validFrom}`. It records
+   `current`, `non-current` or `conflicted`, the narrowest `validUntil`, the most
+   restrictive `mayReshare`, and exact source bundle/status versions.
+
+`GroupDisclosureCertificate` and its immutable
+`GroupDisclosureAttestationBundle` are also owned here. A disclosure bundle
+references its exact authorship evidence plus every membership bundle/status/
+effective-projection version that authorized it. A disclosure is historical
+evidence; it does not need a current effective projection of its own.
+
+Every interface and recipe uses branded ids conceptually:
+`referenceToId` for `Group`/`Person` and receiver identity, `referenceToObj` for
+exact claims, `HashGroup`, signatures, keys, bundles, statuses and projection
+versions. The JS implementation still validates every hash and fails fast.
+Ambient declarations place immutable claims/bundles in
+`OneUnversionedObjectInterfaces` and receiver-local statuses/projections in
+`OneVersionedObjectInterfaces`; `$type$`, `$version$`, optional fields and
+recipe order must agree exactly.
+
+**Interfaces:**
+
+- `issueMembership(attestations, params) -> {claimHash, bundleHash}`;
+- `importMembershipBundle(attestations, bundleHash) -> statusHash`;
+- `getEffectiveMembership({receiver, groupIdHash, hashGroup, person, validFrom})`;
+- `authorizeDisclosure({receiver, groupIdHash, hashGroup, sharer, atTime})`;
+- `discloseGroup({receiver, groupIdHash, hashGroup, recipient, sharer, atTime})`;
+- `verifyDisclosure(disclosureBundleHash, atTime)`.
+
+The reducer consumes committed bundle statuses and exact provider-change events.
+It does not re-enumerate all certificates during each authorization call, scan
+on startup, or rebuild provenance from current keys. Restart restores bounded
+state from the committed effective projection heads.
+
+**Admission rules:**
+
+1. Load `Group` by `groupIdHash` and require an explicit `owner`. Ownerless
+   legacy groups fail closed.
+2. Derive the expected issuer from `Group.owner`. No public operation accepts a
+   caller-selected group issuer.
+3. Find claims by exact type and the `group` reverse map, then find their bundle
+   roots through the bundle's exact `claim` reverse map. Bare claim/signature/key
+   support nodes are inert until the bundle root is selected.
+4. Require exact `group`, `hashGroup` and `person` equality before reduction.
+5. Verify each complete bundle through trust.core for purpose
+   `group-membership` and the named authority mode/time.
+6. Never combine different `{group, hashGroup, person, owner, validFrom}`
+   lineages. Within one lineage, the narrowest window and most restrictive
+   `mayReshare` win.
+7. Preserve competing authenticated heads as `conflicted`; arrival order never
+   chooses a winner.
+8. A disclosure names the exact `HashGroup` and complete authorizing projection
+   provenance. A valid detached signature alone is insufficient.
+
+The authority times are explicit: issuance requires the issuer key to be
+`current` at `assertedAt`; importing or re-verifying an existing membership
+bundle uses `evidence-time` at its authored time. Disclosure authorization then
+evaluates the membership projection and roster at the requested action time. It
+does not silently replace historical key authority with today's key state.
+
+**Reverse maps:**
+
+- membership claims: `new Set(["group"])`;
+- membership bundles: `new Set(["claim"])`;
+- bundle statuses: only the exact `bundle`/receiver-owner lookup fields used;
+- effective memberships: only their stable lookup refs;
+- disclosures/bundles: only the exact query refs used by verification.
+
+No wildcard reverse map or package-wide certificate enumeration is permitted.
+Export `ProjektorTrustRecipes` and `ProjektorTrustReverseMaps`; the runtime must
+compose the complete one.models defaults plus these aggregates before instance
+creation. Merge duplicate reverse-map entries by union, never last-write-wins.
+Also export `ProjektorTrustGraphTypes` as graph vocabulary only. It states which
+support types are reachable from Projektor bundle/projection roots; it does not
+choose recipients, create `Access`, or treat transport reachability as trust.
+
+- [ ] **Step 1: Write the claim/bundle/status/projection recipe tests**
+
+Test creator validation, ambient runtime registration, correct versioned versus
+unversioned storage, exact reference types and exact reverse-map properties.
+
+- [ ] **Step 2: Write the reducer contract test**
+
+Use a precise fake trust.core facade. Cover:
+
+- group A or roster H1 evidence cannot authorize group B or H2;
+- a cryptographically valid non-owner signer is rejected by Projektor policy;
+- rejected issuer-key authority cannot authorize;
+- incomplete graph stores no status;
+- complete evidence with an unselected root stores `pending-authority` and only
+  that exact status is re-driven when the root becomes selected;
+- expired/revoked lineages and any `mayReshare: false` deny;
+- different roster/renewal lineages remain independent;
+- authenticated conflicts remain conflicted;
+- support-node arrival is inert until bundle selection;
+- an existing selected-root handler is composed and runs before the Projektor
+  reducer, never replaced by generic `onImported` handling;
+- restart restores the effective head without a scan;
+- disclosure stores every exact source ref and bypass issuance is rejected.
+
+- [ ] **Step 3: Implement feed-forward issuance, import and reduction**
+
+Persist the bundle immediately from the exact authorship value returned by
+trust.core. Import the same immutable bundle through the same verifier used for
+remote evidence. Serialize updates per stable membership lineage, not through a
+global trust queue.
+
+- [ ] **Step 4: Register the recipes and runtime service**
+
+Supply a narrow `ProjektorTrustProvider` through ModuleRegistry if the Projektor
+runtime uses the module graph. Keep public operations in one canonical
+`trust.projektor` OperationRegistry domain.
+
+- [ ] **Step 5: Run focused and full Projektor tests**
+
+Run the membership and issuance tests, then `npm test`.
+
+- [ ] **Step 6: Commit in the Projektor repository**
+
+```bash
+git add packages/trust.projektor package.json
+git commit -m "Reduce Projektor group trust from exact evidence"
 ```
 
 ---
 
-### Task 5: End To End — Issue, Disclose, Revoke, Verify
+### Task 5: Cross-Package Acceptance Through trust.projektor
 
-The first task that exercises the whole system with the real modules against
-real storage. Everything before it tests one layer in isolation, and isolation is
-what let a revoked certificate keep authorizing until the combining rule was
-added by hand.
-
-This is the acceptance test for the design. If it passes, the two evaluation
-times work; if it fails, something earlier is wrong regardless of its own tests.
+This task proves the real boundary. It is not permission to bootstrap an
+application model graph inside `group.core` or `trust.projektor`.
 
 **Files:**
-- Create: `packages/group.core/end-to-end.test.js`
-- Modify: `package.json` (the `test` script)
-- Uses: `packages/group.core/test-instance.js` from Task 4
+- Create: `packages/trust.projektor/end-to-end.test.js`
+- Modify: `package.json`
 
-**Interfaces:**
-- Consumes: `startTestInstance` and `issueMembership`, `authorizeDisclosure`, `discloseGroup` (Task 4), `revokeMembershipCertificate` (Task 3), `rosterAsOf`, `mayAct` (Task 2).
-- Produces: nothing importable. This task's output is confidence.
-
-- [ ] **Step 1: Write the failing end-to-end test**
-
-Create `packages/group.core/end-to-end.test.js`. Use the instance and
-`LeuteModel` setup confirmed in Tasks 1 and 4:
-
-```js
-import assert from "node:assert/strict";
-import { getInstanceOwnerIdHash } from "../../../one/packages/one.core/lib/instance.js";
-import { storeUnversionedObject } from "../../../one/packages/one.core/lib/storage-unversioned-objects.js";
-import { storeVersionedObject } from "../../../one/packages/one.core/lib/storage-versioned-objects.js";
-import { startTestInstance } from "./test-instance.js";
-import {
-  GROUP_MEMBERSHIP_CERTIFICATE_TYPE,
-  authorizeDisclosure,
-  discloseGroup,
-  issueMembership,
-  mayAct,
-  revokeMembershipCertificate,
-  rosterAsOf,
-} from "./index.js";
-
-const DAY = 24 * 60 * 60 * 1000;
-const instance = await startTestInstance("e2e");
-const { trust } = instance;
-
-try {
-  const owner = getInstanceOwnerIdHash();
-
-  // --- 1. A group with one member.
-  const roster = await storeUnversionedObject({
-    $type$: "HashGroup",
-    person: new Set([owner]),
-  });
-  const group = await storeVersionedObject({
-    $type$: "Group",
-    name: "tragwerksplanung",
-    owner,
-    hashGroup: roster.hash,
-  });
-  const admitted = Date.now();
-
-  // --- 2. Issue a membership certificate carrying the re-share right.
-  const issued = await issueMembership(trust, {
-    group: group.idHash,
-    hashGroup: roster.hash,
-    person: owner,
-    mayReshare: true,
-    validFrom: admitted,
-    validUntil: admitted + 365 * DAY,
-  });
-  assert.ok(issued.certificate.hash, "the certificate is stored");
-  assert.ok(issued.signature.hash, "the certificate is signed as a separate object");
-
-  // --- 3. Disclose the exact roster under that certificate.
-  const disclosure = await discloseGroup(trust, {
-    groupIdHash: group.idHash,
-    hashGroup: roster.hash,
-    recipient: owner,
-    sharer: owner,
-    issuer: owner,
-    atTime: admitted + DAY,
-  });
-  assert.equal(
-    disclosure.certificate.obj.hashGroup,
-    roster.hash,
-    "the disclosure names the exact roster shown, not the group's later state",
-  );
-
-  // --- 4. Revoke: a second certificate ending the window now, plus a new
-  //        Group version without the member.
-  const revokedAt = admitted + 2 * DAY;
-  const revocation = revokeMembershipCertificate(issued.certificate.obj, {
-    revokedAt,
-    learnedAt: admitted + DAY,
-    reason: "Left the partner office",
-  });
-  // revokeMembershipCertificate returns certData; certify adds $type$ and license.
-  await trust.certify(GROUP_MEMBERSHIP_CERTIFICATE_TYPE, revocation);
-
-  const emptyRoster = await storeUnversionedObject({
-    $type$: "HashGroup",
-    person: new Set(),
-  });
-  await storeVersionedObject({
-    $type$: "Group",
-    name: "tragwerksplanung",
-    owner,
-    hashGroup: emptyRoster.hash,
-  });
-  const afterRevocation = Date.now();
-
-  // --- 5. Historical verification still succeeds.
-  assert.deepEqual(
-    await rosterAsOf(group.idHash, admitted + DAY),
-    [owner],
-    "the member was in the group before the removal, and still is in the record",
-  );
-  assert.equal(
-    disclosure.certificate.obj.hashGroup,
-    roster.hash,
-    "the disclosure still proves what it proved",
-  );
-
-  // --- 6. Present access fails.
-  assert.deepEqual(await rosterAsOf(group.idHash, afterRevocation), []);
-  assert.equal(
-    await mayAct({
-      groupIdHash: group.idHash,
-      subject: owner,
-      now: afterRevocation,
-      replicaAsOf: afterRevocation,
-      maxStalenessMs: 7 * DAY,
-    }),
-    false,
-  );
-
-  // --- 7. The superseded certificate does not keep authorizing. This is the
-  //        case that isolation testing missed.
-  await assert.rejects(
-    () =>
-      authorizeDisclosure(trust, {
-        groupIdHash: group.idHash,
-        sharer: owner,
-        issuer: owner,
-        atTime: afterRevocation,
-      }),
-    /not valid at/,
-    "revocation must bite even though the original certificate still exists",
-  );
-
-  // --- 8. And the revocation did not reach backwards.
-  const stillAuthorized = await authorizeDisclosure(trust, {
-    groupIdHash: group.idHash,
-    sharer: owner,
-    issuer: owner,
-    atTime: admitted + DAY,
-  });
-  assert.ok(
-    stillAuthorized.certificateHash,
-    "the disclosure made before revocation was validly authorized, and remains so",
-  );
-
-  console.log("group.core end-to-end test passed");
-} finally {
-  await instance.stop();
-}
-```
-
-- [ ] **Step 2: Run it**
-
-Run: `node ./packages/group.core/end-to-end.test.js`
-
-Expect failures, and treat each as a finding about the design rather than a
-detail to smooth over. In particular, step 7 failing means the combining rule is
-not reaching every consumer, and step 8 failing means something is evaluating the
-present when it should evaluate assertion time.
-
-Fix the module the failure points at, not the test — unless the test asserts
-something the spec does not require, in which case fix the test and note it.
-
-- [ ] **Step 3: Register the test in package.json**
-
-In `package.json`, append to the `test` script:
+**Test topology:**
 
 ```
- && node ./packages/group.core/end-to-end.test.js
+ONE.core storage and crypto
+          |
+trust.core typed attestation service
+          |
+trust.projektor evidence reducer
+          |
+group.core roster history
 ```
 
-Run: `npm test`
-Expected: all tests pass.
+Use the real trust.core service from Task 4A with deterministic test issuer
+authority established through trust.core's sanctioned issuer-key test fixtures.
+Do not construct `LeuteModel`, `TrustedKeysManager`, `ChannelManager`,
+`TopicModel` or `IoMManager`.
 
-- [ ] **Step 4: Commit**
+Initialize ONE once with the complete one.models recipe/reverse-map aggregates
+plus `ProjektorTrustRecipes`/`ProjektorTrustReverseMaps`. Supplying custom
+recipes replaces the MultiUser defaults, so the aggregate must be complete.
+This is explicit startup configuration, not wildcard discovery.
+
+The test must:
+
+1. create or load an owner-scoped `Group` through the owning GroupModel API;
+2. add a member and finish `saveAndLoad()`;
+3. issue and import a membership bundle for that exact `HashGroup`;
+4. prove its receiver-local status and effective projection, then authorize and
+   store a disclosure bundle of that same roster;
+5. remove the member through GroupModel and finish `saveAndLoad()`;
+6. issue the prospective revocation evidence;
+7. prove `rosterAsOf(before)` and evidence-time disclosure verification still
+   succeed;
+8. prove `isRosterMemberAt(now)` and new disclosure authorization fail;
+9. prove an alternate trusted signer cannot substitute for `Group.owner`;
+10. prove changing only the requested `hashGroup` fails.
+
+Use the real Assembly adapter and issuer-key provider wiring ported in Task 4A.
+If the facade itself cannot be initialized without an authenticated contact
+graph, treat that as a trust.core boundary defect and repair the narrow provider
+contract. Do not restore `new LeuteModel("wss://dummy")`.
+
+- [ ] **Step 1: Write the failing cross-package test**
+- [ ] **Step 2: Run it and fix the owning layer for each failure**
+- [ ] **Step 3: Register it in `package.json`**
+- [ ] **Step 4: Run `npm test`**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add packages/group.core package.json
-git commit -m "Prove issue, disclose, revoke and verify end to end"
+git add packages/group.core packages/trust.projektor package.json
+git commit -m "Prove Projektor trust through the core boundary"
 ```
+
+**Deferred runtime adapter test.** When Projektor owns an
+`AuthenticatedModelGraph`, add one integration test proving that the runtime
+supplies identity/key material to trust.core and supplies trust.core plus
+group.core to `trust.projektor`. That test belongs to the Projektor runtime, not
+to either product package.
 
 ---
 
@@ -1691,54 +1459,63 @@ This type keeps its `Project` prefix because it is the one thing here that is
 genuinely project-scoped.
 
 **Files:**
-- Create: `packages/group.core/grants.js`
-- Create: `packages/group.core/grants.test.js`
-- Modify: `packages/group.core/index.js`
+- Create: `packages/trust.projektor/project-access.js`
+- Create: `packages/trust.projektor/project-access.test.js`
+- Modify: `packages/trust.projektor/index.js`
+- Modify: `packages/trust.projektor/@OneObjectInterfaces.d.ts`
 - Modify: `package.json` (the `test` script)
 
 **Interfaces:**
 - Consumes: `rosterAsOf` from Task 2, `getObject` from one.core.
 - Produces:
   - `PROJECT_ACCESS_ASSERTION_TYPE`, `ProjectAccessLicense`, `ProjectAccessAssertionRecipe`
-  - `createProjectAccessAssertion({group, hashGroup, binding, record, projectId, grantedAt, licenseHash}) -> object`
+  - `createProjectAccessAssertionData({group, hashGroup, binding, record, projectId, grantedAt}) -> object` — certData only
   - `resolveGrantAudience(assertion, atTime) -> Promise<string[]>`
+
+This task only shapes the project-grant claim and resolves its group audience;
+it does not issue or admit a grant. When `trust.role`/an
+`EffectiveRoleProvider` is available, `trust.projektor` must add the claim's
+immutable bundle/status and retain the exact role projection alongside
+trust.core issuer-key evidence. Until then, a stored or signed assertion must
+not be reported as an authorized project grant. A valid signing key is not
+evidence of a project role.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `packages/group.core/grants.test.js`:
+Create `packages/trust.projektor/project-access.test.js`:
 
 ```js
 import assert from "node:assert/strict";
 import {
   PROJECT_ACCESS_ASSERTION_TYPE,
-  createProjectAccessAssertion,
+  ProjectAccessAssertionReverseMap,
+  createProjectAccessAssertionData,
 } from "./index.js";
 
 const FEB = Date.UTC(2026, 1, 1);
 const GROUP = "a".repeat(64);
 const ROSTER = "1".repeat(64);
-const LICENSE = "3".repeat(64);
 
-const living = createProjectAccessAssertion({
+const living = createProjectAccessAssertionData({
   group: GROUP,
   binding: "living",
   record: "record:lp3-kostenschaetzung",
   projectId: "demo-kita-2028",
   grantedAt: FEB,
-  licenseHash: LICENSE,
 });
-assert.equal(living.$type$, PROJECT_ACCESS_ASSERTION_TYPE);
+assert.equal("$type$" in living, false);
+assert.equal("license" in living, false);
+assert.equal("signature" in living, false);
 assert.equal(living.binding, "living");
 assert.equal(living.hashGroup, undefined, "a living grant pins no roster");
 
-const pinned = createProjectAccessAssertion({
+const pinned = createProjectAccessAssertionData({
   group: GROUP,
   hashGroup: ROSTER,
   binding: "pinned",
   record: "record:lp3-vergabeentscheidung",
   projectId: "demo-kita-2028",
   grantedAt: FEB,
-  licenseHash: LICENSE,
 });
 // The pinned audience is the HashGroup itself. There is no separate member list
 // that could disagree with it.
@@ -1747,45 +1524,46 @@ assert.equal("pinnedSubjects" in pinned, false);
 
 assert.throws(
   () =>
-    createProjectAccessAssertion({
+    createProjectAccessAssertionData({
       group: GROUP,
       binding: "pinned",
       record: "record:x",
       projectId: "demo-kita-2028",
       grantedAt: FEB,
-      licenseHash: LICENSE,
     }),
   /pinned grant requires hashGroup/,
 );
 
 assert.throws(
   () =>
-    createProjectAccessAssertion({
+    createProjectAccessAssertionData({
       group: GROUP,
       binding: "whatever",
       record: "record:x",
       projectId: "demo-kita-2028",
       grantedAt: FEB,
-      licenseHash: LICENSE,
     }),
   /binding must be "living" or "pinned"/,
 );
 
-console.log("group.core grant tests passed");
+assert.equal(ProjectAccessAssertionReverseMap[0], PROJECT_ACCESS_ASSERTION_TYPE);
+assert.deepEqual([...ProjectAccessAssertionReverseMap[1]], ["group"]);
+
+console.log("trust.projektor project-access tests passed");
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `node ./packages/group.core/grants.test.js`
-Expected: FAIL with `does not provide an export named 'createProjectAccessAssertion'`.
+Run: `node ./packages/trust.projektor/project-access.test.js`
+Expected: FAIL with `does not provide an export named 'createProjectAccessAssertionData'`.
 
 - [ ] **Step 3: Write the grants module**
 
-Create `packages/group.core/grants.js`:
+Create `packages/trust.projektor/project-access.js`:
 
 ```js
 import { getObject } from "../../../one/packages/one.core/lib/storage-unversioned-objects.js";
-import { rosterAsOf } from "./roster.js";
+import { rosterAsOf } from "../group.core/index.js";
 
 export const PROJECT_ACCESS_ASSERTION_TYPE = "ProjectAccessAssertion";
 
@@ -1820,6 +1598,11 @@ export const ProjectAccessAssertionRecipe = {
   ],
 };
 
+export const ProjectAccessAssertionReverseMap = [
+  PROJECT_ACCESS_ASSERTION_TYPE,
+  new Set(["group"]),
+];
+
 function requiredText(value, field) {
   if (typeof value !== "string" || value.trim() === "") {
     throw new Error(`ProjectAccessAssertion: ${field} is required`);
@@ -1827,14 +1610,13 @@ function requiredText(value, field) {
   return value.trim();
 }
 
-export function createProjectAccessAssertion({
+export function createProjectAccessAssertionData({
   group,
   hashGroup,
   binding,
   record,
   projectId,
   grantedAt,
-  licenseHash,
 } = {}) {
   if (binding !== "living" && binding !== "pinned") {
     throw new Error('ProjectAccessAssertion: binding must be "living" or "pinned"');
@@ -1847,13 +1629,11 @@ export function createProjectAccessAssertion({
   }
 
   const assertion = {
-    $type$: PROJECT_ACCESS_ASSERTION_TYPE,
     group: requiredText(group, "group"),
     binding,
     record: requiredText(record, "record"),
     projectId: requiredText(projectId, "projectId"),
     grantedAt,
-    license: requiredText(licenseHash, "licenseHash"),
   };
   if (binding === "pinned") {
     assertion.hashGroup = hashGroup;
@@ -1875,25 +1655,31 @@ export async function resolveGrantAudience(assertion, atTime) {
 
 - [ ] **Step 4: Export from the barrel**
 
-In `packages/group.core/index.js`, add `export * from "./grants.js";`, add
-`ProjectAccessAssertionRecipe` to `GroupCoreRecipes`, and add
-`ProjectAccessAssertionReverseMap` to `GroupCoreReverseMaps`. Export that reverse
-map from `grants.js` as `[PROJECT_ACCESS_ASSERTION_TYPE, new Set(["*"])]`, and
-register `ProjectAccessLicense` for the type in `test-instance.js`.
+In `packages/trust.projektor/index.js`, add
+`export * from "./project-access.js";`, add
+`ProjectAccessAssertionRecipe` to `ProjektorTrustRecipes`, and add
+`ProjectAccessAssertionReverseMap` to `ProjektorTrustReverseMaps`. Export that
+reverse map from `project-access.js` as
+`[PROJECT_ACCESS_ASSERTION_TYPE, new Set(["group"])]`. Configure the Task 4
+trust.core service with the exact type, recipe, reverse-map property and
+`ProjectAccessLicense`; do not introduce a package-global certificate registry
+or wildcard lookup.
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `node ./packages/group.core/grants.test.js`
-Expected: PASS, prints `group.core grant tests passed`.
+Run: `node ./packages/trust.projektor/project-access.test.js`
+Expected: PASS, prints `trust.projektor project-access tests passed`.
 
 - [ ] **Step 6: Add the live audience case**
 
-Extend `packages/group.core/roster.test.js`: after the second Group version is
-stored, build one living and one pinned assertion over the first roster, and
+Extend `packages/trust.projektor/project-access.test.js` with a real group
+fixture: after the second Group version is stored, build one living and one
+pinned certData value over the first roster, wrap each as the typed stored shape
+that trust.core authors, and
 assert that `resolveGrantAudience` gives `[]` for the living grant at `afterV2`
 while the pinned grant still gives `[owner]`.
 
-Run: `node ./packages/group.core/roster.test.js`
+Run: `node ./packages/trust.projektor/project-access.test.js`
 Expected: PASS.
 
 - [ ] **Step 7: Register the test in package.json**
@@ -1901,7 +1687,7 @@ Expected: PASS.
 In `package.json`, append to the `test` script:
 
 ```
- && node ./packages/group.core/grants.test.js
+ && node ./packages/trust.projektor/project-access.test.js
 ```
 
 Run: `npm test`
@@ -1910,35 +1696,44 @@ Expected: all tests pass.
 - [ ] **Step 8: Commit**
 
 ```bash
-git add packages/group.core package.json
+git add packages/trust.projektor package.json
 git commit -m "Bind project access grants as living or pinned"
 ```
 
 ---
 
-### Task 7: Key Compromise Claims
+### Task 7: Projektor Evidence Dispute Claims
 
 **Files:**
-- Create: `packages/group.core/compromise.js`
-- Create: `packages/group.core/compromise.test.js`
-- Modify: `packages/group.core/index.js`
+- Create: `packages/trust.projektor/disputes.js`
+- Create: `packages/trust.projektor/disputes.test.js`
+- Modify: `packages/trust.projektor/index.js`
+- Modify: `packages/trust.projektor/@OneObjectInterfaces.d.ts`
 - Modify: `package.json` (the `test` script)
 
 **Interfaces:**
 - Produces:
-  - `KEY_COMPROMISE_CLAIM_TYPE`, `KeyCompromiseLicense`, `KeyCompromiseClaimRecipe`
-  - `createKeyCompromiseClaim({person, compromisedSince, claimedAt, reason, licenseHash}) -> object`
+  - `PROJEKTOR_EVIDENCE_DISPUTE_TYPE`, `ProjektorEvidenceDisputeLicense`, `ProjektorEvidenceDisputeRecipe`
+  - `createProjektorEvidenceDisputeData({person, compromisedSince, claimedAt, reason}) -> object` — certData only
   - `markDisputedAssertions(claim, assertions) -> Array<{assertion, disputed}>`, each input assertion `{person, assertedAt}`
+
+This is explicitly a Projektor-domain dispute signal, not a second issuer-key
+lifecycle. It never changes trust.core effective heads or rewrites historical
+issuer-key verification. trust.core proves authorship; `trust.projektor` may
+mark its own assertions disputed only after a future dispute-authority policy
+admits the issuer. This task defines the claim and pure presentation rule, not
+that missing authority policy.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `packages/group.core/compromise.test.js`:
+Create `packages/trust.projektor/disputes.test.js`:
 
 ```js
 import assert from "node:assert/strict";
 import {
-  KEY_COMPROMISE_CLAIM_TYPE,
-  createKeyCompromiseClaim,
+  PROJEKTOR_EVIDENCE_DISPUTE_TYPE,
+  ProjektorEvidenceDisputeReverseMap,
+  createProjektorEvidenceDisputeData,
   markDisputedAssertions,
 } from "./index.js";
 
@@ -1947,17 +1742,20 @@ const FEB = Date.UTC(2026, 1, 1);
 const MAR = Date.UTC(2026, 2, 1);
 const ANNA = "2".repeat(64);
 const BEN = "4".repeat(64);
-const LICENSE = "3".repeat(64);
 
-const claim = createKeyCompromiseClaim({
+const claimData = createProjektorEvidenceDisputeData({
   person: ANNA,
   compromisedSince: FEB,
   claimedAt: MAR,
   reason: "Laptop stolen, reported in March",
-  licenseHash: LICENSE,
 });
 
-assert.equal(claim.$type$, KEY_COMPROMISE_CLAIM_TYPE);
+assert.equal("$type$" in claimData, false);
+assert.equal("license" in claimData, false);
+assert.equal("signature" in claimData, false);
+const claim = {$type$: PROJEKTOR_EVIDENCE_DISPUTE_TYPE, ...claimData};
+
+assert.equal(claim.$type$, PROJEKTOR_EVIDENCE_DISPUTE_TYPE);
 assert.equal(claim.compromisedSince, FEB);
 // The claim never touches a validity window.
 assert.equal("validUntil" in claim, false);
@@ -1973,41 +1771,43 @@ assert.equal(marked[2].disputed, false, "a different person is unaffected");
 
 assert.throws(
   () =>
-    createKeyCompromiseClaim({
+    createProjektorEvidenceDisputeData({
       person: ANNA,
       compromisedSince: MAR,
       claimedAt: FEB,
       reason: "impossible",
-      licenseHash: LICENSE,
     }),
   /compromisedSince must not be after claimedAt/,
 );
 
-console.log("group.core compromise tests passed");
+assert.equal(ProjektorEvidenceDisputeReverseMap[0], PROJEKTOR_EVIDENCE_DISPUTE_TYPE);
+assert.deepEqual([...ProjektorEvidenceDisputeReverseMap[1]], ["person"]);
+
+console.log("trust.projektor dispute tests passed");
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `node ./packages/group.core/compromise.test.js`
-Expected: FAIL with `does not provide an export named 'createKeyCompromiseClaim'`.
+Run: `node ./packages/trust.projektor/disputes.test.js`
+Expected: FAIL with `does not provide an export named 'createProjektorEvidenceDisputeData'`.
 
-- [ ] **Step 3: Write the compromise module**
+- [ ] **Step 3: Write the dispute module**
 
-Create `packages/group.core/compromise.js`:
+Create `packages/trust.projektor/disputes.js`:
 
 ```js
-export const KEY_COMPROMISE_CLAIM_TYPE = "KeyCompromiseClaim";
+export const PROJEKTOR_EVIDENCE_DISPUTE_TYPE = "ProjektorEvidenceDispute";
 
-export const KeyCompromiseLicense = {
+export const ProjektorEvidenceDisputeLicense = {
   $type$: "License",
-  name: "KeyCompromise",
+  name: "ProjektorEvidenceDispute",
   description:
     "The [signature.issuer] claims that the keys of [person] were compromised from [compromisedSince], stated at [claimedAt]. This disputes assertions made by [person] in that window. It does not invalidate them and does not alter any certificate.",
 };
 
-export const KeyCompromiseClaimRecipe = {
+export const ProjektorEvidenceDisputeRecipe = {
   $type$: "Recipe",
-  name: KEY_COMPROMISE_CLAIM_TYPE,
+  name: PROJEKTOR_EVIDENCE_DISPUTE_TYPE,
   rule: [
     {
       itemprop: "person",
@@ -2023,51 +1823,51 @@ export const KeyCompromiseClaimRecipe = {
   ],
 };
 
+export const ProjektorEvidenceDisputeReverseMap = [
+  PROJEKTOR_EVIDENCE_DISPUTE_TYPE,
+  new Set(["person"]),
+];
+
 /**
- * States that a person's keys were compromised from an earlier time.
+ * Records a Projektor-domain assertion that a person's keys were compromised
+ * from an earlier time.
  *
  * This is how a retroactive trust change is expressed. It never rewrites a
  * certificate's validity window: assertions in the window become disputed so a
  * verifier can re-weigh them, rather than disappearing.
  */
-export function createKeyCompromiseClaim({
+export function createProjektorEvidenceDisputeData({
   person,
   compromisedSince,
   claimedAt,
   reason,
-  licenseHash,
 } = {}) {
   if (!Number.isFinite(compromisedSince)) {
-    throw new Error("KeyCompromiseClaim: compromisedSince is required");
+    throw new Error("ProjektorEvidenceDispute: compromisedSince is required");
   }
   if (!Number.isFinite(claimedAt)) {
-    throw new Error("KeyCompromiseClaim: claimedAt is required");
+    throw new Error("ProjektorEvidenceDispute: claimedAt is required");
   }
   if (compromisedSince > claimedAt) {
-    throw new Error("KeyCompromiseClaim: compromisedSince must not be after claimedAt");
+    throw new Error("ProjektorEvidenceDispute: compromisedSince must not be after claimedAt");
   }
   if (!person) {
-    throw new Error("KeyCompromiseClaim: person is required");
+    throw new Error("ProjektorEvidenceDispute: person is required");
   }
   if (typeof reason !== "string" || reason.trim() === "") {
-    throw new Error("KeyCompromiseClaim: reason is required");
-  }
-  if (!licenseHash) {
-    throw new Error("KeyCompromiseClaim: licenseHash is required");
+    throw new Error("ProjektorEvidenceDispute: reason is required");
   }
   return {
-    $type$: KEY_COMPROMISE_CLAIM_TYPE,
     person,
     compromisedSince,
     claimedAt,
     reason: reason.trim(),
-    license: licenseHash,
   };
 }
 
 export function markDisputedAssertions(claim, assertions) {
-  if (!claim || claim.$type$ !== KEY_COMPROMISE_CLAIM_TYPE) {
-    throw new Error("markDisputedAssertions: claim must be a KeyCompromiseClaim");
+  if (!claim || claim.$type$ !== PROJEKTOR_EVIDENCE_DISPUTE_TYPE) {
+    throw new Error("markDisputedAssertions: claim must be a ProjektorEvidenceDispute");
   }
   if (!Array.isArray(assertions)) {
     throw new Error("markDisputedAssertions: assertions must be an array");
@@ -2088,23 +1888,24 @@ export function markDisputedAssertions(claim, assertions) {
 
 - [ ] **Step 4: Export from the barrel**
 
-In `packages/group.core/index.js`, add `export * from "./compromise.js";`, add
-`KeyCompromiseClaimRecipe` to `GroupCoreRecipes`, and add
-`KeyCompromiseClaimReverseMap` to `GroupCoreReverseMaps`. Export that reverse map
-from `compromise.js` as `[KEY_COMPROMISE_CLAIM_TYPE, new Set(["*"])]`, and
-register `KeyCompromiseLicense` for the type in `test-instance.js`.
+In `packages/trust.projektor/index.js`, add `export * from "./disputes.js";`, add
+`ProjektorEvidenceDisputeRecipe` to `ProjektorTrustRecipes`, and add
+`ProjektorEvidenceDisputeReverseMap` to `ProjektorTrustReverseMaps`. Configure
+the Task 4 trust.core facade with the exact type, recipe, reverse-map property
+and `ProjektorEvidenceDisputeLicense`; do not add a wildcard lookup or local
+trust manager.
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `node ./packages/group.core/compromise.test.js`
-Expected: PASS, prints `group.core compromise tests passed`.
+Run: `node ./packages/trust.projektor/disputes.test.js`
+Expected: PASS, prints `trust.projektor dispute tests passed`.
 
 - [ ] **Step 6: Register the test in package.json**
 
 In `package.json`, append to the `test` script:
 
 ```
- && node ./packages/group.core/compromise.test.js
+ && node ./packages/trust.projektor/disputes.test.js
 ```
 
 Run: `npm test`
@@ -2113,8 +1914,8 @@ Expected: all tests pass.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add packages/group.core package.json
-git commit -m "Express retroactive key compromise as a separate claim"
+git add packages/trust.projektor package.json
+git commit -m "Express Projektor evidence disputes separately"
 ```
 
 ---
@@ -2123,18 +1924,20 @@ git commit -m "Express retroactive key compromise as a separate claim"
 
 **Files:**
 - Create: `packages/group.core/README.md`
+- Create: `packages/trust.projektor/README.md`
 - Modify: `README.md` (the `../one` Reuse Rule section)
 - Modify: `docs/superpowers/specs/2026-08-31-group-sharing-design.md`
 
-- [ ] **Step 1: Write the package README**
+- [ ] **Step 1: Write both package READMEs**
 
 Create `packages/group.core/README.md`:
 
 ````markdown
 # group.core
 
-The time-bounded evidence layer for group sharing. Everything structural is
-already in ONE.core and one.models; this package adds only what those lack.
+Structural group semantics over ONE.core `Group` and `HashGroup`: roster history,
+`rosterAsOf`, `isRosterMemberAt`, freshness and concurrent-version failure. This package
+does not issue or verify trust evidence.
 
 ## Reused, not rebuilt
 
@@ -2143,44 +1946,55 @@ already in ONE.core and one.models; this package adds only what those lack.
 | Group identity | `Group` — versioned, id `{name, owner}` | one.core |
 | The roster, and its pin | `HashGroup` — content-addressed member set | one.core |
 | Roster history and ordering | the `Group` version DAG | `getVersionsNodes` |
-| Signatures | `Signature` — its own object, never a field | one.models |
-| Certificate shape | claim + `License`, via `TrustedKeysManager.certify` | one.models |
-| Authority checks | `TrustedKeysManager.getCertificates` | one.models |
-| Access enforcement | `Access` links to `Group` | one.core |
+| Access enforcement | `Access` / `IdAccess` roots | one.core |
 
 `HashGroup`'s content hash *is* the roster pin. There is no snapshot type and no
 member list carried alongside a hash that could disagree with it.
-
-## What this package adds
-
-Time. No existing certificate carries a validity window.
-
-- `GroupMembershipCertificate` — issuer, pinned `HashGroup`, person, validity
-  window, and the re-share right.
-- `GroupDisclosureCertificate` — who was shown which roster, under which
-  membership certificate.
-- `ProjectAccessAssertion` — a group granted access to a project record, bound
-  living or pinned. The only project-scoped type here.
-- `KeyCompromiseClaim` — a retroactive trust change that disputes rather than
-  invalidates.
 
 ## Two questions, two functions
 
 ```js
 rosterAsOf(groupIdHash, atTime);
-mayAct({ groupIdHash, subject, now, replicaAsOf, maxStalenessMs });
+isRosterMemberAt({ groupIdHash, subject, atTime, replicaAsOf, maxStalenessMs });
 ```
 
-There is deliberately no `getMembers(group)`. `mayAct` throws `StaleChainError`
+There is deliberately no `getMembers(group)` or structural `mayAct`.
+`isRosterMemberAt` throws `StaleChainError`
 when the replica is older than the freshness policy allows, so a stale chain is
 never read as a deny. `rosterAsOf` throws `ConcurrentVersionsError` when the
 version in force at a time is genuinely ambiguous, rather than picking one.
 
-## Why a membership certificate cannot go stale
+There is no `LeuteModel`, `TrustedKeysManager`, certificate lookup or key
+verification dependency here.
+````
+
+Create `packages/trust.projektor/README.md`:
+
+````markdown
+# trust.projektor
+
+Projektor's semantic trust package. It consumes `group.core` roster history and
+the narrow `trust.core` facade.
+
+| Concern | Owner |
+|---|---|
+| Storage, hashes, recipes, access | one.core |
+| Identity/contact runtime and low-level signing machinery | one.models |
+| Assembly occurrences and causal authorship | assembly.core |
+| Typed authorship and issuer-key verification | trust.core |
+| Group/roster history | group.core |
+| Membership, disclosure, project-grant and dispute claim semantics | trust.projektor |
+
+`trust.projektor` owns the immutable domain bundle, receiver-local status and
+versioned effective projection. It retains exact claim, signature, `Keys`,
+issuer-key bundle, root/status and domain-policy evidence. It never reduces
+trust to a boolean or reconstructs provenance with a scan.
+
+## Why a membership claim cannot go stale
 
 It pins a `HashGroup`, so it proves "was in this roster", never "is in the group
 now". The authoritative present-tense record is the `Group` version DAG. An old
-certificate is not a security hole; it is a true statement about the past.
+membership claim is not a security hole; it is a true statement about the past.
 
 ## Revocation
 
@@ -2190,7 +2004,8 @@ even at the time the issuer learned of the trust change, which is recorded as
 destroy good-faith assertions made in the gap without discriminating between
 honest and hostile signatures in it.
 
-Revocation ends future sync. It does not retract delivered bytes.
+Revocation ends future authorization and sync. It does not retract delivered
+bytes.
 ````
 
 - [ ] **Step 2: Link the package from the root README**
@@ -2199,27 +2014,32 @@ In `README.md`, in the `../one` Reuse Rule section, add after the
 `@refinio/trust.core` bullet:
 
 ```markdown
-- `packages/group.core` for the time-bounded evidence layer over groups: it consumes ONE.core `Group`/`HashGroup` and one.models `Signature`/certificates rather than restating them, and adds only validity windows, the re-share right, disclosure records and compromise claims
+- `packages/group.core` for structural `Group`/`HashGroup` roster history and time-indexed membership queries
+- `packages/trust.projektor` for Projektor-owned membership, disclosure, project-grant and dispute claims plus their immutable bundles, receiver-local statuses and effective projections over trust.core evidence
 ```
 
-- [ ] **Step 3: Check the spec still matches**
+- [ ] **Step 3: Amend the spec to the implemented trust boundary**
 
-The spec was amended when this plan was written, so this is a consistency check
-rather than a rewrite. Confirm that every type name, function signature and rule
-in `docs/superpowers/specs/2026-08-31-group-sharing-design.md` matches what was
-actually built, and correct whichever document is wrong.
+Replace every direct `LeuteModel`/`TrustedKeysManager` dependency and every
+untyped certificate scan in the spec with the Task 4 trust.core service. Record
+the separation explicitly: trust.core owns typed lookup, authorship and
+issuer-key verification; group.core owns roster history; trust.projektor owns
+Projektor bundles/statuses/projections plus `Group.owner`, exact `HashGroup`,
+lineage and `mayReshare` admission. Then confirm every type name, function
+signature, reverse-map property and rule matches the code that was built.
 
 - [ ] **Step 4: Verify the full suite**
 
 Run: `npm test`
-Expected: all tests pass, including all seven `group.core` test files: spike,
-roster, certificates, issuance, end-to-end, grants, compromise.
+Expected: all tests pass, including group.core spike/roster tests and all
+trust.projektor membership, issuance, end-to-end, project-access and dispute
+tests.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/group.core/README.md README.md docs/superpowers/specs
-git commit -m "Document the group core package and align the spec"
+git add packages/group.core/README.md packages/trust.projektor/README.md README.md docs/superpowers/specs
+git commit -m "Document Projektor trust ownership and align the spec"
 ```
 
 ---
@@ -2235,12 +2055,18 @@ Out of scope here, and why:
 - **Disclosure record readership.** The spec defaults a disclosure to sharer and
   recipient only. Producing the record is here; restricting who receives it is
   `Access` wiring.
-- **Public group descriptor publication**, and its test that the descriptor is
-  readable while memberships are not. `Access` wiring.
-- **CHUM propagation.** The reverse maps that make `HashGroup` traversable by
-  person already exist; wiring sync is runtime integration.
+- **Public group descriptor publication.** The current `Group` recipe directly
+  references its `HashGroup`; ordinary recursive object traversal can therefore
+  reveal the roster when the Group is shared. `Access` wiring alone is not a
+  demonstrated privacy boundary. Supporting a public descriptor with a private
+  roster needs either a separate projection/type or a proven traversal filter,
+  followed by an integration test that the descriptor is readable while the
+  `HashGroup` and membership attestations are not.
+- **CHUM propagation.** Runtime integration must prove the intended evidence
+  graph is complete and that no private roster edge is pulled transitively. The
+  presence of reverse maps is lookup support, not a synchronization policy.
 - **Never-attested versus attested-but-expired issuers.** Belongs to the
-  organization attestation tier that `group.core` consumes.
+  institutional role tier whose effective provider `trust.projektor` consumes.
 - **Merge policy for concurrent Group versions.** `rosterAsOf` throws
   `ConcurrentVersionsError` rather than guessing. Deciding the merge rule needs
   the multi-writer story, which this prototype does not have yet.

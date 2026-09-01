@@ -1,9 +1,9 @@
 # Group Definitions, Access, And Disclosure Records
 
 Date: 2026-08-31
-Status: Design, approved for planning. Revised 2026-08-31 to build on the
-existing `Group` / `HashGroup` / `Signature` / certificate primitives rather
-than restate them; the reasoning is unchanged.
+Status: Implemented package boundary. Revised 2026-09-01 to use trust.core's
+typed-attestation and issuer-key lifecycle boundary and trust.projektor-owned
+bundle/status/effective projections.
 
 ## Problem
 
@@ -26,6 +26,48 @@ append-only, evaluated *as of assertion time*. This is the two-evaluation-times
 split of [MR-3](../../projektor-mrd.md), applied to sharing rather than to
 authority. Enumerating live Access objects to answer "who did I share this with"
 returns today's answer to a historical question.
+
+## Design Positions
+
+These are decided, not open. Several read as gaps until the reasoning is stated,
+so they are stated here.
+
+**The group's identity border is deliberate.** `owner` is part of `Group`'s
+`isId`, so an ownership change produces a different group rather than mutating
+one. That is the point: the id hash bounds a scope of knowledge under one
+issuing authority, and the boundary is visible rather than smeared. Continuity
+across the border is the application's responsibility, exactly as a conversation
+continuing across a new chat topic is. The trust layer does not span it.
+
+The consequence is a discipline: anything that links one scope to its successor
+is **app mechanics, not evidence**, and must be impossible to mistake for
+evidence.
+
+**Trust is always third-party, and time is no exception.** In a federated system
+trust comes from peer attestation, not from an authority and not from a clock.
+There is no trusted time source and there will not be one. What bounds a claimed
+time is other parties attesting near it: an assertion cannot be backdated past
+another party's attestation of a later state. `authoredAt` is a signed claim, and
+the causal graph — not the wall clock — is what orders events.
+
+**Erasure is answered by assembly sharing.** An `Assembly` carries its
+predecessors, so the last state is not the only shareable one; an intermediate
+state can be the valid one to share. Withholding is choosing which assembly to
+release, not deleting from an append-only chain. This controls onward disclosure,
+not copies already delivered — the same honest limit as revocation.
+
+**Absence of knowledge is all we have.** No negative is provable. The record
+shows what is known within a documented border, and its completeness claim is
+bounded by that border rather than universal.
+
+**Person and role are what is managed. Companies are represented by people.**
+There is no organization object. A firm appears as the people acting for it under
+a role, which is also what makes the accountable human visible in the record.
+
+**`ReleaseState` is app mechanics, not evidence.** It tracks what has actually
+been released so the application can manage assembly sharing. The disclosure
+certificate attests that a disclosure was made. They answer different questions
+and must not be merged: collapsed together, neither is trustworthy.
 
 ## Scope Decision: Groups Are Not Project-Scoped
 
@@ -69,8 +111,8 @@ thing to them: **time**. No existing certificate carries a validity window.
 | The roster, and its pin | `HashGroup` — unversioned, `{person: Set<referenceToId Person>}` | one.core |
 | Roster history and ordering | the `Group` version DAG (`depth`, `creationTime`, `prev`, merge nodes) | `getVersionsNodes` |
 | Signatures | `Signature` — `{issuer, data, signature}`, its own object | one.models |
-| Certificate shape | an unversioned claim plus a `License`, issued via `TrustedKeysManager.certify` | one.models |
-| Authority checks | `TrustedKeysManager.getCertificates` / `isCertifiedBy` | one.models |
+| Typed attestation | configured claim + `License`, exact detached signature and informed lookup | trust.core `TypedAttestationService` |
+| Issuer-key authority | exact issuer bundle, receiver-local root selection/status and current heads | trust.core issuer-key lifecycle |
 | Access enforcement | `Access` links to `Group` | one.core |
 
 `Group` carries `name` and `owner` and no project field — `owner` is the issuer
@@ -86,14 +128,19 @@ alongside it could disagree with it.
 
 | Object | Kind | Purpose |
 |---|---|---|
-| `GroupMembershipCertificate` | unversioned certificate | Issuer certifies that a person was in the pinned `HashGroup`, for a validity window, with or without `mayReshare`. |
+| `GroupMembershipCertificate` | unversioned certificate | Issuer certifies at signed `issuedAt` that a person was in the pinned `HashGroup`, for a validity window, with or without `mayReshare`. |
 | `GroupDisclosureCertificate` | unversioned certificate | Who was shown which `HashGroup`, at what time, under which membership certificate. |
 | `ProjectAccessAssertion` | unversioned certificate | A group granted access to a project record, bound living or pinned. The only project-scoped type here. |
-| `KeyCompromiseClaim` | unversioned certificate | A retroactive trust change that disputes assertions rather than invalidating them. |
+| `ProjektorEvidenceDispute` | unversioned certificate | A Projektor-domain retroactive signal that disputes assertions rather than invalidating them. |
+| membership/disclosure bundles | unversioned evidence roots | Exact claim, signature, Keys and issuer-key bundle provenance. |
+| membership status/effective projection | versioned receiver-local objects | Retains the verifier's decision and bounded authorization state without a startup scan. |
 
 Each carries a `License` whose text names the fields it relies on, following the
 one.models convention. None carries a `signature` field: signatures are separate
 `Signature` objects, and a recipe declaring one is rejected by the serializer.
+The immutable evidence bundle's `authoredAt` must equal the signed semantic time
+on its claim (`issuedAt` for membership, `disclosedAt` for disclosure), so a
+claim cannot be repackaged under a different historical trust view.
 
 **A membership certificate pins a `HashGroup`, so it proves "was in this roster",
 never "is in the group now".** The authoritative present-tense record is the
@@ -112,14 +159,59 @@ security hole — it is a true statement about the past.
 There is no separate member list anywhere. The pinned audience *is* the
 `HashGroup`, so no two fields can drift apart.
 
+## Roles And Organizations
+
+Roles are not designed here from scratch. `one.flexibel` has a working model,
+and Projektor's HOAI roles are the same shape with a different vocabulary.
+
+**What flexibel does** (`docs/plans/2026-02-10-trust-roles-design.md`,
+`one-experimental/packages/trust.core/src/recipes/`):
+
+- **Two orthogonal layers.** trust.core's base level (`me | trusted | low |
+  unknown | ignore`) governs transport, sync and ABAC. The application role
+  (`admin | studyCenter | doctor | therapist | patient`) governs capability.
+  Neither is derived from the other.
+- **`RoleConfig<R>`** makes trust.core generic over an app's role vocabulary: a
+  `rootRole` plus, per role, `canIssueRole`, `issuedBy` and `canSignIdentity`.
+  Who may *grant a role* and who may *vouch for an identity* are separate
+  permissions, which is a distinction Projektor's requirements do not yet make.
+- **`RoleCertificate`** — versioned, `isId: id`, carrying `subject`, `role`,
+  `issuedBy`, `issuerRole`, `issuedAt`, with a reverse map on both `subject` and
+  `issuedBy` so it is queryable from either end.
+- **`RoleCertChain`** bundles the whole root→leaf chain into one versioned
+  object, so a single CHUM import delivers everything needed to evaluate it — no
+  reverse-map queries, no retries, no arrival-order timing. Each entry enables
+  the next.
+- **The root is a ceremony, not a service.** The root keypair is generated
+  locally, the private key shown once and wiped, the public key published at a
+  well-known endpoint. Before publication the app runs in demo mode and the same
+  chain becomes production once the key is published.
+
+**How this maps.** Projektor's refinio → organization admin → user chain is
+flexibel's admin → studyCenter → practitioner with different names, and the HOAI
+roles are an app-defined `RoleConfig`. `RoleCertChain` is what makes MR-3's
+"chain verification must be local and repeatable — no network call" and MR-6's
+verification-without-adoption practical: the chain is one portable object.
+
+**What Projektor must add.** `RoleCertificate` carries `issuedAt` and nothing
+else temporal — no validity window — and no scope. MR-3 requires both: role
+authority is phase-scoped, and its validity window is what expires. This is the
+same gap as membership: the structure exists, time does not.
+
+**Organizations.** A study centre is a role held by a person, not an entity. The
+same applies to a Büro or a Bauamt: "which practice was accountable for LP3" is
+answered by who held the role at that time, under the two-evaluation-times rule.
+The role certificate is therefore where organizational accountability lives, and
+it needs the validity window for that answer to be time-correct.
+
 ## Two Functions, Never One
 
 ```
 rosterAsOf(groupIdHash, atTime)
   → evidence: who was in the group then
 
-mayAct({groupIdHash, subject, now, replicaAsOf, maxStalenessMs})
-  → access:   may this participant act now
+isRosterMemberAt({groupIdHash, subject, atTime, replicaAsOf, maxStalenessMs})
+  → fresh structural fact only; trust.projektor decides whether it authorizes
 ```
 
 There is deliberately no `getMembers(group)`. A caller must state which question
@@ -127,7 +219,7 @@ it is asking.
 
 Both read the `Group` version DAG, which is the ordering authority — not a
 timestamp field on the object. `rosterAsOf` selects the version in force at
-`atTime` and reads its `HashGroup`. `mayAct` evaluates the present under a
+`atTime` and reads its `HashGroup`. `isRosterMemberAt` evaluates the present under a
 stated freshness policy and throws `StaleChainError` when the local replica is
 older than the policy allows, so a stale chain can never be misread as an
 ordinary deny.
@@ -157,10 +249,11 @@ membership, without a member list becoming a published personal-data set.
 
 `mayReshare` on a membership certificate states whether that member may disclose
 the definition onward. A `GroupDisclosureCertificate` may only be issued after
-`TrustedKeysManager` confirms that the sharer holds a valid membership
-certificate **for that group**, issued by the stated issuer, carrying
-`mayReshare`, and valid at the disclosure time. "Shared by individuals" is a
-granted capability, not an assumption.
+trust.core verifies the exact membership authorship and issuer-key bundle, and
+trust.projektor separately proves that the signer is `Group.owner`, the claim
+names the exact `HashGroup`, the sharer is in that roster at action time, and
+the effective membership is valid and carries `mayReshare`. "Shared by
+individuals" is a granted capability, not an assumption.
 
 Authority is read from stored certificates, never from a signature checked
 against a key the caller supplied — verifying a signature against a key someone
@@ -232,7 +325,7 @@ Three timestamps, one validity rule:
 |---|---|---|
 | `validUntil` = `revokedAt` | the revoking certificate | The only input. Never earlier than issuance. |
 | `learnedAt` | the revoking certificate | None. Audit metadata: response latency is visible instead of hidden inside a rewritten window. |
-| `compromisedSince` | a separate `KeyCompromiseClaim` | None. Marks assertions in the window **disputed**, never invalid. |
+| `compromisedSince` | a separate `ProjektorEvidenceDispute` | None. Marks assertions in the window **disputed**, never invalid. |
 
 A genuine "this key was compromised as of last Tuesday" is therefore a separate
 signed claim, not a `validUntil` rewrite. It flags the affected assertions so a
@@ -243,19 +336,14 @@ bad. Backdating cannot make that distinction; a claim can.
 Leistungsphase 3 is a future `validUntil` set at issuance — a bounded
 certificate, needing none of the above.
 
-### Two lessons from trust.core, which is not the reuse target
+### trust.core is the attestation boundary, not the domain reducer
 
-`trust.core` solves certificate versioning for a different shape of certificate,
-and two of its behaviours must not be carried across:
-
-1. **It backdates on revocation.** `revokeCertificate` sets `validUntil` to
-   `now - 24h`, which is the retroactive-destruction outcome MR-3's rationale
-   calls indefensible.
-2. **`isRevoked(cert)` takes no `atTime`** and reads only the latest version. It
-   is a correct access-control check and a wrong evidence check: it structurally
-   cannot answer "was this valid then", and it conflates expiry with revocation,
-   which MR-3 requires be kept distinct. `rosterAsOf` and `mayAct` replace it and
-   neither delegates to it.
+trust.core is reused for configured typed claim storage, exact detached-signature
+verification and issuer-key lifecycle provenance. It deliberately does not own
+Projektor membership windows, bundle/status schemas, roster admission or the
+`mayReshare` rule. Those remain in trust.projektor, which can ask for
+`evidence-time` authority at authorship and separately evaluate structural
+membership at the later action time.
 
 ## Disclosure Record Readership And Bundles
 
@@ -279,12 +367,12 @@ Standalone `node` test scripts using `node:assert/strict`, registered in the
 are those that catch the conflation:
 
 - A member removed today is still in `rosterAsOf` for a time before the removal,
-  while `mayAct` now denies them.
+  while present-time structural membership and trust.projektor authorization deny them.
 - `rosterAsOf` reads the `Group` version in force at the evaluated time, so a
   later version never reaches back into an earlier answer.
 - Concurrent unmerged versions raise `ConcurrentVersionsError` rather than
   resolving to whichever the storage happened to return first.
-- `mayAct` throws `StaleChainError` when the replica is staler than the policy.
+- `isRosterMemberAt` throws `StaleChainError` when the replica is staler than the policy.
 - A revoking certificate narrows the effective window; the original certificate
   alongside it does **not** keep the membership alive.
 - No certificate can widen a window another certificate narrowed.
@@ -293,7 +381,7 @@ are those that catch the conflation:
 - A certificate for group A does not authorize disclosure of group B, and one
   belonging to another person, from another issuer, expired, or lacking
   `mayReshare` each fail closed.
-- A `KeyCompromiseClaim` marks assertions in its window disputed while leaving
+- A `ProjektorEvidenceDispute` marks assertions in its window disputed while leaving
   them verifiable, and alters no certificate.
 - A living grant admits a later-added member; a pinned grant does not.
 - A `HashGroup` hash changes with membership, so a pinned grant cannot drift.
@@ -306,8 +394,48 @@ same way a role is. If glue instead sits at a different tier of the
 refinio → organization admin → user chain, the issuer authority rules here need
 revisiting; nothing else in this design changes.
 
+## Open Items
+
+Not gaps in the reasoning — consequences of it that are not yet handled.
+
+**Time confidence is not represented.** Peer attestation is what bounds a
+claimed time, but it yields a gradient rather than a fact: an assertion witnessed
+by several independent parties soon after it was made is stronger evidence than
+one nobody attested near-in-time, and nothing in the record distinguishes them.
+MR-3 already tiers *authorship* this way — unauthenticated local claim versus
+contractual assertion — and there is no equivalent for time. The sharp edge is
+the 30-day offline design floor: a disconnected participant has no peers to
+witness anything, so time claims are weakest exactly where the product promises
+most, and nothing records that they were weak when made. A verifier years later
+cannot tell a well-witnessed timestamp from a lone one.
+
+**Assembly boundaries are a data-protection decision.** If withholding is done
+by choosing which assembly to share, then what sits inside one assembly
+determines what can be withheld separately. Personal data sharing an assembly
+with data that must be retained cannot be withheld without withholding both.
+This is a constraint on how authors cut assemblies, it is not written down
+anywhere as guidance, and it cannot be corrected afterwards — re-cutting breaks
+every hash that references the assembly.
+
+**The continuity link must be structurally non-evidence.** Given the identity
+border, applications will record that one group succeeded another. Stored
+alongside attestations, such a link will be read as attested, and it will be
+read that way by an auditor at the moment it matters most. It needs the same
+clean separation already drawn between `ReleaseState` and the disclosure
+certificate; otherwise something informal spans the border and looks official,
+which is worse than no link at all.
+
+**Roles are not built.** `packages/trust.projektor` has no role and no relation
+type. Until roles exist with validity windows, organizational accountability is
+inferable from who signed but not attested, and the phase-scoped authority MR-3
+requires has nowhere to live.
+
 ## Out Of Scope
 
 - Cross-organization identity federation (MR-3 defers it).
 - Nested groups. A membership subject is an identity, not a group.
 - Any mutable deny list, revocation list, or online revocation endpoint.
+- Any organization object. Firms are people holding roles.
+- Any trusted clock or time authority. Time is bounded by peer attestation.
+- Group ownership transfer. An ownership change is a new scope by design, and
+  linking scopes is application work.
