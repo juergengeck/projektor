@@ -519,6 +519,36 @@ gap. What the data model must reflect is what the key material actually proves:
 - **M** Promotion of a local claim to a contractual assertion is an explicit,
   separately signed act. The original claim remains in the record; promotion
   does not rewrite its authorship or its time.
+
+**Promotion is two operations, and they must not share one.** Promoting a draft
+you know you wrote upgrades the evidence for an act whose authorship was never
+in question — the lower tier described key custody, not doubt about who acted.
+Promoting an act an instance performed with custody but without you establishes
+authorship that was never established at all. The second is a new first-person
+claim, not a re-affirmation, and giving it the ceremony built for the first lets
+an act nobody witnessed inherit weight it did not earn.
+
+- **M** An act attributed to a person that the person did not participate in
+  carries three states: **affirmed**, **repudiated**, or **neither**. Neither is
+  the default and must be readable from an exported bundle rather than inferred
+  from a missing field. That an act was never affirmed by the person it is
+  attributed to is a fact about the world, and more informative to a verifier
+  than any statement about vault configuration.
+- **M** Affirmation and repudiation are **one mechanism with opposite values** —
+  a later, participation-backed statement about an earlier custody act — so that
+  a verifier looks in one place. Repudiation is per-act and must not require
+  claiming a compromise window: a person may accept everything else from the
+  same period and reject one assertion.
+- **M** **Only the attributed person may affirm or repudiate.** Nobody promotes
+  on another's behalf. An organization admin able to upgrade acts attributed to
+  its users would be the custody-versus-authority violation one tier up. A third
+  party stating that someone acted is a **witness statement** — independently
+  valuable corroboration, never a change of tier.
+- **S** The interval between an act and its affirmation should be presentable to
+  a verifier. Both are timestamped and bounded by peer attestation, so the
+  evidence already exists: an affirmation made promptly and one made after a
+  dispute opens are not equivalent, and the difference should not have to be
+  reconstructed.
 - **M** A verifier must be able to tell the two apart from an exported bundle
   alone, without access to the producing system. An unauthenticated claim
   presented as though it were a contractual assertion is the single worst
@@ -953,7 +983,8 @@ specification and validation, tracked below as gates 1, 3, 5, and 7.
 |---|---|---|
 | 1 | Phase-to-authority mapping for HOAI LPH 1–9: which role certificate is canonical for which record class in which phase, and who issues at each transition | Any "shared project state" claim |
 | 2 | Divergence resolution **UX** for incompatible assertions. *Semantics are implemented* — `assembly.core` holds concurrent heads as explicit divergence, never merges silently, and materializes a deterministic Merge record only as the parent of an authored write. What remains is what a Projektleiter sees and does. | Any coordination claim |
-| 3 | Attribution-tier boundary specified: exactly which operations require a user-verifying authenticator, and how the tier is represented in the bundle. Scope is every way an instance can act with custody but without its person — an unprotected vault, a vault left unlocked, a session someone else is using, an automated or scheduled action — not the no-password path alone. Includes what re-establishes participation after custody was exercised without it. | Any evidentiary-weight claim; onboarding no-password flow |
+| 3 | Attribution-tier boundary specified: exactly which operations require a user-verifying authenticator, and how the tier is represented in the bundle. Scope is every way an instance can act with custody but without its person — an unprotected vault, a vault left unlocked, a session someone else is using, an automated or scheduled action — not the no-password path alone. | Any evidentiary-weight claim; onboarding no-password flow |
+| 18 | Whether **pre-authorized custody** is a third tier. A scheduled or agent action is custody by design, authorized in advance: participation-backed, but not per act. It is stronger than an unlocked vault and weaker than a person signing, so MR-3's two classes overstate or understate it either way. Cheap to settle now — `ProjectAIRun` is not in the packaged cores or the signed path — and awkward once agents sign. | Any evidentiary-weight claim covering automated or AI-produced assertions |
 | 4 | Recovery ceremonies for key loss and rotation that preserve prior evidence | Any long-term evidence claim |
 | 5 | Per-leaf key management for crypto-shredding: key derivation, where shred keys live, and how shredding propagates to already-shared replicas | Any erasure or compliance claim |
 | 6 | What a peer learns from sync **metadata** alone. *Transport exists* (`sync.core`, CHUM); this gate is the privacy analysis over it, not the transport itself. | Any confidentiality claim |
