@@ -64,6 +64,40 @@ bounded by that border rather than universal.
 There is no organization object. A firm appears as the people acting for it under
 a role, which is also what makes the accountable human visible in the record.
 
+**Normative state is outbound, because authority is local. Trust is the
+exception.** An instance is the authority over its own state; what it writes is
+normative for it and flows outward. Trust runs the other way — it is state
+authored by others *about* the local instance, and cannot be self-generated.
+
+This is not a detail of the trust layer, it is what determines the mechanism.
+For outbound state, propagation is the job: you decided, others must learn it.
+For inbound state there is nothing to push, because you are the subject and not
+the author. Establishing trust on read is therefore forced by the direction of
+authority rather than chosen for convenience, and any design that pushes trust
+updates outward is pushing state it does not own.
+
+It also fixes the layering. A membership bundle is inbound and immutable —
+someone else's statement, not ours to alter. A verification status is our own
+authority applied to their claim, which is why it is receiver-local: sharing one
+would export a local evaluation as though it were normative about another party's
+identity. And it explains why access control needs a freshness policy while
+evidence does not — for outbound state staleness is the receiver's problem, but
+for inbound state it is ours, since we cannot author what we are missing and
+cannot tell from local evidence that it exists.
+
+**A group you do not own is the same exception.** The owner asserts the roster
+and members receive it, so membership is inbound normative state about the member
+and carries the same rules as trust: established on read, subject to a freshness
+policy, never locally authored. Trust and membership are one exception with two
+instances rather than two mechanisms that resemble each other. Anywhere else the
+local instance depends on externally authored state to decide about itself
+belongs in the same category.
+
+**The exception must not leak into self-attestation.** An instance authoring
+trust state about itself and treating it as normative collapses the model. The
+self-issued root is the single legitimate case, and it is legitimate because it
+is published and externally pinned — not because self-authorship is acceptable.
+
 **Certificates hold even when the chain of trust arrives later.** A signature is
 made over content by a key; whether that key is trusted is answered separately
 and can be answered afterwards. Work signed before attestation becomes verifiable
