@@ -343,6 +343,17 @@ maintaining a complete, locally verifiable chain. The issuing model is specified
 in the [admin.cube PRD](./projektor-admin-cube-prd.md); this section states the
 market requirements it must satisfy.
 
+**Two invariants govern this section. Nothing in the evidence record is ever
+retracted, only contradicted; and every decision is evaluated as of its relevant
+time, never as if made now.** A later certificate, compromise claim, withholding
+choice, affirmation, or repudiation adds evidence without deleting or rewriting
+what preceded it. Historical validity and reliance are evaluated against the
+evidence the deciding party held when it acted; present authority is evaluated
+against the sufficiently fresh evidence it holds now. Newly arriving evidence
+may change what that party decides next, but it does not reach back and replace a
+decision already made. Revocation, dispute, disclosure, attribution, and
+reliance are consequences of these invariants rather than separate exceptions.
+
 **The chain is refinio → organization admin → user.** Three tiers, one
 primitive: at every tier the subject generates and holds their own key pair, and
 the tier above issues an **attestation certifying the identity that holds those
