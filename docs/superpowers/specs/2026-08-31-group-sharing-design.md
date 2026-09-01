@@ -424,6 +424,15 @@ each* — not *this is who currently holds the data*.
 **Revocation ends future sync; it does not retract delivered bytes.** The
 interface must say "ends access going forward" and must never say "unshare."
 
+**Repudiation does not unmake reliance**, for the same reason. Both the
+repudiated act and the reliance on it stay in the record, and whether that
+reliance was reasonable is read from the tier the act carried when it was relied
+on. A repudiation that had not yet reached a party does not reach back into what
+they decided — the as-of-assertion-time rule applied to a third party, which is
+what makes acting on synced evidence safe at all. The interface must not call it
+withdrawal or cancellation: nothing is taken back, a contrary statement is
+added.
+
 ## Testing
 
 Standalone `node` test scripts using `node:assert/strict`, registered in the

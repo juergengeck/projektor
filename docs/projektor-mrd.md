@@ -544,6 +544,28 @@ an act nobody witnessed inherit weight it did not earn.
   its users would be the custody-versus-authority violation one tier up. A third
   party stating that someone acted is a **witness statement** — independently
   valuable corroboration, never a change of tier.
+**Repudiation does not unmake reliance.** It is the same limit as revocation
+ending future sync without retracting delivered bytes, and the same limit as a
+compromise claim disputing rather than invalidating. A repudiation is evidence
+that a dispute exists; it is not a determination of who is right, and this
+product records rather than adjudicates.
+
+- **M** Repudiation removes nothing from the record and reverses no decision
+  another party already made. Both the repudiated act and the reliance on it
+  remain visible, and a verifier sees a dispute rather than an absence.
+- **M** Whether reliance was reasonable is read from **the tier the act carried
+  at the time it was relied on**, which the bundle already states. A party that
+  acted on an unaffirmed custody act relied on something the record openly
+  marked as not participation-backed. A party that acted on a contractual
+  assertion did not, and that is a dispute between the parties rather than a
+  question the system answers.
+- **M** A repudiation that had not reached a party does not reach back into what
+  they decided. Reliance is evaluated against the evidence that party held at the
+  time — the as-of-assertion-time rule applied to a third party, and the
+  protection that makes acting on synced evidence safe at all.
+- **M** Product language must not present repudiation as withdrawal or
+  cancellation, for the same reason revocation must never be called unsharing.
+  Nothing is taken back; a contrary statement is added.
 - **S** The interval between an act and its affirmation should be presentable to
   a verifier. Both are timestamped and bounded by peer attestation, so the
   evidence already exists: an affirmation made promptly and one made after a
