@@ -430,6 +430,21 @@ This is a constraint on how authors cut assemblies, it is not written down
 anywhere as guidance, and it cannot be corrected afterwards — re-cutting breaks
 every hash that references the assembly.
 
+**Pending statuses are not reverse-mappable by what they await.** The trigger
+that re-evaluates a `pending-authority` decision is `sync.core`'s
+`SyncRule.onImported` on the chain-evidence types — arrival of the authority
+should find exactly the statuses waiting on it. But
+`GroupMembershipBundleStatus` is reverse-mapped on `bundle` and `receiver`, not
+on `requiredRootAuthority`, so arrival offers no path back and the trigger
+becomes a scan of every status.
+
+This is a decide-now item rather than a later fix. A reverse map can be enabled
+at runtime, but nothing backfills it: statuses written before it is enabled stay
+permanently unindexed, so exactly the bundles that waited longest become the ones
+the trigger cannot find. Use `onImportedAfterBatch` when registering the rule, so
+a chain arriving as several objects is evaluated once it is whole rather than
+repeatedly against a partial one.
+
 **The continuity link must be structurally non-evidence.** Given the identity
 border, applications will record that one group succeeded another. Stored
 alongside attestations, such a link will be read as attested, and it will be
