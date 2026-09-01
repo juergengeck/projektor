@@ -82,12 +82,16 @@ Time is the gap.
 
 ---
 
-### Task 1: Walking Skeleton — One End-To-End Slice
+### Task 1: API Spike — Settle The Runtime Contracts
 
-This task exists to settle contracts, not to produce reusable modules. It proves
-the whole loop against a live instance: create a group, sign it, admit a member,
-remove them, then show historical verification still succeeds while present
-access fails.
+This is a spike, not a slice of the product: it produces no reusable code and
+does not exercise the layer this package exists to add. Its only job is to find
+out what ONE.core and one.models actually do, by poking them directly — store a
+group and its roster, sign a version, store a second version, and read the
+version DAG back.
+
+The end-to-end proof of the real system is Task 5, once there is a real system
+to prove.
 
 **Everything after this task depends on what this test discovers.** The API
 shapes below are read from the `.d.ts` files but have not been executed. Where
@@ -101,7 +105,7 @@ Specifically unverified, to be confirmed on first run:
 - what `getVersionsNodes` returns, and in what order
 
 **Files:**
-- Create: `packages/group.core/skeleton.test.js`
+- Create: `packages/group.core/spike.test.js`
 - Modify: `package.json` (the `test` script)
 
 **Interfaces:**
@@ -110,7 +114,7 @@ Specifically unverified, to be confirmed on first run:
 
 - [ ] **Step 1: Write the end-to-end test**
 
-Create `packages/group.core/skeleton.test.js`:
+Create `packages/group.core/spike.test.js`:
 
 ```js
 import assert from "node:assert/strict";
@@ -136,9 +140,9 @@ let initialized = false;
 
 try {
   await initInstance({
-    name: "projektor-group-skeleton",
-    email: "projektor-group-skeleton@example.invalid",
-    secret: "projektor-group-skeleton-secret",
+    name: "projektor-group-spike",
+    email: "projektor-group-spike@example.invalid",
+    secret: "projektor-group-spike-secret",
     wipeStorage: true,
     encryptStorage: false,
     directory,
@@ -219,7 +223,7 @@ try {
   const historicSignatures = await getSignatures(groupV1.hash);
   assert.equal(historicSignatures.length, 1, "the earlier version is still signed");
 
-  console.log("group.core skeleton test passed");
+  console.log("group.core spike test passed");
 } finally {
   if (initialized) {
     closeInstance();
@@ -230,7 +234,7 @@ try {
 
 - [ ] **Step 2: Run it and record what the runtime actually does**
 
-Run: `node ./packages/group.core/skeleton.test.js`
+Run: `node ./packages/group.core/spike.test.js`
 
 This is expected to fail on the first run — that is the point. Fix the test to
 match the runtime, one failure at a time. Record each correction as a comment at
@@ -244,11 +248,11 @@ Do not proceed to Step 3 until the test passes and those four are written down.
 In `package.json`, append to the end of the `test` script value:
 
 ```
- && node ./packages/group.core/skeleton.test.js
+ && node ./packages/group.core/spike.test.js
 ```
 
 Run: `npm test`
-Expected: all existing tests pass, ending with `group.core skeleton test passed`.
+Expected: all existing tests pass, ending with `group.core spike test passed`.
 
 - [ ] **Step 4: Commit**
 
@@ -259,8 +263,8 @@ git commit -m "Prove the group sharing slice against a live instance"
 
 - [ ] **Step 5: Reconcile the rest of the plan**
 
-Re-read Tasks 2–7 against the confirmed contracts. Where a task's code uses an
-API shape the skeleton disproved, correct the task before starting it, and note
+Re-read Tasks 2–8 against the confirmed contracts. Where a task's code uses an
+API shape the spike disproved, correct the task before starting it, and note
 the correction in that task's commit message.
 
 ---
@@ -1299,7 +1303,226 @@ git commit -m "Check disclosure authority against stored certificates"
 
 ---
 
-### Task 5: Project Access Assertions, Living And Pinned
+### Task 5: End To End — Issue, Disclose, Revoke, Verify
+
+The first task that exercises the whole system with the real modules against
+real storage. Everything before it tests one layer in isolation, and isolation is
+what let a revoked certificate keep authorizing until the combining rule was
+added by hand.
+
+This is the acceptance test for the design. If it passes, the two evaluation
+times work; if it fails, something earlier is wrong regardless of its own tests.
+
+**Files:**
+- Create: `packages/group.core/end-to-end.test.js`
+- Modify: `package.json` (the `test` script)
+
+**Interfaces:**
+- Consumes: `issueMembership`, `authorizeDisclosure`, `discloseGroup` (Task 4), `revokeMembershipCertificate`, `effectiveMembershipWindow` (Task 3), `rosterAsOf`, `mayAct` (Task 2), a real `TrustedKeysManager` over a `LeuteModel`.
+- Produces: nothing importable. This task's output is confidence.
+
+- [ ] **Step 1: Write the failing end-to-end test**
+
+Create `packages/group.core/end-to-end.test.js`. Use the instance and
+`LeuteModel` setup confirmed in Tasks 1 and 4:
+
+```js
+import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import "../../../one/packages/one.core/lib/system/load-nodejs.js";
+import {
+  closeInstance,
+  initInstance,
+  getInstanceOwnerIdHash,
+} from "../../../one/packages/one.core/lib/instance.js";
+import { storeUnversionedObject } from "../../../one/packages/one.core/lib/storage-unversioned-objects.js";
+import { storeVersionedObject } from "../../../one/packages/one.core/lib/storage-versioned-objects.js";
+import {
+  GroupCoreRecipes,
+  authorizeDisclosure,
+  discloseGroup,
+  issueMembership,
+  mayAct,
+  revokeMembershipCertificate,
+  rosterAsOf,
+} from "./index.js";
+
+const directory = await mkdtemp(path.join(tmpdir(), "projektor-e2e-"));
+let initialized = false;
+const DAY = 24 * 60 * 60 * 1000;
+
+try {
+  await initInstance({
+    name: "projektor-group-e2e",
+    email: "projektor-group-e2e@example.invalid",
+    secret: "projektor-group-e2e-secret",
+    wipeStorage: true,
+    encryptStorage: false,
+    directory,
+    initialRecipes: GroupCoreRecipes,
+  });
+  initialized = true;
+
+  const owner = getInstanceOwnerIdHash();
+  const trust = await buildTrustedKeysManager(); // as confirmed in Task 4
+
+  // --- 1. A group with one member.
+  const roster = await storeUnversionedObject({
+    $type$: "HashGroup",
+    person: new Set([owner]),
+  });
+  const group = await storeVersionedObject({
+    $type$: "Group",
+    name: "tragwerksplanung",
+    owner,
+    hashGroup: roster.hash,
+  });
+  const admitted = Date.now();
+
+  // --- 2. Issue a membership certificate carrying the re-share right.
+  const issued = await issueMembership(trust, {
+    group: group.idHash,
+    hashGroup: roster.hash,
+    person: owner,
+    mayReshare: true,
+    validFrom: admitted,
+    validUntil: admitted + 365 * DAY,
+  });
+  assert.ok(issued.certificate.hash, "the certificate is stored");
+  assert.ok(issued.signature.hash, "the certificate is signed as a separate object");
+
+  // --- 3. Disclose the exact roster under that certificate.
+  const disclosure = await discloseGroup(trust, {
+    groupIdHash: group.idHash,
+    hashGroup: roster.hash,
+    recipient: owner,
+    sharer: owner,
+    issuer: owner,
+    atTime: admitted + DAY,
+  });
+  assert.equal(
+    disclosure.certificate.obj.hashGroup,
+    roster.hash,
+    "the disclosure names the exact roster shown, not the group's later state",
+  );
+
+  // --- 4. Revoke: a second certificate ending the window now, plus a new
+  //        Group version without the member.
+  const revokedAt = admitted + 2 * DAY;
+  const revocation = revokeMembershipCertificate(issued.certificate.obj, {
+    revokedAt,
+    learnedAt: admitted + DAY,
+    reason: "Left the partner office",
+  });
+  await trust.certify("GroupMembershipCertificate", revocation);
+
+  const emptyRoster = await storeUnversionedObject({
+    $type$: "HashGroup",
+    person: new Set(),
+  });
+  await storeVersionedObject({
+    $type$: "Group",
+    name: "tragwerksplanung",
+    owner,
+    hashGroup: emptyRoster.hash,
+  });
+  const afterRevocation = Date.now();
+
+  // --- 5. Historical verification still succeeds.
+  assert.deepEqual(
+    await rosterAsOf(group.idHash, admitted + DAY),
+    [owner],
+    "the member was in the group before the removal, and still is in the record",
+  );
+  assert.equal(
+    disclosure.certificate.obj.hashGroup,
+    roster.hash,
+    "the disclosure still proves what it proved",
+  );
+
+  // --- 6. Present access fails.
+  assert.deepEqual(await rosterAsOf(group.idHash, afterRevocation), []);
+  assert.equal(
+    await mayAct({
+      groupIdHash: group.idHash,
+      subject: owner,
+      now: afterRevocation,
+      replicaAsOf: afterRevocation,
+      maxStalenessMs: 7 * DAY,
+    }),
+    false,
+  );
+
+  // --- 7. The superseded certificate does not keep authorizing. This is the
+  //        case that isolation testing missed.
+  await assert.rejects(
+    () =>
+      authorizeDisclosure(trust, {
+        groupIdHash: group.idHash,
+        sharer: owner,
+        issuer: owner,
+        atTime: afterRevocation,
+      }),
+    /not valid at/,
+    "revocation must bite even though the original certificate still exists",
+  );
+
+  // --- 8. And the revocation did not reach backwards.
+  const stillAuthorized = await authorizeDisclosure(trust, {
+    groupIdHash: group.idHash,
+    sharer: owner,
+    issuer: owner,
+    atTime: admitted + DAY,
+  });
+  assert.ok(
+    stillAuthorized.certificateHash,
+    "the disclosure made before revocation was validly authorized, and remains so",
+  );
+
+  console.log("group.core end-to-end test passed");
+} finally {
+  if (initialized) {
+    closeInstance();
+  }
+  await rm(directory, { recursive: true, force: true });
+}
+```
+
+- [ ] **Step 2: Run it**
+
+Run: `node ./packages/group.core/end-to-end.test.js`
+
+Expect failures, and treat each as a finding about the design rather than a
+detail to smooth over. In particular, step 7 failing means the combining rule is
+not reaching every consumer, and step 8 failing means something is evaluating the
+present when it should evaluate assertion time.
+
+Fix the module the failure points at, not the test — unless the test asserts
+something the spec does not require, in which case fix the test and note it.
+
+- [ ] **Step 3: Register the test in package.json**
+
+In `package.json`, append to the `test` script:
+
+```
+ && node ./packages/group.core/end-to-end.test.js
+```
+
+Run: `npm test`
+Expected: all tests pass.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add packages/group.core package.json
+git commit -m "Prove issue, disclose, revoke and verify end to end"
+```
+
+---
+
+### Task 6: Project Access Assertions, Living And Pinned
 
 This type keeps its `Project` prefix because it is the one thing here that is
 genuinely project-scoped.
@@ -1527,7 +1750,7 @@ git commit -m "Bind project access grants as living or pinned"
 
 ---
 
-### Task 6: Key Compromise Claims
+### Task 7: Key Compromise Claims
 
 **Files:**
 - Create: `packages/group.core/compromise.js`
@@ -1727,7 +1950,7 @@ git commit -m "Express retroactive key compromise as a separate claim"
 
 ---
 
-### Task 7: Document The Package And Amend The Spec
+### Task 8: Document The Package And Amend The Spec
 
 **Files:**
 - Create: `packages/group.core/README.md`
@@ -1820,7 +2043,8 @@ actually built, and correct whichever document is wrong.
 - [ ] **Step 4: Verify the full suite**
 
 Run: `npm test`
-Expected: all tests pass, including all six `group.core` test files.
+Expected: all tests pass, including all seven `group.core` test files: spike,
+roster, certificates, issuance, end-to-end, grants, compromise.
 
 - [ ] **Step 5: Commit**
 
