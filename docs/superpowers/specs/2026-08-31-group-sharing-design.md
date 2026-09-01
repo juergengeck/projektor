@@ -65,9 +65,14 @@ There is no organization object. A firm appears as the people acting for it unde
 a role, which is also what makes the accountable human visible in the record.
 
 **Normative state is outbound, because authority is local. Trust is the
-exception.** An instance is the authority over its own state; what it writes is
-normative for it and flows outward. Trust runs the other way — it is state
-authored by others *about* the local instance, and cannot be self-generated.
+exception.** Authority is local to the **person**, not to the instance. An
+instance is a custodian: it holds keys, it does not own the identity, and
+signing is an act of the person that the instance mediates. From the instance's
+own position even its user is other.
+
+What a person authors is normative for them and flows outward. Trust runs the
+other way — state authored by others *about* them, which cannot be
+self-generated.
 
 This is not a detail of the trust layer, it is what determines the mechanism.
 For outbound state, propagation is the job: you decided, others must learn it.
@@ -93,10 +98,22 @@ instances rather than two mechanisms that resemble each other. Anywhere else the
 local instance depends on externally authored state to decide about itself
 belongs in the same category.
 
-**The exception must not leak into self-attestation.** An instance authoring
-trust state about itself and treating it as normative collapses the model. The
-self-issued root is the single legitimate case, and it is legitimate because it
-is published and externally pinned — not because self-authorship is acceptable.
+**The hazard is custody presented as authority, not self-attestation.** An
+instance cannot author identity state about itself — the author is always a
+person's key — so a self-issued root is ordinary authorship, and pinning makes it
+*verifiable by others* rather than legitimate. What must not happen is an
+instance acting with a person's key without the person's participation, and then
+that act carrying the weight of one the person made.
+
+MR-3's attribution tiering is exactly this boundary expressed as evidentiary
+weight: an unauthenticated local claim is custody alone from an unprotected
+vault; a contractual assertion requires the person to participate through a
+user-verifying authenticator. So is the rule that the local password is a vault
+credential and not a security boundary — custody, not authority.
+
+**Multi-instance is the same exception.** A person's second instance receives the
+first's state as inbound and establishes it on read like any other externally
+authored state. IoM is that path, and it is not a special case.
 
 **Certificates hold even when the chain of trust arrives later.** A signature is
 made over content by a key; whether that key is trusted is answered separately
