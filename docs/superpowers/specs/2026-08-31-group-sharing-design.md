@@ -430,20 +430,24 @@ This is a constraint on how authors cut assemblies, it is not written down
 anywhere as guidance, and it cannot be corrected afterwards — re-cutting breaks
 every hash that references the assembly.
 
-**Pending statuses are not reverse-mappable by what they await.** The trigger
-that re-evaluates a `pending-authority` decision is `sync.core`'s
-`SyncRule.onImported` on the chain-evidence types — arrival of the authority
-should find exactly the statuses waiting on it. But
-`GroupMembershipBundleStatus` is reverse-mapped on `bundle` and `receiver`, not
-on `requiredRootAuthority`, so arrival offers no path back and the trigger
-becomes a scan of every status.
+**A derived projection cannot be told apart from a stale one.** Evaluation
+re-derives forward — statuses are found by `{receiver, bundle}`, the projection
+rebuilds from its own `sourceBundles` — so arriving evidence never has to be
+traced backward to whatever was waiting on it. Chain evidence is established as
+current state by `sync.core`, and the next evaluation simply sees it.
 
-This is a decide-now item rather than a later fix. A reverse map can be enabled
-at runtime, but nothing backfills it: statuses written before it is enabled stay
-permanently unindexed, so exactly the bundles that waited longest become the ones
-the trigger cannot find. Use `onImportedAfterBatch` when registering the rule, so
-a chain arriving as several objects is evaluated once it is whole rather than
-repeatedly against a partial one.
+What is missing is a way to know whether a stored projection is still current.
+`getEffectiveMembership` reads the latest stored version rather than
+re-deriving, and the projection records only `evaluatedAt` — a self-asserted
+time, which with no trusted clock cannot answer the question. A reference to the
+established chain-state version the projection was derived against answers it in
+one comparison: equal, use it; different, re-derive.
+
+That stamp also makes lazy and pushed recomputation interchangeable rather than a
+choice to be made now. Lazy is correct by construction; pushing from `sync.core`
+becomes an optimization that cannot introduce staleness, because a reader
+arriving first would have seen the mismatch anyway. If it is pushed, the key is
+`receiver`, which `EffectiveGroupMembership` is already reverse-mapped on.
 
 **The continuity link must be structurally non-evidence.** Given the identity
 border, applications will record that one group succeeded another. Stored
