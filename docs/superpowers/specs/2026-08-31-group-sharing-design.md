@@ -430,24 +430,34 @@ This is a constraint on how authors cut assemblies, it is not written down
 anywhere as guidance, and it cannot be corrected afterwards — re-cutting breaks
 every hash that references the assembly.
 
-**A derived projection cannot be told apart from a stale one.** Evaluation
-re-derives forward — statuses are found by `{receiver, bundle}`, the projection
-rebuilds from its own `sourceBundles` — so arriving evidence never has to be
-traced backward to whatever was waiting on it. Chain evidence is established as
-current state by `sync.core`, and the next evaluation simply sees it.
+**Trust is established on read.** Evaluation re-derives forward from the object
+being evaluated — statuses are found by `{receiver, bundle}`, the projection
+rebuilds from its own `sourceBundles` — so nothing traces backward from arriving
+evidence to whatever was waiting on it. `sync.core` establishes new state;
+reading sees it.
 
-What is missing is a way to know whether a stored projection is still current.
-`getEffectiveMembership` reads the latest stored version rather than
-re-deriving, and the projection records only `evaluatedAt` — a self-asserted
-time, which with no trusted clock cannot answer the question. A reference to the
-established chain-state version the projection was derived against answers it in
-one comparison: equal, use it; different, re-derive.
+This is deliberately indifferent to *why* the state changed. A late-arriving
+chain and a revocation are the same event to a reader, which matters because they
+move in opposite directions: a trigger built to notice bundles becoming verified
+would never notice a membership being narrowed, and that is the direction where
+being wrong is a security failure rather than an inconvenience.
 
-That stamp also makes lazy and pushed recomputation interchangeable rather than a
-choice to be made now. Lazy is correct by construction; pushing from `sync.core`
-becomes an optimization that cannot introduce staleness, because a reader
-arriving first would have seen the mismatch anyway. If it is pushed, the key is
-`receiver`, which `EffectiveGroupMembership` is already reverse-mapped on.
+**The stored projection is a record, not an input.** `getEffectiveMembership`
+currently reads the latest stored version rather than re-deriving, which makes it
+a cache with an invalidation problem. It should re-derive, and the stored
+`EffectiveGroupMembership` should stand as an audit record of what was decided
+and when. The work is bounded by one lineage per person per group. Stamping the
+projection with the state it assumed is not sufficient in its place unless the
+stamp covers the whole dependency set — chain state, source bundles and statuses
+alike — since otherwise a membership change slips past a chain-state comparison.
+
+**Establishing on read is not freshness.** It yields the best answer derivable
+from the state held, and says nothing about whether enough state is held. A
+replica a month behind re-derives confidently and returns a membership revoked
+three weeks ago — correct from its own evidence, wrong in fact. That is the
+freshness policy's job, and the two must stay separate for the same reason the
+two evaluation times do: *what does my evidence say* and *am I entitled to decide
+on it* are different questions.
 
 **The continuity link must be structurally non-evidence.** Given the identity
 border, applications will record that one group succeeded another. Stored
