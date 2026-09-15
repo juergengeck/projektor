@@ -102,6 +102,20 @@ test("orders reach the customer they are for", async () => {
   assert.equal(view.availability.available, 8);
 });
 
+test("a customer self-purchase feeds the admitted order back to staff", async () => {
+  const id = "lab-order-customer-feedback";
+  const arrivals = ["admin", "manager", "seller"].map(key =>
+    feedUntil(host.clients[key], row => row.type === "AmwayOrder" && row.id === id, `${key} receives customer purchase`));
+  await host.clients.customer.call("amwayLab", "admitOrder", {
+    department: "demo-de", customer: host.persons.customer, offer: "lab-offer-1", quantity: 1, idempotencyKey: id,
+  });
+  const rows = await Promise.all(arrivals);
+  assert.equal(new Set(rows.map(row => row.hash)).size, 1, "staff receives the exact admitted version");
+  const manager = await host.clients.manager.call("amwayLab", "getDepartment", { department: "demo-de" });
+  assert.ok(manager.orders.some(entry => entry.idempotencyKey === id));
+  assert.equal(manager.availability.available, 7);
+});
+
 test("a paused worker catches up after resume", async () => {
   await host.clients.customer.call("amwayLab", "setOnline", { online: false });
   host.setSwitch("customer", false);

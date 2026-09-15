@@ -1,0 +1,1584 @@
+:root {
+  /* Amway Brand Colors */
+  --amway-surface: #FFFFFF;
+  --amway-surface-elevated: #FFFFFF;
+  --amway-surface-subtle: #F8F9FA;
+  --amway-surface-sunken: #F1F3F5;
+  --amway-neutral: #E9ECEF;
+  --amway-border: #DDE2E5;
+  --amway-border-subtle: #E9ECEF;
+  --amway-border-focus: #38539A;
+
+  --amway-ink: #212529;
+  --amway-ink-secondary: #495057;
+  --amway-muted: #6C757D;
+  --amway-subtle: #868E96;
+
+  --amway-accent: #38539A;
+  --amway-accent-hover: #2B4280;
+  --amway-accent-active: #213366;
+  --amway-accent-light: #EBF0FA;
+  --amway-accent-subtle: #F3F6FD;
+
+  /* Category Accents (from amway.de brand reference) */
+  --amway-nutrition: #546223;
+  --amway-nutrition-bg: #F2F5E8;
+  --amway-nutrition-border: #C8D6A5;
+
+  --amway-beauty: #7F3E3E;
+  --amway-beauty-bg: #FAF0F0;
+  --amway-beauty-border: #E8BFBF;
+
+  --amway-home: #396E75;
+  --amway-home-bg: #EDF7F8;
+  --amway-home-border: #BCD9DC;
+
+  /* Status Colors */
+  --amway-success: #1B7A43;
+  --amway-success-bg: #EAF8F0;
+  --amway-success-border: #B6E5C8;
+
+  --amway-warning: #B45309;
+  --amway-warning-bg: #FEF3C7;
+  --amway-warning-border: #FCD34D;
+
+  --amway-danger: #B91C1C;
+  --amway-danger-bg: #FEE2E2;
+  --amway-danger-border: #FCA5A5;
+
+  --amway-info: #1D4ED8;
+  --amway-info-bg: #EFF6FF;
+  --amway-info-border: #BFDBFE;
+
+  /* Elevation Shadows */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 8px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 10px 20px -3px rgba(0, 0, 0, 0.08), 0 4px 8px -4px rgba(0, 0, 0, 0.04);
+
+  /* Border Radii */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 9999px;
+
+  /* Transitions */
+  --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+
+  color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  --amway-surface: #121417;
+  --amway-surface-elevated: #1B1E24;
+  --amway-surface-subtle: #232730;
+  --amway-surface-sunken: #0C0E10;
+  --amway-neutral: #2D333F;
+  --amway-border: #333A48;
+  --amway-border-subtle: #262C38;
+  --amway-border-focus: #8BA3D9;
+
+  --amway-ink: #F1F3F5;
+  --amway-ink-secondary: #CED4DA;
+  --amway-muted: #9AA2B1;
+  --amway-subtle: #6C757D;
+
+  --amway-accent: #8BA3D9;
+  --amway-accent-hover: #A5BAE8;
+  --amway-accent-active: #C1D0F5;
+  --amway-accent-light: #1D2942;
+  --amway-accent-subtle: #162033;
+
+  --amway-nutrition: #98B845;
+  --amway-nutrition-bg: #222B13;
+  --amway-nutrition-border: #445422;
+
+  --amway-beauty: #D98888;
+  --amway-beauty-bg: #331A1A;
+  --amway-beauty-border: #633333;
+
+  --amway-home: #6BBCC7;
+  --amway-home-bg: #14282B;
+  --amway-home-border: #274D52;
+
+  --amway-success: #4ADE80;
+  --amway-success-bg: #0E2E18;
+  --amway-success-border: #1B5E32;
+
+  --amway-warning: #FBBF24;
+  --amway-warning-bg: #3B2A06;
+  --amway-warning-border: #78530B;
+
+  --amway-danger: #F87171;
+  --amway-danger-bg: #3D1212;
+  --amway-danger-border: #7F2222;
+
+  --amway-info: #60A5FA;
+  --amway-info-bg: #13274A;
+  --amway-info-border: #254F91;
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.45);
+  --shadow-md: 0 6px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 12px 24px rgba(0, 0, 0, 0.6);
+
+  color-scheme: dark;
+}
+
+/* Base Styles */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 15px;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--amway-surface-subtle);
+  color: var(--amway-ink);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header & Shell Navigation */
+.shell-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem;
+  padding: 0.65rem 1.5rem;
+  background: var(--amway-surface);
+  border-bottom: 1px solid var(--amway-border);
+  box-shadow: var(--shadow-xs);
+  backdrop-filter: blur(12px);
+  flex-wrap: wrap;
+}
+
+.brand-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  text-decoration: none;
+  color: inherit;
+}
+
+#brand-logo {
+  display: block;
+  height: 22px;
+  width: auto;
+  transition: transform var(--transition-fast);
+}
+
+html[data-theme="dark"] #brand-logo {
+  filter: invert(1) brightness(1.2);
+}
+
+.brand-badge {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: var(--amway-accent-light);
+  color: var(--amway-accent);
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--radius-xs);
+}
+
+#main-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+  overflow-x: auto;
+}
+
+#main-nav a {
+  color: var(--amway-ink-secondary);
+  text-decoration: none;
+  font-size: 0.88rem;
+  font-weight: 500;
+  padding: 0.45rem 0.75rem;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+#main-nav a:hover {
+  background: var(--amway-surface-sunken);
+  color: var(--amway-ink);
+}
+
+#main-nav a[aria-current="page"] {
+  background: var(--amway-accent);
+  color: #FFFFFF;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(56, 83, 154, 0.3);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.user-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--amway-muted);
+  background: var(--amway-surface-sunken);
+  border: 1px solid var(--amway-border-subtle);
+  padding: 0.3rem 0.65rem;
+  border-radius: var(--radius-pill);
+}
+
+.user-badge strong {
+  color: var(--amway-ink);
+  font-weight: 600;
+}
+
+/* Scope Banner (Department Context) */
+#scope-banner {
+  background: var(--amway-surface);
+  border-bottom: 1px solid var(--amway-border);
+  padding: 0.65rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  font-size: 0.88rem;
+}
+
+#scope-banner:empty {
+  display: none;
+}
+
+.scope-content {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.scope-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--amway-accent-light);
+  color: var(--amway-accent);
+  border: 1px solid rgba(56, 83, 154, 0.2);
+  padding: 0.3rem 0.75rem;
+  border-radius: var(--radius-pill);
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.scope-hint-text {
+  color: var(--amway-muted);
+}
+
+.scope-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.scope-quick-chips {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.scope-chip {
+  background: var(--amway-surface-sunken);
+  border: 1px solid var(--amway-border);
+  color: var(--amway-ink-secondary);
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.scope-chip:hover {
+  background: var(--amway-accent-light);
+  border-color: var(--amway-accent);
+  color: var(--amway-accent);
+}
+
+/* Alert / Toast Messages */
+#message {
+  margin: 1rem 1.5rem 0;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: var(--amway-danger-bg);
+  color: var(--amway-danger);
+  border: 1px solid var(--amway-danger-border);
+  animation: slideIn 0.2s ease-out;
+}
+
+#message:empty {
+  display: none;
+}
+
+#message.is-success {
+  background: var(--amway-success-bg);
+  color: var(--amway-success);
+  border-color: var(--amway-success-border);
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Main Container */
+main#screen {
+  flex: 1;
+  padding: 1.5rem;
+  max-width: 82rem;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* Page Headers */
+.page-header {
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.page-header h1 {
+  margin: 0 0 0.35rem;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--amway-ink);
+}
+
+.page-header p {
+  margin: 0;
+  color: var(--amway-muted);
+  font-size: 0.92rem;
+}
+
+.page-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Cards & Containers */
+.card {
+  background: var(--amway-surface);
+  border: 1px solid var(--amway-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xs);
+  padding: 1.25rem;
+  margin-bottom: 1.25rem;
+  transition: box-shadow var(--transition-normal);
+}
+
+.card:hover {
+  box-shadow: var(--shadow-sm);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--amway-border-subtle);
+}
+
+.card-header h2, .card-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--amway-ink);
+}
+
+.card-header p {
+  margin: 0.2rem 0 0;
+  font-size: 0.82rem;
+  color: var(--amway-muted);
+}
+
+/* KPI / Metrics Grid */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.metric-card {
+  background: var(--amway-surface);
+  border: 1px solid var(--amway-border);
+  border-radius: var(--radius-md);
+  padding: 1.1rem 1.25rem;
+  box-shadow: var(--shadow-xs);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.5rem;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.metric-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.metric-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--amway-accent);
+}
+
+.metric-card.accent-nutrition::before { background: var(--amway-nutrition); }
+.metric-card.accent-beauty::before { background: var(--amway-beauty); }
+.metric-card.accent-home::before { background: var(--amway-home); }
+.metric-card.accent-success::before { background: var(--amway-success); }
+.metric-card.accent-warning::before { background: var(--amway-warning); }
+
+.metric-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--amway-muted);
+}
+
+.metric-value {
+  font-size: 1.65rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--amway-ink);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.metric-sub {
+  font-size: 0.8rem;
+  color: var(--amway-muted);
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+/* Dashboard Grid Layout */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+/* Data Tables */
+.table-wrap {
+  background: var(--amway-surface);
+  border: 1px solid var(--amway-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xs);
+  overflow-x: auto;
+  margin-bottom: 1.5rem;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.88rem;
+}
+
+th {
+  background: var(--amway-surface-subtle);
+  color: var(--amway-muted);
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--amway-border);
+  white-space: nowrap;
+}
+
+td {
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--amway-border-subtle);
+  color: var(--amway-ink);
+  vertical-align: middle;
+}
+
+tbody tr:last-child td {
+  border-bottom: none;
+}
+
+tbody tr {
+  transition: background-color var(--transition-fast);
+}
+
+tbody tr:hover {
+  background-color: var(--amway-surface-subtle);
+}
+
+.num-col {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.code-cell {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.82rem;
+  color: var(--amway-ink-secondary);
+}
+
+/* Badges & Pills */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--radius-pill);
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.badge-success {
+  background: var(--amway-success-bg);
+  color: var(--amway-success);
+  border: 1px solid var(--amway-success-border);
+}
+
+.badge-warning {
+  background: var(--amway-warning-bg);
+  color: var(--amway-warning);
+  border: 1px solid var(--amway-warning-border);
+}
+
+.badge-danger {
+  background: var(--amway-danger-bg);
+  color: var(--amway-danger);
+  border: 1px solid var(--amway-danger-border);
+}
+
+.badge-info {
+  background: var(--amway-info-bg);
+  color: var(--amway-info);
+  border: 1px solid var(--amway-info-border);
+}
+
+.badge-neutral {
+  background: var(--amway-surface-sunken);
+  color: var(--amway-muted);
+  border: 1px solid var(--amway-border);
+}
+
+.badge-accent {
+  background: var(--amway-accent-light);
+  color: var(--amway-accent);
+  border: 1px solid rgba(56, 83, 154, 0.2);
+}
+
+/* Category Badges */
+.badge-category-nutrition {
+  background: var(--amway-nutrition-bg);
+  color: var(--amway-nutrition);
+  border: 1px solid var(--amway-nutrition-border);
+}
+
+.badge-category-beauty {
+  background: var(--amway-beauty-bg);
+  color: var(--amway-beauty);
+  border: 1px solid var(--amway-beauty-border);
+}
+
+.badge-category-home {
+  background: var(--amway-home-bg);
+  color: var(--amway-home);
+  border: 1px solid var(--amway-home-border);
+}
+
+/* Form Controls & Inputs */
+input, select, textarea {
+  font-family: inherit;
+  font-size: 0.88rem;
+  color: var(--amway-ink);
+  background-color: var(--amway-surface);
+  border: 1px solid var(--amway-border);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.75rem;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  outline: none;
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: var(--amway-border-focus);
+  box-shadow: 0 0 0 3px var(--amway-accent-light);
+}
+
+label {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--amway-ink-secondary);
+}
+
+.checkbox-label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--amway-ink-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 1.1rem;
+  height: 1.1rem;
+  cursor: pointer;
+  accent-color: var(--amway-accent);
+  margin: 0;
+  padding: 0;
+}
+
+/* Buttons */
+button {
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  transition: all var(--transition-fast);
+  text-decoration: none;
+  background: var(--amway-accent);
+  color: #FFFFFF;
+}
+
+button:hover {
+  background: var(--amway-accent-hover);
+  box-shadow: var(--shadow-xs);
+}
+
+button:active {
+  background: var(--amway-accent-active);
+  transform: scale(0.98);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+button.secondary {
+  background: var(--amway-surface);
+  color: var(--amway-ink);
+  border-color: var(--amway-border);
+}
+
+button.secondary:hover {
+  background: var(--amway-surface-sunken);
+  border-color: var(--amway-ink-secondary);
+}
+
+button.danger {
+  background: var(--amway-danger-bg);
+  color: var(--amway-danger);
+  border-color: var(--amway-danger-border);
+}
+
+button.danger:hover {
+  background: var(--amway-danger);
+  color: #FFFFFF;
+}
+
+button.sm {
+  padding: 0.25rem 0.6rem;
+  font-size: 0.78rem;
+}
+
+/* Toolbar & Filter Bar */
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.search-box {
+  position: relative;
+  flex: 1;
+  min-width: 220px;
+  max-width: 380px;
+}
+
+.search-box input {
+  width: 100%;
+  padding-left: 2rem;
+}
+
+.search-icon {
+  position: absolute;
+  left: 0.65rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--amway-muted);
+  pointer-events: none;
+  font-size: 0.85rem;
+}
+
+.filter-chips {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.filter-chip {
+  background: var(--amway-surface);
+  border: 1px solid var(--amway-border);
+  color: var(--amway-ink-secondary);
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 0.3rem 0.65rem;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.filter-chip:hover {
+  background: var(--amway-surface-sunken);
+}
+
+.filter-chip.active {
+  background: var(--amway-accent);
+  color: #FFFFFF;
+  border-color: var(--amway-accent);
+}
+
+/* Auth / Sign In Screen */
+.auth-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(80vh - 120px);
+  padding: 2rem 1rem;
+}
+
+.auth-card {
+  background: var(--amway-surface);
+  border: 1px solid var(--amway-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 2.25rem;
+  width: 100%;
+  max-width: 26rem;
+  text-align: left;
+}
+
+.auth-header {
+  text-align: center;
+  margin-bottom: 1.75rem;
+}
+
+.auth-header img {
+  height: 28px;
+  width: auto;
+  margin-bottom: 1rem;
+}
+
+html[data-theme="dark"] .auth-header img {
+  filter: invert(1) brightness(1.2);
+}
+
+.auth-header h1 {
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin: 0 0 0.4rem;
+  color: var(--amway-ink);
+}
+
+.auth-header p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--amway-muted);
+}
+
+.auth-card form {
+  display: grid;
+  gap: 1.1rem;
+}
+
+.auth-card button[type="submit"] {
+  width: 100%;
+  padding: 0.65rem;
+  font-size: 0.95rem;
+  margin-top: 0.5rem;
+}
+
+.auth-footer {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--amway-border-subtle);
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--amway-muted);
+}
+
+/* Journal Feed & Inspector Layout */
+.journal-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.journal-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.journal-timeline-item {
+  margin: 0;
+  padding: 0;
+}
+
+.journal-event-button {
+  width: 100%;
+  text-align: left;
+  background: var(--amway-surface);
+  border: 1px solid var(--amway-border);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  color: var(--amway-ink);
+  transition: all var(--transition-fast);
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.journal-event-button:hover {
+  background: var(--amway-surface-subtle);
+  border-color: var(--amway-border-focus);
+  transform: translateX(2px);
+}
+
+.journal-event-button.is-active {
+  border-color: var(--amway-accent);
+  background: var(--amway-accent-light);
+  box-shadow: var(--shadow-sm);
+}
+
+.journal-event-button.is-active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--amway-accent);
+}
+
+.journal-event-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--amway-ink);
+}
+
+.journal-event-meta {
+  font-size: 0.78rem;
+  color: var(--amway-muted);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.journal-inspector {
+  position: sticky;
+  top: 5rem;
+  background: var(--amway-surface);
+  border: 1px solid var(--amway-border);
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+  box-shadow: var(--shadow-sm);
+}
+
+/* Settings Cards & Accordion */
+.settings-grid {
+  display: grid;
+  gap: 1rem;
+  max-width: 48rem;
+}
+
+.settings-card {
+  background: var(--amway-surface);
+  border: 1px solid var(--amway-border);
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+  box-shadow: var(--shadow-xs);
+  transition: box-shadow var(--transition-normal);
+}
+
+details.settings-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+details.settings-card > summary {
+  padding: 1.1rem 1.25rem;
+  font-weight: 600;
+  font-size: 0.98rem;
+  cursor: pointer;
+  user-select: none;
+  color: var(--amway-ink);
+  background: var(--amway-surface);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  list-style: none;
+  transition: background-color var(--transition-fast);
+}
+
+details.settings-card > summary::-webkit-details-marker {
+  display: none;
+}
+
+details.settings-card > summary::after {
+  content: "▾";
+  font-size: 0.9rem;
+  color: var(--amway-muted);
+  transition: transform var(--transition-fast);
+}
+
+details.settings-card[open] > summary::after {
+  transform: rotate(180deg);
+}
+
+details.settings-card > summary:hover {
+  background: var(--amway-surface-subtle);
+}
+
+.settings-card-body {
+  padding: 1.25rem;
+  border-top: 1px solid var(--amway-border-subtle);
+  display: grid;
+  gap: 1rem;
+}
+
+/* Floating Settings Cog (Maintained for test parity & quick access) */
+#settings-cog {
+  position: fixed;
+  right: 1.5rem;
+  bottom: 1.5rem;
+  width: 3rem;
+  height: 3rem;
+  font-size: 1.35rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--amway-surface);
+  color: var(--amway-accent);
+  border: 1px solid var(--amway-border);
+  border-radius: 50%;
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  z-index: 90;
+  transition: all var(--transition-fast);
+}
+
+#settings-cog:hover {
+  transform: rotate(45deg) scale(1.08);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--amway-accent);
+}
+
+#settings-cog[aria-current="page"] {
+  background: var(--amway-accent);
+  color: #FFFFFF;
+  border-color: var(--amway-accent);
+}
+
+/* Empty & Unavailable States */
+.state-empty {
+  padding: 2.5rem 1.5rem;
+  text-align: center;
+  color: var(--amway-muted);
+  font-size: 0.9rem;
+  background: var(--amway-surface);
+  border: 1px dashed var(--amway-border);
+  border-radius: var(--radius-md);
+}
+
+.state-empty p {
+  margin: 0.5rem 0 0;
+}
+
+.state-unavailable {
+  border: 1px dashed var(--amway-accent);
+  background: var(--amway-accent-subtle);
+  padding: 1.5rem;
+  border-radius: var(--radius-md);
+  color: var(--amway-ink);
+}
+
+.state-denied {
+  border: 1px solid var(--amway-danger);
+  background: var(--amway-danger-bg);
+  padding: 1.5rem;
+  border-radius: var(--radius-md);
+  color: var(--amway-danger);
+}
+
+/* Form Groups & Inline Actions */
+.form-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.form-group {
+  display: grid;
+  gap: 0.35rem;
+  flex: 1;
+}
+
+.input-with-button {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.input-with-button input {
+  flex: 1;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 54rem) {
+  .shell-header {
+    padding: 0.6rem 1rem;
+    gap: 0.75rem;
+  }
+
+  main#screen {
+    padding: 1rem;
+  }
+
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .journal-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .journal-inspector {
+    position: static;
+  }
+}
+
+/* ==========================================================================
+   Amway Multi-Instance Lab (4-Node CHUM Mesh)
+   ========================================================================== */
+
+.lab-container {
+  padding: 1rem 1.5rem 2rem;
+  max-width: 1750px;
+  margin: 0 auto;
+}
+
+.lab-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+  padding: 1rem 1.25rem;
+  background: var(--amway-surface);
+  border: 1px solid var(--amway-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+}
+
+.lab-title-group h1 {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--amway-ink);
+}
+
+.lab-subtitle {
+  margin: 0.25rem 0 0;
+  color: var(--amway-muted);
+  font-size: 0.85rem;
+}
+
+.lab-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.lab-mesh-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.85rem;
+  border-radius: var(--radius-pill);
+  background: var(--amway-surface-subtle);
+  border: 1px solid var(--amway-border);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--amway-ink-secondary);
+}
+
+.lab-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+@media (max-width: 1300px) {
+  .lab-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .lab-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.lab-column {
+  background: var(--amway-surface);
+  border: 1px solid var(--amway-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: border-color var(--transition-normal), box-shadow var(--transition-normal);
+}
+
+.lab-column:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--amway-border-focus);
+}
+
+.lab-column.lab-paused {
+  opacity: 0.88;
+  border-style: dashed;
+}
+
+/* Role Accent Top Bars */
+.lab-column-header {
+  padding: 1rem;
+  border-bottom: 1px solid var(--amway-border);
+  background: var(--amway-surface-elevated);
+  position: relative;
+}
+
+.lab-column-header::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+}
+
+.lab-role-admin .lab-column-header::before {
+  background: var(--amway-warning);
+}
+
+.lab-role-manager .lab-column-header::before {
+  background: var(--amway-accent);
+}
+
+.lab-role-seller .lab-column-header::before {
+  background: var(--amway-info);
+}
+
+.lab-role-customer .lab-column-header::before {
+  background: var(--amway-success);
+}
+
+.lab-column-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.lab-role-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--amway-ink);
+}
+
+.lab-person-id {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--amway-surface-sunken);
+  padding: 0.35rem 0.6rem;
+  border-radius: var(--radius-sm);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.72rem;
+  color: var(--amway-ink-secondary);
+  margin-bottom: 0.5rem;
+  border: 1px solid var(--amway-border-subtle);
+}
+
+.lab-copy-btn {
+  background: transparent;
+  border: none;
+  padding: 0.15rem 0.35rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+  color: var(--amway-muted);
+  transition: all var(--transition-fast);
+}
+
+.lab-copy-btn:hover {
+  background: var(--amway-neutral);
+  color: var(--amway-ink);
+}
+
+.lab-role-tags {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.lab-column-body {
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.lab-metrics-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.35rem;
+  background: var(--amway-surface-subtle);
+  padding: 0.5rem 0.25rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--amway-border-subtle);
+  text-align: center;
+}
+
+.lab-metric-mini {
+  display: flex;
+  flex-direction: column;
+}
+
+.lab-metric-mini-val {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--amway-ink);
+}
+
+.lab-metric-mini-lbl {
+  font-size: 0.62rem;
+  color: var(--amway-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.lab-actions-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: var(--amway-surface-subtle);
+  padding: 0.65rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--amway-border-subtle);
+}
+
+.lab-action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.lab-action-buttons button {
+  font-size: 0.75rem;
+  padding: 0.35rem 0.65rem;
+  white-space: nowrap;
+}
+
+.lab-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.lab-section-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--amway-ink-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0;
+}
+
+.lab-items-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.lab-item-card {
+  padding: 0.5rem 0.65rem;
+  background: var(--amway-surface-subtle);
+  border: 1px solid var(--amway-border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.lab-item-card:hover {
+  background: var(--amway-surface-sunken);
+  border-color: var(--amway-border);
+}
+
+.lab-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  overflow: hidden;
+  flex: 1;
+}
+
+.lab-item-title {
+  font-weight: 600;
+  color: var(--amway-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lab-item-sub {
+  font-size: 0.72rem;
+  color: var(--amway-muted);
+}
+
+.lab-stock-meter {
+  background: var(--amway-surface-sunken);
+  border: 1px solid var(--amway-border);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.lab-stock-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.lab-stock-bar {
+  height: 6px;
+  background: var(--amway-neutral);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.lab-stock-fill {
+  height: 100%;
+  background: var(--amway-success);
+  border-radius: var(--radius-pill);
+  transition: width 0.4s ease;
+}
+
+.lab-fresh {
+  animation: lab-arrive 2.4s ease-out;
+}
+
+@keyframes lab-arrive {
+  0% {
+    background: var(--amway-warning-bg);
+    border-color: var(--amway-warning);
+    box-shadow: 0 0 12px rgba(180, 83, 9, 0.35);
+  }
+  100% {
+    background: var(--amway-surface-subtle);
+    border-color: var(--amway-border-subtle);
+    box-shadow: none;
+  }
+}
+
+.lab-pulse-online {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--amway-success);
+  margin-right: 5px;
+  box-shadow: 0 0 0 0 rgba(27, 122, 67, 0.7);
+  animation: lab-pulse 2s infinite;
+}
+
+.lab-pulse-paused {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--amway-warning);
+  margin-right: 5px;
+}
+
+@keyframes lab-pulse {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(27, 122, 67, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 6px rgba(27, 122, 67, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(27, 122, 67, 0);
+  }
+}
+
+.lab-tab-nav {
+  display: flex;
+  border-bottom: 1px solid var(--amway-border);
+  gap: 0.25rem;
+  margin-bottom: 0.5rem;
+  overflow-x: auto;
+}
+
+.lab-tab-btn {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--amway-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.lab-tab-btn:hover {
+  color: var(--amway-ink);
+}
+
+.lab-tab-btn.active {
+  color: var(--amway-accent);
+  border-bottom-color: var(--amway-accent);
+}
+
+.lab-feed-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 200px;
+  overflow-y: auto;
+  font-family: ui-monospace, monospace;
+  font-size: 0.7rem;
+}
+
+.lab-feed-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.3rem 0.5rem;
+  background: var(--amway-surface-sunken);
+  border-radius: var(--radius-xs);
+  border-left: 3px solid var(--amway-accent);
+}
+
+.lab-feed-item.lab-feed-AmwayOffer { border-left-color: var(--amway-nutrition); }
+.lab-feed-item.lab-feed-AmwayOrder { border-left-color: var(--amway-info); }
+.lab-feed-item.lab-feed-AmwayContact { border-left-color: var(--amway-beauty); }
+.lab-feed-item.lab-feed-AmwayRoleAssignment { border-left-color: var(--amway-warning); }
