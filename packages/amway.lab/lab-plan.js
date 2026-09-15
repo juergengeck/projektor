@@ -5,7 +5,7 @@
  * Reads enumerate a department through its id-object reverse map and
  * re-project authority locally. Nothing here knows about other workers.
  */
-import { storeVersionedObject, getObjectByIdHash, hasVersionHead } from "../../../one/packages/one.core/lib/storage-versioned-objects.js";
+import { storeVersionedObject, getObjectByIdHash, hasVersionHead, isMissingVersionHeadError } from "../../../one/packages/one.core/lib/storage-versioned-objects.js";
 import { calculateIdHashOfObj } from "../../../one/packages/one.core/lib/util/object.js";
 import { getAllIdObjectEntries } from "../../../one/packages/one.core/lib/reverse-map-query.js";
 import { createAccess } from "../../../one/packages/one.core/lib/access.js";
@@ -28,7 +28,18 @@ export function createLabPlan({ connections, now = () => Date.now() }) {
     calculateIdHashOfObj({ $type$: "AmwayDepartment", department, name: "", admin: "0".repeat(64) });
 
   async function latest(idHashes) {
-    return Promise.all(idHashes.map(async idHash => (await getObjectByIdHash(idHash)).obj));
+    const objs = [];
+    for (const idHash of idHashes) {
+      try {
+        objs.push((await getObjectByIdHash(idHash)).obj);
+      } catch (error) {
+        // CHUM materializes a referenced exact version before selecting its
+        // head, so a reverse-map entry may briefly outrun its readable
+        // version. That row has not arrived yet; anything else is a failure.
+        if (!isMissingVersionHeadError(error)) throw error;
+      }
+    }
+    return objs;
   }
 
   async function load(department) {
@@ -38,10 +49,19 @@ export function createLabPlan({ connections, now = () => Date.now() }) {
         latest(await getAllIdObjectEntries(deptIdHash, type))),
     );
     // Not yet replicated is a normal state, asked explicitly — no error swallowing.
-    if (!(await hasVersionHead(deptIdHash))) {
+    let departmentObj = null;
+    if (await hasVersionHead(deptIdHash)) {
+      try {
+        departmentObj = (await getObjectByIdHash(deptIdHash)).obj;
+      } catch (error) {
+        // Head selected and then transiently unreadable (concurrent head
+        // swap): report not-replicated rather than a storage crash.
+        if (!isMissingVersionHeadError(error)) throw error;
+      }
+    }
+    if (!departmentObj) {
       return { deptIdHash, department: null, assignments, contacts, offers, orders };
     }
-    const departmentObj = (await getObjectByIdHash(deptIdHash)).obj;
     return { deptIdHash, department: departmentObj, assignments, contacts, offers, orders };
   }
 
@@ -90,7 +110,15 @@ export function createLabPlan({ connections, now = () => Date.now() }) {
         for (const idHash of await getAllIdObjectEntries(next.deptIdHash, type)) await grant(idHash, everyone);
       }
       for (const idHash of await getAllIdObjectEntries(next.deptIdHash, "AmwayOrder")) {
-        const order = (await getObjectByIdHash(idHash)).obj;
+        let order;
+        try {
+          order = (await getObjectByIdHash(idHash)).obj;
+        } catch (error) {
+          // Same transient as latest(): skip this grant pass; the next
+          // membership change re-grants every entry.
+          if (!isMissingVersionHeadError(error)) throw error;
+          continue;
+        }
         await grant(idHash, audience("order", { department: next.department, assignments: next.assignments, row: order }));
       }
       return result;

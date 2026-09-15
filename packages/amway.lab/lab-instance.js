@@ -11,13 +11,15 @@ import ChannelManager from "../../../one/packages/one.models/lib/models/ChannelM
 import ConnectionsModel from "../../../one/packages/one.models/lib/models/ConnectionsModel.js";
 import Connection from "../../../one/packages/one.models/lib/misc/Connection/Connection.js";
 import MessagePortPlugin from "../../../one/packages/one.models/lib/misc/Connection/plugins/MessagePortPlugin.js";
+import PromisePlugin from "../../../one/packages/one.models/lib/misc/Connection/plugins/PromisePlugin.js";
 import { registerConnectionDialer } from "../../../one/packages/one.models/lib/misc/ConnectionEstablishment/ConnectionDialers.js";
+import { PAIRING_PROTOCOL_VERSION } from "../../../one/packages/one.models/lib/misc/ConnectionEstablishment/PairingManager.js";
 import { objectEvents } from "../../../one/packages/one.models/lib/misc/ObjectEventDispatcher.js";
 import RecipesStable from "../../../one/packages/one.models/lib/recipes/recipes-stable.js";
 import RecipesExperimental from "../../../one/packages/one.models/lib/recipes/recipes-experimental.js";
 import { ReverseMapsStable, ReverseMapsForIdObjectsStable } from "../../../one/packages/one.models/lib/recipes/reversemaps-stable.js";
 import { ReverseMapsExperimental, ReverseMapsForIdObjectsExperimental } from "../../../one/packages/one.models/lib/recipes/reversemaps-experimental.js";
-import { onVersionedObjStored } from "../../../one/packages/one.core/lib/storage-versioned-objects.js";
+import { onVersionedObj } from "../../../one/packages/one.core/lib/storage-versioned-objects.js";
 import { getInstanceOwnerIdHash } from "../../../one/packages/one.core/lib/instance.js";
 import { OperationRegistry } from "../../../one/packages/refinio.api/dist/src/registry/index.js";
 import { IpcTransport } from "../../../one/packages/refinio.api/dist/src/transports/IpcTransport.js";
@@ -54,7 +56,11 @@ export async function startLabInstance({ port, key, email, secret, directory, cr
   const connections = new ConnectionsModel(leuteModel, {
     commServerUrl: url,
     publicCommServerUrl: url,
-    incomingConnectionConfigurations: [{ type: "external", url }],
+    // catchAll pre-registers this worker's credential for the lab:// listener at
+    // init (pairing itself stays demand-driven and invite-gated). Without it the
+    // external listener has no local credential until the first createInvite,
+    // so waitForIncomingConnectionReady — and any early accept — would fail.
+    incomingConnectionConfigurations: [{ type: "external", url, catchAll: true }],
     acceptIncomingConnections: true,
     acceptUnknownInstances: false,
     acceptUnknownPersons: false,
@@ -69,6 +75,14 @@ export async function startLabInstance({ port, key, email, secret, directory, cr
   await channelManager.init();
   await connections.init();
   await connections.waitForIncomingConnectionReady();
+
+  // OneConnectionPlan.connectWithInvite rebuilds its invitation from
+  // {url, publicKey, token} and drops pairingProtocolVersion, which
+  // PairingManager.connectUsingInvitation asserts. Restore the local protocol
+  // version on the way through (instance-only; the wire token already carries it).
+  const connectUsingInvitation = connections.pairing.connectUsingInvitation.bind(connections.pairing);
+  connections.pairing.connectUsingInvitation = (invitation, ...rest) =>
+    connectUsingInvitation({ pairingProtocolVersion: PAIRING_PROTOCOL_VERSION, ...invitation }, ...rest);
 
   const unregisterDialer = registerConnectionDialer("lab:", target => {
     const { port1, port2 } = createMessageChannel();
@@ -89,7 +103,11 @@ export async function startLabInstance({ port, key, email, secret, directory, cr
   });
   new IpcTransport(registry).register(createPortIpcMain(port));
 
-  const stopFeed = onVersionedObjStored.addListener(result => {
+  // Feed-forward fires on the semantic versioned-object event, which is
+  // dispatched after the version head is selected. The bytes-available event
+  // (onVersionedObjStored) fires while CHUM is still materializing the version
+  // graph, so rows derived from it are not yet readable via getObjectByIdHash.
+  const stopFeed = onVersionedObj.addListener(result => {
     const row = plan.feedRow(result);
     if (row) postFeed(port, row);
   });
@@ -98,7 +116,11 @@ export async function startLabInstance({ port, key, email, secret, directory, cr
     const message = event.data;
     if (message?.kind !== "chum-accept") return;
     if (message.url !== url) throw new Error(`Lab ${key}: accept for foreign url ${message.url}.`);
-    connections.acceptExternalConnection(Connection.fromPlugin(new MessagePortPlugin(message.port)), url)
+    // The outgoing side gains its PromisePlugin in connectWithEncryption; the
+    // accepted side needs it added explicitly (websocket listeners do the same).
+    const incoming = Connection.fromPlugin(new MessagePortPlugin(message.port));
+    incoming.addPlugin(new PromisePlugin());
+    connections.acceptExternalConnection(incoming, url)
       .catch(error => port.postMessage({ kind: "chum-accept-failed", key, error: error.message }));
   });
 
