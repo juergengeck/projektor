@@ -1,16 +1,16 @@
-// packages/amway.lab/port-ipc.test.js
+// packages/amway.lab/port-ipc.test.ts
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { MessageChannel } from "node:worker_threads";
 import { IpcTransport } from "../../../one/packages/refinio.api/dist/src/transports/IpcTransport.js";
 import { OperationRegistry } from "../../../one/packages/refinio.api/dist/src/registry/index.js";
-import { createPortIpcMain, PortApiClient, postFeed } from "./port-ipc.js";
+import { createPortIpcMain, PortApiClient, postFeed } from "./port-ipc.ts";
 
 function pair() {
   const { port1, port2 } = new MessageChannel();
   const registry = new OperationRegistry();
   registry.register("echo", {
-    say: params => ({ said: params.text }),
+    say: (params: { text: string }) => ({ said: params.text }),
     boom: () => { throw new Error("kaboom"); },
   }, { description: "echo", methods: [{ name: "say", description: "say" }, { name: "boom", description: "boom" }] });
   new IpcTransport(registry).register(createPortIpcMain(port1));
@@ -37,7 +37,7 @@ test("plan errors reject the call", async () => {
 test("feed rows and worker failure", async () => {
   const { port1, port2, client } = pair();
   try {
-    const row = new Promise(resolve => client.onFeed(resolve));
+    const row = new Promise<unknown>(resolve => client.onFeed(resolve));
     postFeed(port1, { type: "AmwayOffer", id: "o1" });
     assert.deepEqual(await row, { type: "AmwayOffer", id: "o1" });
     const pending = client.call("echo", "say", { text: "late" });

@@ -4,11 +4,12 @@
  * between them, and hands the UI a refinio.api client per worker. Amway data
  * never passes through here; only CHUM ports and IPC calls do.
  */
-import { startLabHost } from "@projektor/amway.lab/host-switch.js";
-import type { PortApiClient } from "@projektor/amway.lab/port-ipc.js";
+import { startLabHost } from "@projektor/amway.lab/host-switch.ts";
+import type { PortApiClient } from "@projektor/amway.lab/port-ipc.ts";
 
 export const LAB_KEYS = ["admin", "manager", "seller", "customer"] as const;
 export type LabKey = (typeof LAB_KEYS)[number];
+export type { FeedRow } from "@projektor/amway.lab/port-ipc.ts";
 
 export interface LabHandle {
   clients: Record<LabKey, PortApiClient>;
@@ -27,14 +28,21 @@ function waitForRow(client: PortApiClient, match: (row: { type: string; id: stri
   });
 }
 
-export async function bootLab(): Promise<LabHandle> {
+export async function bootLab(onStage: (stage: string) => void = () => {}): Promise<LabHandle> {
+  const stage = (text: string) => {
+    console.info(`[lab boot] ${text}`);
+    onStage(text);
+  };
+  // One storage session per page load; see worker.ts for why reloads reboot fresh.
+  const session = crypto.randomUUID().slice(0, 8);
+  stage("spawning workers");
   // startLabHost is untyped JS; the shape below is its documented contract.
   const host = (await startLabHost({
     keys: [...LAB_KEYS],
     spawn: (key: LabKey) => {
       // Inline `new URL` so Vite emits a worker chunk; the key follows as the first message.
       const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
-      worker.postMessage({ kind: "lab-key", key });
+      worker.postMessage({ kind: "lab-key", key, session });
       return {
         port: worker,
         terminate: async () => worker.terminate(),
@@ -43,18 +51,27 @@ export async function bootLab(): Promise<LabHandle> {
     },
   })) as unknown as LabHandle & { pairAll(): Promise<void> };
   const { admin, manager } = host.clients;
+  stage("workers ready");
   // Pairings and the department persist in each worker's IndexedDB; seed once.
-  const status = await admin.call("amwayLab", "getDepartment", { department: "demo-de" });
+  const status = await admin.call<{ known: boolean }>("amwayLab", "getDepartment", { department: "demo-de" });
   if (!status.known) {
+    stage("pairing 6 lanes");
     await host.pairAll();
+    stage("paired, creating department");
     const appointed = waitForRow(manager, row => row.type === "AmwayRoleAssignment" && row.id === host.persons.manager);
     await admin.call("amwayLab", "createDepartment", { department: "demo-de", name: "Demo DE" });
     await admin.call("amwayLab", "assignRole", { department: "demo-de", subject: host.persons.manager, role: "manager" });
+    stage("waiting for manager appointment");
     await appointed;
+    stage("manager appointed, assigning team");
     const members = [host.clients.seller, host.clients.customer].map(client => waitForRow(client, row => row.type === "AmwayDepartment"));
     await manager.call("amwayLab", "assignRole", { department: "demo-de", subject: host.persons.seller, role: "seller" });
     await manager.call("amwayLab", "assignRole", { department: "demo-de", subject: host.persons.customer, role: "customer" });
+    stage("waiting for team sync");
     await Promise.all(members);
+    stage("team synced");
+  } else {
+    stage("department known, skipping seed");
   }
   return host;
 }

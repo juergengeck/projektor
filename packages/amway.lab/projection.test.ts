@@ -1,12 +1,14 @@
-// packages/amway.lab/projection.test.js
+// packages/amway.lab/projection.test.ts
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { audience, canPublish, projectDepartment, rolesOf } from "./projection.js";
+import { audience, canPublish, projectDepartment, rolesOf } from "./projection.ts";
+import type { AmwayDepartment, AmwayOffer, AmwayOrder, AmwayRoleAssignment } from "./recipes.ts";
 
-const P = ch => ch.repeat(64);
+const P = (ch: string): string => ch.repeat(64);
 const ADMIN = P("a"), MANAGER = P("b"), SELLER = P("c"), CUSTOMER = P("d"), DEPT = P("e");
-const department = { $type$: "AmwayDepartment", department: "demo-de", name: "Demo DE", admin: ADMIN };
-const assign = (subject, role, issuer) => ({ $type$: "AmwayRoleAssignment", department: DEPT, subject, role, issuer, validFrom: 1 });
+const department: AmwayDepartment = { $type$: "AmwayDepartment", department: "demo-de", name: "Demo DE", admin: ADMIN };
+const assign = (subject: string, role: string, issuer: string): AmwayRoleAssignment =>
+  ({ $type$: "AmwayRoleAssignment", department: DEPT, subject, role, issuer, validFrom: 1 });
 const assignments = [assign(MANAGER, "manager", ADMIN), assign(SELLER, "seller", MANAGER), assign(CUSTOMER, "customer", MANAGER)];
 
 test("roles derive from the department admin chain", () => {
@@ -38,8 +40,8 @@ test("orders reach staff and their customer only", () => {
 });
 
 test("projection rejects unauthorized rows and scopes customer reads", () => {
-  const order = { $type$: "AmwayOrder", department: DEPT, idempotencyKey: "k1", customer: CUSTOMER, seller: SELLER, offer: "o1", quantity: 3, lot: "demo-lot-a", facility: "demo-facility", admittedAt: 2 };
-  const forgedOffer = { $type$: "AmwayOffer", department: DEPT, offerId: "bad", item: "x", priceList: "p", channel: "facility", unitAmount: 1, currency: "EUR", publishedBy: SELLER };
+  const order: AmwayOrder = { $type$: "AmwayOrder", department: DEPT, idempotencyKey: "k1", customer: CUSTOMER, seller: SELLER, offer: "o1", quantity: 3, lot: "demo-lot-a", facility: "demo-facility", admittedAt: 2 };
+  const forgedOffer: AmwayOffer = { $type$: "AmwayOffer", department: DEPT, offerId: "bad", item: "x", priceList: "p", channel: "facility", unitAmount: 1, currency: "EUR", publishedBy: SELLER };
   const view = projectDepartment({ department, assignments, contacts: [], offers: [forgedOffer], orders: [order], viewer: CUSTOMER, atTime: 5 });
   assert.deepEqual(view.offers, []);
   assert.deepEqual(view.rejected, [{ type: "AmwayOffer", id: "bad", reason: "publisher-not-authorized" }]);

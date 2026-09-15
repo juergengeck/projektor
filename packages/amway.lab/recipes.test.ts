@@ -1,10 +1,10 @@
-// packages/amway.lab/recipes.test.js
+// packages/amway.lab/recipes.test.ts
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   AMWAY_LAB_TYPES, AmwayLabRecipes, AmwayLabReverseMapsForIdObjects,
   createContact, createDepartment, createOffer, createOrder, createRoleAssignment,
-} from "./recipes.js";
+} from "./recipes.ts";
 
 const HASH = "a".repeat(64);
 const PERSON = "b".repeat(64);

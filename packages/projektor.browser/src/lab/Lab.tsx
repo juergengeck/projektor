@@ -1,6 +1,6 @@
 // packages/projektor.browser/src/lab/Lab.tsx
 import { useEffect, useReducer, useRef, useState } from "react";
-import { bootLab, LAB_KEYS, type LabHandle, type LabKey } from "./transport";
+import { bootLab, LAB_KEYS, type FeedRow, type LabHandle, type LabKey } from "./transport";
 import { Badge, RoleBadge, StatusBadge } from "../components/ui";
 
 const TITLES: Record<LabKey, { title: string; subtitle: string; icon: string; roleType: string }> = {
@@ -46,11 +46,13 @@ export interface Order {
   seller: string;
   offer: string;
   quantity: number;
+  admittedAt: number;
 }
 
 export interface View {
   known: boolean;
   roles: string[];
+  assignments: { subject: string; role: string; issuer: string; validFrom: number }[];
   contacts: Contact[];
   offers: Offer[];
   orders: Order[];
@@ -58,13 +60,7 @@ export interface View {
   rejected: { type: string; id: string; reason: string }[];
 }
 
-export interface FeedRow {
-  type: string;
-  kind: string;
-  id: string;
-  hash: string;
-  obj: Record<string, unknown>;
-}
+export type { FeedRow };
 
 export interface FeedEntry {
   at: string;
@@ -98,6 +94,7 @@ type Action =
 const EMPTY_VIEW: View = {
   known: false,
   roles: [],
+  assignments: [],
   contacts: [],
   offers: [],
   orders: [],
@@ -228,7 +225,7 @@ function initial(): State {
     LAB_KEYS.map(key => [
       key,
       {
-        online: true,
+        online: false,
         view: EMPTY_VIEW,
         fresh: {},
         notice: "",
@@ -242,6 +239,7 @@ function initial(): State {
 export default function Lab() {
   const [state, dispatch] = useReducer(reduce, undefined, initial);
   const [boot, setBoot] = useState<"booting" | "live" | string>("booting");
+  const [bootStage, setBootStage] = useState("spawning workers");
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const lab = useRef<LabHandle | null>(null);
 
@@ -249,7 +247,7 @@ export default function Lab() {
     let cancelled = false;
     const offs: (() => void)[] = [];
 
-    bootLab()
+    bootLab(setBootStage)
       .then(async handle => {
         if (cancelled) {
           await handle.stop();
@@ -274,6 +272,7 @@ export default function Lab() {
             }),
           );
           await snapshot();
+          dispatch({ kind: "online", key, online: true });
         }
         setBoot("live");
       })
@@ -358,8 +357,14 @@ export default function Lab() {
 
         <div className="lab-header-actions">
           <div className="lab-mesh-badge">
-            <span className={onlineCount === 4 ? "lab-pulse-online" : "lab-pulse-paused"} />
-            <span>Mesh: {onlineCount}/4 Nodes Online</span>
+            <span className={boot === "live" && onlineCount === 4 ? "lab-pulse-online" : "lab-pulse-paused"} />
+            <span>
+              {boot === "booting"
+                ? `Starting ${onlineCount}/4 nodes…`
+                : boot === "live"
+                  ? `Mesh: ${onlineCount}/4 Nodes Online`
+                  : "Mesh unavailable"}
+            </span>
           </div>
 
           <button
@@ -368,7 +373,11 @@ export default function Lab() {
             disabled={boot !== "live"}
             onClick={() => void toggleAll(!allOnline)}
           >
-            {allOnline ? "❚❚ Pause Entire Mesh" : "● Resume Entire Mesh"}
+            {boot === "booting"
+              ? "Starting…"
+              : boot === "live"
+                ? (allOnline ? "❚❚ Pause Entire Mesh" : "● Resume Entire Mesh")
+                : "Unavailable"}
           </button>
 
           <a href="#/overview" className="btn btn-secondary sm" style={{ textDecoration: "none" }}>
@@ -382,7 +391,7 @@ export default function Lab() {
         <div className={`card ${boot === "booting" ? "" : "state-denied"}`} style={{ marginBottom: "1.25rem", textAlign: "center" }}>
           {boot === "booting" ? (
             <p style={{ margin: 0, fontWeight: 600 }}>
-              <span className="lab-pulse-online" /> Booting isolated Web Workers and establishing CHUM connections…
+              <span className="lab-pulse-online" /> Booting… {bootStage}
             </p>
           ) : (
             <p style={{ margin: 0, fontWeight: 600 }}>Boot Failure: {boot}</p>
@@ -404,6 +413,25 @@ export default function Lab() {
           const totalStock = view.availability?.gross ?? 10;
           const currentStock = view.availability?.available ?? totalStock;
           const stockPct = Math.max(0, Math.min(100, (currentStock / totalStock) * 100));
+          const nameOf = (person: string) =>
+            view.contacts.find(entry => entry.person === person)?.name
+            ?? `${person.slice(0, 10)}…`;
+          const fmtDate = (at: number) =>
+            new Date(at).toLocaleString([], {
+              month: "short", day: "numeric",
+              hour: "2-digit", minute: "2-digit", hour12: false,
+            });
+          const unitsByCustomer = new Map<string, { units: number; orders: number; lastAt: number; seller: string }>();
+          for (const entry of view.orders) {
+            const agg = unitsByCustomer.get(entry.customer) ?? { units: 0, orders: 0, lastAt: 0, seller: entry.seller };
+            agg.units += entry.quantity;
+            agg.orders += 1;
+            if (entry.admittedAt >= agg.lastAt) {
+              agg.lastAt = entry.admittedAt;
+              agg.seller = entry.seller;
+            }
+            unitsByCustomer.set(entry.customer, agg);
+          }
 
           return (
             <section
@@ -425,7 +453,9 @@ export default function Lab() {
                     disabled={boot !== "live"}
                     style={{ fontSize: "0.72rem", padding: "0.25rem 0.5rem" }}
                   >
-                    {column.online ? (
+                    {boot === "booting" ? (
+                      <>Starting…</>
+                    ) : column.online ? (
                       <>
                         <span className="lab-pulse-online" /> Pause
                       </>
@@ -510,7 +540,7 @@ export default function Lab() {
                   </div>
                   <div className="lab-metric-mini">
                     <span className="lab-metric-mini-val">{currentStock}</span>
-                    <span className="lab-metric-mini-lbl">Stock</span>
+                    <span className="lab-metric-mini-lbl">{key === "admin" ? "Avail." : "Stock"}</span>
                   </div>
                 </div>
 
@@ -619,19 +649,65 @@ export default function Lab() {
                   </div>
                 </div>
 
-                {/* Stock Level Bar */}
-                {view.availability && (
+                {/* Admin holds no inventory of its own: network telemetry instead */}
+                {key === "admin" ? (
                   <div className="lab-stock-meter">
                     <div className="lab-stock-header">
-                      <span>Facility Stock ({view.availability.lot})</span>
-                      <span>
-                        {currentStock} / {totalStock} units
-                      </span>
+                      <span>Network telemetry</span>
+                      <span>{view.orders.length} orders · {view.assignments.length} members</span>
                     </div>
-                    <div className="lab-stock-bar">
-                      <div className="lab-stock-fill" style={{ width: `${stockPct}%` }} />
-                    </div>
+                    {view.assignments.length === 0 ? (
+                      <div className="state-empty" style={{ padding: "0.8rem", fontSize: "0.75rem" }}>
+                        No team assignments replicated yet.
+                      </div>
+                    ) : (
+                      view.assignments.map(entry => (
+                        <div key={entry.subject} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.75rem", padding: "2px 0", gap: "0.5rem" }}>
+                          <span>{nameOf(entry.subject)}<br />
+                            <span style={{ fontSize: "0.65rem", color: "var(--amway-muted)" }}>
+                              authorized by {nameOf(entry.issuer)} · since {fmtDate(entry.validFrom)}
+                            </span>
+                          </span>
+                          <RoleBadge role={entry.role} />
+                        </div>
+                      ))
+                    )}
+                    {[...unitsByCustomer.entries()].map(([customer, agg]) => (
+                      <div key={customer} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", padding: "2px 0", gap: "0.5rem" }}>
+                        <span>{nameOf(customer)}<br />
+                          <span style={{ fontSize: "0.65rem", color: "var(--amway-muted)" }}>
+                            last {fmtDate(agg.lastAt)} · admitted by {nameOf(agg.seller)}
+                          </span>
+                        </span>
+                        <span>{agg.orders} order{agg.orders === 1 ? "" : "s"} · {agg.units} units</span>
+                      </div>
+                    ))}
+                    {view.availability && (
+                      <>
+                        <div className="lab-stock-header" style={{ marginTop: "0.4rem" }}>
+                          <span>Network availability ({view.availability.lot})</span>
+                          <span>{currentStock} / {totalStock} units</span>
+                        </div>
+                        <div className="lab-stock-bar">
+                          <div className="lab-stock-fill" style={{ width: `${stockPct}%` }} />
+                        </div>
+                      </>
+                    )}
                   </div>
+                ) : (
+                  view.availability && (
+                    <div className="lab-stock-meter">
+                      <div className="lab-stock-header">
+                        <span>Facility Stock ({view.availability.lot})</span>
+                        <span>
+                          {currentStock} / {totalStock} units
+                        </span>
+                      </div>
+                      <div className="lab-stock-bar">
+                        <div className="lab-stock-fill" style={{ width: `${stockPct}%` }} />
+                      </div>
+                    </div>
+                  )
                 )}
 
                 {/* Tabbed Inspector Navigation */}
