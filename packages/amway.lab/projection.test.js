@@ -23,6 +23,8 @@ test("publish authority per kind", () => {
   assert.equal(canPublish("offer", { ...ctx, author: SELLER }), false);
   assert.equal(canPublish("order", { ...ctx, author: SELLER }), true);
   assert.equal(canPublish("order", { ...ctx, author: CUSTOMER }), false);
+  assert.equal(canPublish("order", { ...ctx, author: CUSTOMER, subject: CUSTOMER }), true);
+  assert.equal(canPublish("order", { ...ctx, author: CUSTOMER, subject: P("f") }), false);
   assert.equal(canPublish("contact", { ...ctx, author: CUSTOMER, subject: CUSTOMER }), true);
   assert.equal(canPublish("contact", { ...ctx, author: SELLER, subject: CUSTOMER }), false);
 });

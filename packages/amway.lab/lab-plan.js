@@ -145,7 +145,7 @@ export function createLabPlan({ connections, now = () => Date.now() }) {
         department: state.deptIdHash, idempotencyKey: idempotencyKey ?? `lab-order-${now()}`,
         customer, seller: self(), offer, quantity, lot: LAB_STOCK.lot, facility: LAB_STOCK.facility, admittedAt: now(),
       });
-      return publish("order", state, obj);
+      return publish("order", state, obj, customer);
     },
 
     async getDepartment({ department }) {

@@ -27,7 +27,11 @@ export function canPublish(kind, { department, assignments, author, subject, atT
   const staff = roles.has("admin") || roles.has("manager");
   if (kind === "contact") return author === subject || staff;
   if (kind === "offer") return staff;
-  if (kind === "order") return staff || roles.has("seller");
+  if (kind === "order") {
+    if (staff || roles.has("seller")) return true;
+    // Preferred-customer self-service: a customer may buy for themselves only.
+    return roles.has("customer") && author === subject;
+  }
   if (kind === "assignment") return roles.has("admin") || roles.has("manager");
   throw new Error(`Amway lab: unknown publish kind ${kind}.`);
 }
@@ -58,7 +62,7 @@ export function projectDepartment({ department, assignments, contacts, offers, o
     rolesOf({ department, assignments, subject: entry.subject, atTime }).has(entry.role));
   const viewerRoles = rolesOf({ department, assignments, subject: viewer, atTime });
   const customerOnly = viewerRoles.size === 1 && viewerRoles.has("customer");
-  const admittedOrders = orders.filter(entry => admit("order", "AmwayOrder", entry.idempotencyKey, entry.seller));
+  const admittedOrders = orders.filter(entry => admit("order", "AmwayOrder", entry.idempotencyKey, entry.seller, entry.customer));
   return {
     department: department.department,
     roles: [...viewerRoles].sort(),
