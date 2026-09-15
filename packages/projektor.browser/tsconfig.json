@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true,
+    "allowJs": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "@projektor/amway/*": ["../amway.app/*"],
+      "@projektor/amway.lab/*": ["../amway.lab/*"],
+      "@refinio/api/*": ["../../../one/packages/refinio.api/dist/src/*"],
+      "@refinio/connection.core": ["../../../one/packages/connection.core/dist/esm/index.js"],
+      "@refinio/connection.core/*": ["../../../one/packages/connection.core/dist/esm/*"],
+      "@refinio/one.core": ["../../../one/packages/one.core/lib/index.js"],
+      "@refinio/one.core/*": ["../../../one/packages/one.core/lib/*"],
+      "@refinio/one.models": ["../../../one/packages/one.models/lib/index.js"],
+      "@refinio/one.models/*": ["../../../one/packages/one.models/lib/*"],
+      "@vger/browser-ui/*": ["../../../vger/packages/vger.browser/browser-ui/src/*"],
+      "@vger/vger.core": ["../../../one/packages/vger.core/dist/index.js"],
+      "@vger/vger.core/*": ["../../../one/packages/vger.core/dist/*"]
+    },
+    "types": ["vite/client"]
+  },
+  "include": ["src", "vite.config.ts"]
+}
