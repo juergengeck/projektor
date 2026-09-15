@@ -1,0 +1,8 @@
+{
+  "name": "@projektor/amway.lab",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Amway lab: one ONE instance per worker, CHUM between workers, refinio.api over IPC",
+  "scripts": { "test": "node --test *.test.js" }
+}
