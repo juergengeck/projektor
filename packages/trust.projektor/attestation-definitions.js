@@ -14,6 +14,12 @@ import {
   PROJEKTOR_EVIDENCE_DISPUTE_TYPE,
   ProjektorEvidenceDisputeLicense,
 } from "./disputes.js";
+import {
+  ACT_PARTICIPATION_STATEMENT_TYPE,
+  RELIANCE_CERTIFICATE_TYPE,
+  ActParticipationLicense,
+  RelianceLicense,
+} from "./attribution.js";
 
 export const ProjektorAttestationDefinitions = Object.freeze([
   Object.freeze({
@@ -35,5 +41,15 @@ export const ProjektorAttestationDefinitions = Object.freeze([
     type: PROJEKTOR_EVIDENCE_DISPUTE_TYPE,
     license: ProjektorEvidenceDisputeLicense,
     reverseMapProperty: "person",
+  }),
+  Object.freeze({
+    type: ACT_PARTICIPATION_STATEMENT_TYPE,
+    license: ActParticipationLicense,
+    reverseMapProperty: "act",
+  }),
+  Object.freeze({
+    type: RELIANCE_CERTIFICATE_TYPE,
+    license: RelianceLicense,
+    reverseMapProperty: "act",
   }),
 ]);

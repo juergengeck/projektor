@@ -48,7 +48,7 @@ try {
       ProjektorTrustReverseMaps,
     )),
   });
-  assert.equal(ProjektorTrustRecipes.length, 8);
+  assert.equal(ProjektorTrustRecipes.length, 14);
 
   const owner = getInstanceOwnerIdHash();
   const roster = await storeUnversionedObject({$type$: "HashGroup", person: new Set([owner])});
@@ -85,6 +85,8 @@ try {
     issuerKeyBundles: new Set([issuerBundle]),
     purpose: "group-membership",
     authoredAt: 200,
+    attributionTier: "custody",
+    participationEvidence: new Set(),
   });
   const status = await storeVersionedObject({
     $type$: "GroupMembershipBundleStatus",
@@ -110,8 +112,75 @@ try {
     sourceStatuses: new Set([status.hash]),
     evaluatedAt: 250,
   });
+  const statement = await storeUnversionedObject({
+    $type$: "ProjektorActParticipationStatement",
+    act: bundle.hash,
+    person: owner,
+    value: "affirmed",
+    statedAt: 300,
+    license: license.hash,
+  });
+  const statementSignature = await sign(statement.hash, owner);
+  const statementBundle = await storeUnversionedObject({
+    $type$: "ProjektorActParticipationAttestationBundle",
+    claim: statement.hash,
+    signature: statementSignature.hash,
+    signingKeys: keys,
+    issuerKeyBundles: new Set([issuerBundle]),
+    purpose: "act-participation",
+    authoredAt: 300,
+    attributionTier: "participation-backed",
+    participationEvidence: new Set([license.hash]),
+  });
+  const statementStatus = await storeVersionedObject({
+    $type$: "ProjektorActParticipationBundleStatus",
+    $version$: "1",
+    receiver: owner,
+    bundle: statementBundle.hash,
+    state: "verified",
+    evaluatedAt: 301,
+    trustEvidence: new Set([issuerBundle, license.hash]),
+  });
+  const assessment = await storeUnversionedObject({
+    $type$: "ProjektorActAttributionAssessment",
+    receiver: owner,
+    act: bundle.hash,
+    person: owner,
+    asOfTime: 302,
+    baseTier: "custody",
+    state: "affirmed",
+    effectiveTier: "participation-backed",
+    statementBundles: new Set([statementBundle.hash]),
+    statementStatuses: new Set([statementStatus.hash]),
+  });
+  const reliance = await storeUnversionedObject({
+    $type$: "ProjektorRelianceCertificate",
+    act: bundle.hash,
+    attributedPerson: owner,
+    relyingParty: owner,
+    assessment: assessment.hash,
+    tierAtReliance: "participation-backed",
+    statementStateAtReliance: "affirmed",
+    reliedAt: 302,
+    license: license.hash,
+  });
+  const relianceSignature = await sign(reliance.hash, owner);
+  const relianceBundle = await storeUnversionedObject({
+    $type$: "ProjektorRelianceAttestationBundle",
+    claim: reliance.hash,
+    signature: relianceSignature.hash,
+    signingKeys: keys,
+    issuerKeyBundles: new Set([issuerBundle]),
+    purpose: "act-reliance",
+    authoredAt: 302,
+    attributionTier: "participation-backed",
+    participationEvidence: new Set([license.hash]),
+  });
   assert.ok(status.idHash);
   assert.ok(projection.idHash);
+  assert.ok(statementStatus.idHash);
+  assert.ok(assessment.hash);
+  assert.ok(relianceBundle.hash);
   console.log("trust.projektor recipe registration test passed");
 } finally {
   closeInstance();

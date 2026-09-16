@@ -110,8 +110,17 @@ export class ProjektorTrustModel {
     for (const hash of bundle.issuerKeyBundles) {
       requireType(await this.storage.getObject(hash), "IssuerKeyCertificateBundle", "bundle.issuerKeyBundles");
     }
-    if (bundle.assemblyOccurrence) {
-      requireType(await this.storage.getObject(bundle.assemblyOccurrence), "Assembly", "bundle.assemblyOccurrence");
+    if (!(bundle.participationEvidence instanceof Set)) {
+      throw new Error("bundle.participationEvidence must be an exact evidence set");
+    }
+    if (
+      (bundle.attributionTier === "custody" && bundle.participationEvidence.size !== 0) ||
+      (bundle.attributionTier === "participation-backed" && bundle.participationEvidence.size === 0)
+    ) {
+      throw new Error("bundle attribution tier does not match its participation evidence");
+    }
+    for (const hash of bundle.participationEvidence) {
+      await this.storage.getObject(hash);
     }
     return {bundle, claim};
   }
@@ -141,6 +150,7 @@ export class ProjektorTrustModel {
       issuer: selected.group.owner,
       purpose: MEMBERSHIP_PURPOSE,
       assertedAt,
+      attributionTier: params.attributionTier,
     });
     const bundleHash = await this.storage.storeUnversioned(createMembershipBundle(authored));
     return {claimHash: authored.claimHash, bundleHash};
@@ -174,7 +184,8 @@ export class ProjektorTrustModel {
           purpose: MEMBERSHIP_PURPOSE,
           authorityMode: "evidence-time",
           atTime: bundle.authoredAt,
-          assemblyOccurrence: bundle.assemblyOccurrence,
+          attributionTier: bundle.attributionTier,
+          participationEvidenceHashes: [...bundle.participationEvidence],
         });
       }
     }
@@ -319,6 +330,7 @@ export class ProjektorTrustModel {
       issuer: params.sharer,
       purpose: DISCLOSURE_PURPOSE,
       assertedAt: params.atTime,
+      attributionTier: params.attributionTier,
     });
     const bundleHash = await this.storage.storeUnversioned(createDisclosureBundle(authored));
     return {claimHash: authored.claimHash, bundleHash};
@@ -345,7 +357,8 @@ export class ProjektorTrustModel {
       purpose: DISCLOSURE_PURPOSE,
       authorityMode: "evidence-time",
       atTime: bundle.authoredAt,
-      assemblyOccurrence: bundle.assemblyOccurrence,
+      attributionTier: bundle.attributionTier,
+      participationEvidenceHashes: [...bundle.participationEvidence],
     });
     if (disclosureVerification.state !== "verified") return disclosureVerification;
 
@@ -418,7 +431,8 @@ export class ProjektorTrustModel {
         purpose: MEMBERSHIP_PURPOSE,
         authorityMode: "evidence-time",
         atTime: graph.bundle.authoredAt,
-        assemblyOccurrence: graph.bundle.assemblyOccurrence,
+        attributionTier: graph.bundle.attributionTier,
+        participationEvidenceHashes: [...graph.bundle.participationEvidence],
       });
       if (membershipVerification.state !== "verified") return membershipVerification;
       membershipClaims.push(graph.claim);

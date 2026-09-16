@@ -22,7 +22,8 @@ export const GroupMembershipAttestationBundleRecipe = {
     referenceSet("issuerKeyBundles", ["IssuerKeyCertificateBundle"]),
     { itemprop: "purpose", itemtype: { type: "string" } },
     { itemprop: "authoredAt", itemtype: { type: "number" } },
-    { itemprop: "assemblyOccurrence", optional: true, itemtype: { type: "referenceToObj", allowedTypes: new Set(["Assembly"]) } },
+    { itemprop: "attributionTier", itemtype: { type: "string", regexp: /^(custody|participation-backed)$/ } },
+    referenceSet("participationEvidence", ["*"]),
   ],
 };
 
@@ -101,7 +102,8 @@ export const GroupDisclosureAttestationBundleRecipe = {
     referenceSet("issuerKeyBundles", ["IssuerKeyCertificateBundle"]),
     { itemprop: "purpose", itemtype: { type: "string" } },
     { itemprop: "authoredAt", itemtype: { type: "number" } },
-    { itemprop: "assemblyOccurrence", optional: true, itemtype: { type: "referenceToObj", allowedTypes: new Set(["Assembly"]) } },
+    { itemprop: "attributionTier", itemtype: { type: "string", regexp: /^(custody|participation-backed)$/ } },
+    referenceSet("participationEvidence", ["*"]),
   ],
 };
 
@@ -154,7 +156,42 @@ function exactSet(values, field) {
   return result;
 }
 
+function evidenceSet(values, field) {
+  if (!Array.isArray(values) && !(values instanceof Set)) {
+    throw new Error(`${field} must be an array or Set`);
+  }
+  const result = new Set(values);
+  if (Array.isArray(values) && result.size !== values.length) {
+    throw new Error(`${field} must not contain duplicate evidence`);
+  }
+  for (const value of result) hash(value, field);
+  return result;
+}
+
+function attributionTier(value) {
+  if (value !== "custody" && value !== "participation-backed") {
+    throw new Error("attributionTier must be custody or participation-backed");
+  }
+  return value;
+}
+
+function authorshipEvidence(authored) {
+  const tier = attributionTier(authored.attributionTier);
+  const evidence = evidenceSet(
+    authored.participationEvidenceHashes,
+    "participationEvidenceHashes",
+  );
+  if (tier === "custody" && evidence.size !== 0) {
+    throw new Error("custody authorship must not carry participation evidence");
+  }
+  if (tier === "participation-backed" && evidence.size === 0) {
+    throw new Error("participation-backed authorship requires participation evidence");
+  }
+  return {tier, evidence};
+}
+
 export function createMembershipBundle(authored) {
+  const authorship = authorshipEvidence(authored);
   const bundle = {
     $type$: GROUP_MEMBERSHIP_BUNDLE_TYPE,
     claim: hash(authored.claimHash, "claimHash"),
@@ -163,10 +200,9 @@ export function createMembershipBundle(authored) {
     issuerKeyBundles: exactSet(authored.issuerKeyBundleHashes, "issuerKeyBundleHashes"),
     purpose: required(authored.purpose, "purpose"),
     authoredAt: timestamp(authored.authoredAt, "authoredAt"),
+    attributionTier: authorship.tier,
+    participationEvidence: authorship.evidence,
   };
-  if (authored.assemblyOccurrence) {
-    bundle.assemblyOccurrence = hash(authored.assemblyOccurrence, "assemblyOccurrence");
-  }
   return bundle;
 }
 
@@ -223,6 +259,7 @@ export function createDisclosureCertificateData({
 }
 
 export function createDisclosureBundle(authored) {
+  const authorship = authorshipEvidence(authored);
   const bundle = {
     $type$: GROUP_DISCLOSURE_BUNDLE_TYPE,
     claim: hash(authored.claimHash, "claimHash"),
@@ -231,9 +268,8 @@ export function createDisclosureBundle(authored) {
     issuerKeyBundles: exactSet(authored.issuerKeyBundleHashes, "issuerKeyBundleHashes"),
     purpose: required(authored.purpose, "purpose"),
     authoredAt: timestamp(authored.authoredAt, "authoredAt"),
+    attributionTier: authorship.tier,
+    participationEvidence: authorship.evidence,
   };
-  if (authored.assemblyOccurrence) {
-    bundle.assemblyOccurrence = hash(authored.assemblyOccurrence, "assemblyOccurrence");
-  }
   return bundle;
 }

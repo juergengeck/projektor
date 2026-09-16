@@ -90,6 +90,8 @@ function createHarness() {
         issuerKeyBundleHashes: [issuerBundleHash],
         purpose: params.purpose,
         authoredAt: params.assertedAt,
+        attributionTier: params.attributionTier,
+        participationEvidenceHashes: [],
       };
     },
     async verify(params) {
@@ -122,7 +124,7 @@ function createHarness() {
   };
 }
 
-assert.equal(ProjektorTrustRecipes.length, 8);
+assert.equal(ProjektorTrustRecipes.length, 14);
 assert.deepEqual(
   new Map(ProjektorTrustReverseMaps).get("GroupMembershipCertificate"),
   new Set(["group"]),
@@ -142,6 +144,7 @@ assert.deepEqual(
     validFrom: 900,
     validUntil: 2_000,
     assertedAt: 1_000,
+    attributionTier: "custody",
   });
   const statusHash = await h.model.importMembershipBundle({bundleHash: issued.bundleHash});
   assert.equal(h.objects.get(statusHash).state, "verified");
@@ -162,6 +165,7 @@ assert.deepEqual(
     sharer: ids.member,
     recipient: ids.recipient,
     atTime: 1_100,
+    attributionTier: "custody",
   });
   const disclosureBundle = h.objects.get(disclosure.bundleHash);
   const disclosureClaim = h.objects.get(disclosureBundle.claim);
@@ -184,6 +188,7 @@ assert.deepEqual(
     validFrom: 900,
     validUntil: 2_000,
     assertedAt: 1_000,
+    attributionTier: "custody",
   });
   h.objects.get(issued.bundleHash).authoredAt = 1_001;
   const statusHash = await h.model.importMembershipBundle({bundleHash: issued.bundleHash});
@@ -207,6 +212,7 @@ assert.deepEqual(
     validFrom: 900,
     validUntil: 2_000,
     assertedAt: 1_000,
+    attributionTier: "custody",
   });
   await h.model.importMembershipBundle({bundleHash: issued.bundleHash});
   const projection = h.storedVersioned.find(
@@ -234,6 +240,7 @@ assert.deepEqual(
     validFrom: 900,
     validUntil: 2_000,
     assertedAt: 1_000,
+    attributionTier: "custody",
   });
   const bundle = h.objects.get(issued.bundleHash);
   h.objects.delete(bundle.signature);
@@ -260,6 +267,7 @@ assert.deepEqual(
     validFrom: 900,
     validUntil: 2_000,
     assertedAt: 1_000,
+    attributionTier: "custody",
   });
   const statusHash = await h.model.importMembershipBundle({bundleHash: issued.bundleHash});
   assert.equal(h.objects.get(statusHash).state, "pending-authority");
@@ -282,6 +290,7 @@ assert.deepEqual(
     person: ids.member,
     validFrom: 900,
     assertedAt: 1_000,
+    attributionTier: "custody",
   };
   const first = await h.model.issueMembership({...base, mayReshare: true, validUntil: 2_000});
   await h.model.importMembershipBundle({bundleHash: first.bundleHash});

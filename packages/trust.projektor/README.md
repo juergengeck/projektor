@@ -33,3 +33,39 @@ Project access keeps its audience semantics explicit:
 `ProjektorEvidenceDispute` is a domain signal. It can mark assertions disputed
 from `compromisedSince`, but it does not rewrite historical key verification or
 certificate validity.
+
+Attribution and reliance are append-only evidence too:
+
+- A structurally valid `Assembly` proves that its named credential authored one
+  exact versioned occurrence. It does not prove personal participation, so a
+  bare Assembly and a custody-tier attestation both assess as `neither`.
+- `ProjektorActParticipationStatement` is the one participation-backed mechanism
+  for affirming or repudiating an exact act. Its issuer must be the person already
+  attributed to that act.
+- `ProjektorActAttributionAssessment` stores the receiver's complete local
+  evidence cut at one decision time. Its state is explicitly `affirmed`,
+  `repudiated`, or `neither`.
+- `ProjektorRelianceCertificate` points to that exact immutable assessment and
+  records the tier visible when reliance occurred. Later evidence can affect the
+  next assessment, but cannot rewrite the relied-on one.
+
+`TypedAttestationService` labels every attestation `custody` or
+`participation-backed`. Raw software-key signing can issue only the custody tier;
+participation-backed statements fail closed unless the runtime supplies an
+explicit user-verifying signer and verifier.
+
+The certificate-shaped Projektor claims are unversioned and use exact detached
+signatures. They do not carry a synthetic Assembly occurrence. Domains that
+need causal Assembly history must first define a real versioned semantic
+payload; `trust.projektor` does not duplicate Assembly construction or
+verification.
+
+`ProjektorTrustModule` is the runtime boundary. It requires an
+`EffectiveIssuerKeyProvider`, assembly.core's read-only
+`AssemblyAuthorshipVerifier`, exact receiver configuration, and optionally the
+user-verifying participation signer/verifier. It supplies the configured typed
+attestation service plus the membership/disclosure and attribution/reliance
+models, and registers their public operations in the `trust.projektor` domain.
+It deliberately has no `LeuteModel` or `AssemblyStore` demand. The verifier is
+what lets it establish a bare Assembly's signer without gaining authority to
+author or publish Assemblies.

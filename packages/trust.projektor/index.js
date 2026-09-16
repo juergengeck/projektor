@@ -14,6 +14,10 @@ import {
   ProjektorEvidenceDisputeRecipe,
   ProjektorEvidenceDisputeReverseMap,
 } from "./disputes.js";
+import {
+  ProjektorAttributionRecipes,
+  ProjektorAttributionReverseMaps,
+} from "./attribution.js";
 
 export * from "./membership.js";
 export * from "./evidence.js";
@@ -23,12 +27,16 @@ export * from "./membership-model.js";
 export * from "./issuance.js";
 export * from "./attestation-definitions.js";
 export * from "./attestations.js";
+export * from "./attribution.js";
+export * from "./attribution-model.js";
+export * from "./module.js";
 
 export const ProjektorTrustRecipes = [
   ...GroupMembershipRecipes,
   ...ProjektorEvidenceRecipes,
   ProjectAccessAssertionRecipe,
   ProjektorEvidenceDisputeRecipe,
+  ...ProjektorAttributionRecipes,
 ];
 
 export function mergeReverseMaps(...groups) {
@@ -46,6 +54,7 @@ export const ProjektorTrustReverseMaps = mergeReverseMaps(
   ProjektorEvidenceReverseMaps,
   [ProjectAccessAssertionReverseMap],
   [ProjektorEvidenceDisputeReverseMap],
+  ProjektorAttributionReverseMaps,
 );
 
 export const ProjektorTrustGraphTypes = new Set([

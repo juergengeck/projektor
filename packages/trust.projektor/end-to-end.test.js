@@ -36,6 +36,7 @@ import {
 } from "../../../one/packages/assembly.core/dist/index.js";
 import {
   ProjektorTrustModel,
+  ProjektorAttributionModel,
   ProjektorTrustRecipes,
   ProjektorTrustReverseMaps,
   createProjektorAttestationService,
@@ -134,6 +135,7 @@ try {
     validFrom: now - 1_000,
     validUntil: now + 60_000,
     assertedAt: now,
+    attributionTier: "custody",
   });
   await projektor.importMembershipBundle({bundleHash: membership.bundleHash});
   const effective = await projektor.getEffectiveMembership({
@@ -151,12 +153,31 @@ try {
     sharer: owner,
     recipient: owner,
     atTime: now + 1,
+    attributionTier: "custody",
   });
   const verified = await projektor.verifyDisclosure({
     bundleHash: disclosure.bundleHash,
     atTime: now + 2,
   });
   assert.equal(verified.state, "verified");
+  const attribution = new ProjektorAttributionModel({
+    attestations,
+    assemblyAuthorshipVerifier: {
+      verifyAssemblyAuthorship: params => assemblyStore.verify(params.assembly).then(verified => ({
+        assembly: params.assembly,
+        signer: verified.assembly.signer,
+      })),
+    },
+    receiver: owner,
+    now: () => now + 3,
+  });
+  const disclosureAssessment = await attribution.assessAct({
+    act: disclosure.bundleHash,
+    person: owner,
+    asOfTime: now + 3,
+  });
+  assert.equal(disclosureAssessment.assessment.state, "neither");
+  assert.equal(disclosureAssessment.assessment.effectiveTier, "custody");
   console.log("trust.projektor end-to-end tests passed");
 } finally {
   await lifecycle?.shutdown();
