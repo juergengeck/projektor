@@ -580,6 +580,22 @@ export default function Lab() {
                       </button>
                     )}
 
+                    {key === "manager" && (
+                      <button
+                        type="button"
+                        className="btn-accent"
+                        disabled={!staff || boot !== "live"}
+                        onClick={() =>
+                          void run(key, "assignRole", {
+                            subject: lab.current?.persons.seller,
+                            role: "seller",
+                          })
+                        }
+                      >
+                        Appoint Seller
+                      </button>
+                    )}
+
                     {(staff || key === "manager") && (
                       <>
                         <button
