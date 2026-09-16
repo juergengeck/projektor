@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Inventory · projektor</title><link rel="stylesheet" href="/styles.css"></head>
+<body>
+  <header><a class="brand" href="/">projektor <span>/ inventory</span></a><span class="local">Local inventory</span></header>
+  <main>
+    <section id="login" class="login card">
+      <p class="eyebrow">Your goods. Their history.</p><h1>Open your inventory</h1>
+      <p>Create or unlock your local account. Your inventory is saved on this computer.</p>
+      <form id="login-form"><label>Email<input name="email" type="email" autocomplete="username" required></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><button>Open inventory</button></form>
+    </section>
+    <p id="message" role="status" aria-live="polite"></p>
+    <section id="workspace" hidden>
+      <div class="heading"><div><p class="eyebrow">Stock and evidence</p><h1>Inventory</h1><p>Where your goods are, and how they got there.</p></div><button id="refresh" class="secondary">Refresh</button></div>
+      <div class="metrics" id="metrics"></div>
+      <section class="card"><div class="section-heading"><h2>Project documents</h2><span>Filer document view</span></div><p>Download the documents published for your projects.</p><div id="project-documents" class="entries"></div></section>
+      <div class="toolbar"><label>Location<select id="location-filter"><option value="">All locations</option></select></label><label class="search">Find stock<input id="search" type="search" placeholder="Material or lot"></label></div>
+      <section class="card"><div class="section-heading"><h2>Stock on hand</h2><span id="row-count"></span></div><div class="table-wrap"><table><thead><tr><th>Material / lot</th><th>Location</th><th class="number">Quantity</th><th>Custody</th><th>Ownership</th></tr></thead><tbody id="stock"></tbody></table></div><p id="empty" class="empty">Add a location, then record the stock you are starting with.</p></section>
+      <div class="forms">
+        <details class="card" open><summary>Add a location</summary><form id="location-form"><label>Name<input name="name" required placeholder="Main warehouse"></label><button>Add location</button></form></details>
+        <details class="card"><summary>Record opening stock</summary><p>Record goods already held and owned by you. Explain where the starting quantity comes from.</p><form id="opening-form"><label>Material<input name="name" required placeholder="Steel brackets"></label><label>Lot identifier<input name="lotId" required placeholder="LOT-001"></label><div class="pair"><label>Quantity<input name="quantity" type="number" step="any" min="0.000000001" required></label><label>Unit<input name="unit" required placeholder="pcs"></label></div><label>Unit dimension<select name="dimension"><option value="count">Count</option><option value="mass">Mass</option><option value="length">Length</option><option value="volume">Volume</option></select></label><label>Location<select name="location" class="locations" required></select></label><label>Opening evidence<textarea name="evidence" required placeholder="Reference the opening balance, delivery record, or source document."></textarea></label><button>Record opening stock</button></form></details>
+        <details class="card"><summary>Move stock</summary><form id="move-form"><label>Stock at source<select id="move-stock" required></select></label><label>Destination<select name="toLocation" class="locations" required></select></label><label>Quantity<input name="quantity" type="number" step="any" min="0.000000001" required></label><p>Moving goods changes their location. Custody and ownership stay the same.</p><button>Record movement</button></form></details>
+        <details class="card"><summary>Record a physical count</summary><form id="count-form"><label>Lot<select name="lot" id="count-lot" required></select></label><label>Location<select name="location" class="locations" required></select></label><label>Observed quantity<input name="observedQuantity" type="number" min="0" step="any" required></label><p>Counts show discrepancies. They do not overwrite recorded stock.</p><button>Record count</button></form></details>
+      </div>
+      <section class="card"><div class="section-heading"><h2>Count observations</h2></div><div id="observations" class="entries"></div></section>
+      <section class="card"><div class="section-heading"><h2>Recorded history</h2><span>Most recent first</span></div><div id="history" class="entries"></div></section>
+      <footer>Opening stock, movements, and counts are saved as an ordered history. <details><summary>Inspect storage references</summary><pre id="references"></pre></details></footer>
+    </section>
+  </main>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

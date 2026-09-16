@@ -1,0 +1,17 @@
+{
+  "name": "@projektor/inventory.app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Inventory application Book over the shared supply.core goods model",
+  "exports": {
+    "./app-book": "./app-book.js"
+  },
+  "appBook": {
+    "name": "inventory",
+    "module": "./app-book.js"
+  },
+  "scripts": {
+    "test": "node --test *.test.js"
+  }
+}
