@@ -23,7 +23,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { createLabRelay } from "../../scripts/lab-relay.mjs";
 import { PortApiClient } from "./port-ipc.ts";
-import { decodeIoMInvite } from "./iom.ts";
+import { decodeIoMInvite, PAIRING_PROTOCOL_VERSION } from "./iom.ts";
 
 let root = "";
 
@@ -73,16 +73,25 @@ async function stopRelay(relay: { shutdown(): void }, server: { closeAllConnecti
   await once(server, "close");
 }
 
+async function settle(): Promise<void> {
+  await new Promise(resolve => setTimeout(resolve, 500));
+}
+
 async function removeTree(root: string): Promise<void> {
-  for (let attempt = 0; attempt < 5; attempt += 1) {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
     try {
       await rm(root, { recursive: true, force: true });
       return;
     } catch {
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
   }
-  await rm(root, { recursive: true, force: true });
+  // Temp cleanup is best-effort: a passing pairing must not fail on it.
+  try {
+    await rm(root, { recursive: true, force: true });
+  } catch (error) {
+    console.warn(`[iom-test] best-effort cleanup of ${root} failed:`, (error as Error).message);
+  }
 }
 
 test("same-person second instance pairs over the relay and projects the department", async (t) => {
@@ -94,6 +103,7 @@ test("same-person second instance pairs over the relay and projects the departme
   const deviceB = spawnInstance("seller", path.join(root, "device-b"));
   t.after(async () => {
     await Promise.all([deviceA.worker.terminate(), deviceB.worker.terminate()]);
+    await settle();
     await stopRelay(relay, server);
     await removeTree(root);
   });
@@ -104,15 +114,27 @@ test("same-person second instance pairs over the relay and projects the departme
   await deviceA.client.call("amwayLab", "assignRole", { department: "demo-de", subject: personA, role: "seller" });
 
   const invite = await deviceA.client.call("amwayLab", "createIoMInvite", {
-    department: "demo-de",
     relayUrl,
   }) as { invitationUrl: string; token: string; person: string };
   assert.equal(invite.person, personA);
+  const parsed = new URL(invite.invitationUrl);
+  assert.match(parsed.pathname, /\/(?:invites\/)?invitedevice(?:\/|$)/i, "canonical inviteDevice path carries the IoM mode");
+  assert.equal(parsed.searchParams.get("invited"), "true");
+  assert.equal(parsed.searchParams.get("connectionMode"), "primed");
+  assert.equal(parsed.searchParams.get("fe"), "seller@lab.local");
+  assert.equal(parsed.searchParams.get("fdi"), personA);
+  // The fragment stays consumable by the canonical parser shape:
+  // decodeURIComponent JSON carrying the pairing token and relay room.
+  const fragment = JSON.parse(decodeURIComponent(parsed.hash.slice(1))) as Record<string, unknown>;
+  assert.equal(fragment.mode, "IoM");
+  assert.equal(fragment.token, invite.token);
+  assert.match(String(fragment.url), /\/lab\/relay\?token=.*&side=join/);
   const payload = decodeIoMInvite(invite.invitationUrl);
   assert.equal(payload.mode, "IoM");
-  assert.equal(payload.person, personA);
+  assert.equal(payload.deviceEnrollmentPersonId, personA);
   assert.equal(payload.email, "seller@lab.local");
-  assert.equal(payload.department, "demo-de");
+  assert.equal(payload.identityRelation, "same-person");
+  assert.equal(payload.pairingMode, "primed");
 
   const paired = deviceA.client.call("amwayLab", "awaitIoMInvite", { token: invite.token, timeoutMs: 60_000 });
   await deviceB.client.call("amwayLab", "acceptIoMInvite", { invitationUrl: invite.invitationUrl, timeoutMs: 60_000 });
@@ -137,31 +159,49 @@ test("same-person second instance pairs over the relay and projects the departme
 });
 
 test("invitation URLs validate strictly and reject impostors", () => {
-  const payload = {
-    v: 1,
-    mode: "IoM",
-    relay: "ws://127.0.0.1:9/lab/relay",
+  const fragment = {
     token: "abCD09_-".repeat(4),
+    url: "ws://127.0.0.1:9/lab/relay?token=abCD09_-&side=join",
     publicKey: "0".repeat(64),
-    person: "1".repeat(64),
-    email: "seller@lab.local",
-    department: "demo-de",
+    pairingProtocolVersion: PAIRING_PROTOCOL_VERSION,
+    pairingMode: "primed",
+    identityRelation: "same-person",
+    deviceEnrollmentPersonId: "1".repeat(64),
+    mode: "IoM",
   };
-  const encode = (override: Record<string, unknown>): string => {
-    const json = Buffer.from(JSON.stringify({ ...payload, ...override })).toString("base64url");
-    return `http://x/amway/lab#${json}`;
+  const encode = (
+    fragmentOverride: Record<string, unknown> = {},
+    params: Record<string, string> = { fe: "seller@lab.local", fdi: "1".repeat(64) },
+    path = "/invites/inviteDevice/",
+  ): string => {
+    const url = new URL(`http://x${path}`);
+    url.searchParams.set("invited", "true");
+    url.searchParams.set("connectionMode", "primed");
+    for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
+    url.hash = encodeURIComponent(JSON.stringify({ ...fragment, ...fragmentOverride }));
+    return url.toString();
   };
-  assert.equal(decodeIoMInvite(encode({})).person, payload.person);
-  for (const [name, override] of [
-    ["missing payload", {}],
-    ["wrong mode", { mode: "IoP" }],
-    ["bad rendezvous", { relay: "http://x/y" }],
-    ["bad token", { token: "short" }],
-    ["bad person", { person: "xyz" }],
-    ["bad email", { email: "not-an-email" }],
-    ["empty department", { department: "" }],
-  ] as [string, Record<string, unknown>][]) {
-    const url = name === "missing payload" ? "http://x/amway/lab" : encode(override);
+  assert.equal(decodeIoMInvite(encode()).deviceEnrollmentPersonId, fragment.deviceEnrollmentPersonId);
+  // A bare invitedevice path without an embedded mode still resolves to IoM.
+  const { mode: _dropped, ...noMode } = fragment;
+  assert.equal(decodeIoMInvite(encode(noMode)).mode, "IoM");
+  const cases: [string, string][] = [
+    ["missing payload", "http://x/invites/inviteDevice/?invited=true"],
+    ["wrong mode path", encode({}, { fe: "seller@lab.local" }, "/invites/invitePartner/")],
+    ["wrong embedded mode", encode({ mode: "IoP" })],
+    ["path payload conflict", encode({ mode: "IoP" }, { fe: "seller@lab.local" }, "/invites/inviteDevice/")],
+    ["bad rendezvous", encode({ url: "http://x/y" })],
+    ["bad token", encode({ token: "short" })],
+    ["bad public key", encode({ publicKey: "short" })],
+    ["protocol mismatch", encode({ pairingProtocolVersion: 999 })],
+    ["not primed", encode({ pairingMode: "standard" })],
+    ["not same-person", encode({ identityRelation: "distinct-person" })],
+    ["bad person", encode({}, { fe: "seller@lab.local", fdi: "xyz" })],
+    ["person conflict", encode({}, { fe: "seller@lab.local", fdi: "2".repeat(64) })],
+    ["bad email", encode({}, { fe: "not-an-email" })],
+    ["missing email", encode({}, {})],
+  ];
+  for (const [name, url] of cases) {
     assert.throws(() => decodeIoMInvite(url), /not a lab IoM invitation/, name);
   }
 });
@@ -179,7 +219,6 @@ test("a different person is refused before any network traffic", async (t) => {
   await Promise.all([deviceA.ready, stranger.ready]);
 
   const invite = await deviceA.client.call("amwayLab", "createIoMInvite", {
-    department: "demo-de",
     relayUrl,
   }) as { invitationUrl: string };
   await assert.rejects(

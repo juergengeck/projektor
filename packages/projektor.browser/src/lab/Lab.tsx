@@ -6,9 +6,8 @@ import { Badge, RoleBadge, StatusBadge } from "../components/ui";
 /** Best-effort role resolution for a pasted invite; the worker validates strictly on accept. */
 function roleKeyFromInvite(invitationUrl: string): LabKey | null {
   try {
-    const fragment = new URL(invitationUrl.trim()).hash.replace(/^#/, "");
-    const json = JSON.parse(atob(fragment.replace(/-/g, "+").replace(/_/g, "/"))) as { email?: unknown };
-    const prefix = String(json?.email ?? "").split("@")[0];
+    const email = new URL(invitationUrl.trim()).searchParams.get("fe") ?? "";
+    const prefix = email.split("@")[0];
     return (LAB_KEYS as readonly string[]).includes(prefix) ? (prefix as LabKey) : null;
   } catch {
     return null;
@@ -386,7 +385,6 @@ export default function Lab() {
     setIomInvites(current => ({ ...current, [key]: { url: "", status: "creating invitation…" } }));
     try {
       const result = await handle.clients[key].call("amwayLab", "createIoMInvite", {
-        department: DEPARTMENT,
         relayUrl: relayUrl.trim(),
       }) as { invitationUrl: string; token: string };
       setIomInvites(current => ({ ...current, [key]: { url: result.invitationUrl, status: "waiting for device…" } }));
