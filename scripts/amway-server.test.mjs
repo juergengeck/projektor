@@ -92,6 +92,27 @@ test("Lab entry is served same-origin when built", async (t) => {
   }
 });
 
+test("Lab IoM relay pipes device sockets through the server", async (t) => {
+  const { server, base } = await started();
+  const relay = (token, side) => {
+    const socket = new WebSocket(`${base.replace("http", "ws")}/lab/relay?token=${token}&side=${side}`);
+    socket.binaryType = "arraybuffer";
+    return socket;
+  };
+  const token = `d${"4".repeat(15)}e`;
+  const host = relay(token, "host");
+  const joiner = relay(token, "join");
+  t.after(async () => {
+    host.close();
+    joiner.close();
+    await close(server);
+  });
+  await Promise.all([once(host, "open"), once(joiner, "open")]);
+  host.send("relay alive");
+  const [event] = await once(joiner, "message");
+  assert.equal(event.data, "relay alive");
+});
+
 test("one instance unlocks, gates scope, and refuses a second unlock", async (t) => {
   const { server, base } = await started();
   t.after(() => close(server));
