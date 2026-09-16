@@ -17,6 +17,9 @@ import {
   initializeNgoModuleGraph,
 } from "../packages/ngo.core/refinio-api.js";
 import { ProjektorMcpServicePlan } from "../packages/projektor-mcp.core/index.js";
+import { validateAppBookCatalog } from "../../one/packages/source.core/dist/app-book.js";
+import { INVENTORY_APP_BOOK_CATALOG } from "../packages/inventory.app/app-book.js";
+import { AMWAY_APP_BOOK_CATALOG } from "../packages/amway.app/app-book.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = path.resolve(__dirname, "..");
@@ -50,6 +53,28 @@ export async function createProjektorOperationRegistry({
     methods: [
       { name: "getStatus", description: "Return local Projektor runtime status." },
       { name: "getDiscovery", description: "Return public Projektor discovery metadata." },
+    ],
+  });
+
+  validateAppBookCatalog(INVENTORY_APP_BOOK_CATALOG);
+  registry.register("inventoryAppBook", {
+    getDefinition: () => structuredClone(INVENTORY_APP_BOOK_CATALOG),
+  }, {
+    category: "inventory",
+    description: "Inventory application Book definition and scoped core evidence. Materialization is owned by the native VGER appBook operation.",
+    methods: [
+      { name: "getDefinition", description: "Return the inventory App Book catalog, journeys, and core-contract evidence bindings." },
+    ],
+  });
+
+  validateAppBookCatalog(AMWAY_APP_BOOK_CATALOG);
+  registry.register("amwayAppBook", {
+    getDefinition: () => structuredClone(AMWAY_APP_BOOK_CATALOG),
+  }, {
+    category: "amway",
+    description: "Amway application Book specification. Evidence covers catalog contracts, not operational journeys.",
+    methods: [
+      { name: "getDefinition", description: "Return the Amway App Book, planned journeys and specification evidence bindings." },
     ],
   });
 
