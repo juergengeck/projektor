@@ -49,6 +49,14 @@ npx --yes esbuild "$SCRIPT_DIR/app.js" \
     --outfile="$BUILD_DIR/app.js"
 cp "$SCRIPT_DIR/projektor_logo.svg" "$BUILD_DIR/projektor_logo.svg"
 
+echo -e "${BLUE}  Building Amway browser app (workspace + lab entries)...${NC}"
+if [ ! -d "$SCRIPT_DIR/packages/projektor.browser/node_modules" ]; then
+    (cd "$SCRIPT_DIR/packages/projektor.browser" && npm install --no-audit --no-fund)
+fi
+(cd "$SCRIPT_DIR/packages/projektor.browser" && npm run build)
+mkdir -p "$BUILD_DIR/browser"
+cp -R "$SCRIPT_DIR/packages/projektor.browser/dist/." "$BUILD_DIR/browser/"
+
 if [ -d "$SCRIPT_DIR/docs" ]; then
     cp -R "$SCRIPT_DIR/docs" "$BUILD_DIR/docs"
 fi
@@ -78,6 +86,16 @@ fi
 
 if [ ! -f "$BUILD_DIR/projektor_logo.svg" ]; then
     echo -e "${RED}✗ Build verification failed: projektor_logo.svg not found${NC}"
+    exit 1
+fi
+
+if [ ! -f "$BUILD_DIR/browser/index.html" ]; then
+    echo -e "${RED}✗ Build verification failed: browser/index.html not found${NC}"
+    exit 1
+fi
+
+if [ ! -f "$BUILD_DIR/browser/lab/index.html" ]; then
+    echo -e "${RED}✗ Build verification failed: browser/lab/index.html not found${NC}"
     exit 1
 fi
 

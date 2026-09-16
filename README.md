@@ -58,6 +58,10 @@ Deploy to Cloudflare Pages project `projektor-one`:
 npm run deploy
 ```
 
+The deploy also builds `packages/projektor.browser` and ships it under
+`/browser/`. The four-instance Amway lab is live at
+[https://projektor.one/browser/lab/](https://projektor.one/browser/lab/).
+
 ## Prototype Intent
 
 The app models project management software for architecture offices first. The current seeded dataset uses a municipal Kita build only as an example from the source docs:

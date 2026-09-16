@@ -79,6 +79,15 @@ test("React browser app is served same-origin when built", async (t) => {
   assert.match(html, /\/browser\/assets\//);
 });
 
+test("Lab entry is served same-origin when built", async (t) => {
+  const { server, base } = await started();
+  t.after(() => close(server));
+  const html = await (await fetch(`${base}/browser/lab/`)).text();
+  assert.match(html, /<div id="lab-root"><\/div>/);
+  assert.match(html, /Amway · Lab/);
+  assert.match(html, /\/browser\/assets\//);
+});
+
 test("one instance unlocks, gates scope, and refuses a second unlock", async (t) => {
   const { server, base } = await started();
   t.after(() => close(server));

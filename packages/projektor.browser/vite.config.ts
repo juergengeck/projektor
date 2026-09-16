@@ -41,4 +41,12 @@ export default defineConfig({
     fs: { allow: [HERE, "/Users/gecko/src/one", "/Users/gecko/src/vger", "/Users/gecko/src/projektor"] },
   },
   worker: { format: "es" },
+  build: {
+    rollupOptions: {
+      input: {
+        main: path.join(HERE, "index.html"),
+        lab: path.join(HERE, "lab/index.html"),
+      },
+    },
+  },
 });
