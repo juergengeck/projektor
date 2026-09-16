@@ -34,17 +34,18 @@ Open: the socket-level handshake (`ConnectionPlan` over a browser one.core
 runtime) still lives in the vger stack — the acceptance seam is ready for it,
 but live peer pairing has not been driven from this app yet.
 
-## Lab (`/lab/`)
+## Lab (`/amway/lab/`)
 
 Four Web Workers, one ONE instance each (`packages/amway.lab`).
 
 The lab is a dedicated build entry (`lab/index.html`, mirroring
 flexibel.browser): `npm run build` emits `dist/lab/index.html` next to the
 workspace `dist/index.html`, so the lab has its own URL instead of living
-behind the workspace `#/lab` hash. It is served locally at `/lab/` (and
-`/browser/lab/`) by `scripts/amway-server.mjs` and deployed live at
-`https://projektor.one/lab/` by the root `deploy.sh`, which copies the
-entry to the top-level `/lab/` directory.
+behind the workspace `#/lab` hash. It is served locally at `/amway/lab/`
+by `scripts/amway-server.mjs` and deployed live at
+`https://projektor.one/amway/lab/` by the root `deploy.sh`, which copies
+the entry into the amway lane. The route is deliberately not linked from
+any page.
 
 - **Host → worker:** refinio.api `IpcTransport` over the worker port (`handler:call`, `handler:list`).
 - **Worker ↔ worker:** CHUM only. A worker dials `lab://<key>` through the one.models `lab:` dialer; the host transfers the MessagePort to the target, which accepts it as an external connection. The host never reads Amway data.

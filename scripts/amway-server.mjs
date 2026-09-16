@@ -501,12 +501,7 @@ export function createAmwayServer({ directory, instanceDir, shop, journal } = {}
         res.writeHead(200, { "Content-Type": MIME[".html"], "Cache-Control": "no-store" });
         return res.end(html);
       }
-      if (req.method === "GET" && (url.pathname === "/browser/lab/" || url.pathname === "/browser/lab")) {
-        const html = await readFile(path.join(BROWSER_DIR, "lab", "index.html"), "utf8");
-        res.writeHead(200, { "Content-Type": MIME[".html"], "Cache-Control": "no-store" });
-        return res.end(html);
-      }
-      if (req.method === "GET" && (url.pathname === "/lab/" || url.pathname === "/lab")) {
+      if (req.method === "GET" && (url.pathname === "/amway/lab/" || url.pathname === "/amway/lab")) {
         const html = await readFile(path.join(BROWSER_DIR, "lab", "index.html"), "utf8");
         res.writeHead(200, { "Content-Type": MIME[".html"], "Cache-Control": "no-store" });
         return res.end(html);

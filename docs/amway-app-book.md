@@ -70,7 +70,7 @@ next slice; the route server reports `durable: false` until then):
   modelled after `vger.browser`, reusing its invitation URL parser and the
   built connection.core dist via source aliases (no cross-repo edits);
   served same-origin at `/browser/`. Run `npm run build` in the package.
-- Four-instance browser lab (`/browser/#/lab`, `packages/amway.lab/`): country-
+- Four-instance browser lab (`/amway/lab`, `packages/amway.lab/`): country-
   organisation admin, manager, seller and customer run as four independent ONE
   instances in dedicated Web Workers. Catalog offers and admitted orders use
   scoped ONE access plus CHUM exchange, and each column projects only its own
@@ -183,7 +183,7 @@ reservations, returns, duplicate delivery and restart recovery.
 
 Current implementation status: the catalog slice and the first admitted-order
 feedback path are operational in `packages/amway.lab` and rendered at
-`/browser/#/lab`. Manager/admin offer publication is role-gated, replicated
+`/amway/lab`. Manager/admin offer publication is role-gated, replicated
 objects retain their exact ONE version and provenance, and unauthorized local
 publication is denied honestly. A customer self-purchase is admitted locally,
 then reaches the staff projections through CHUM; a seller-admitted order reaches

@@ -56,10 +56,13 @@ fi
 (cd "$SCRIPT_DIR/packages/projektor.browser" && npm run build)
 mkdir -p "$BUILD_DIR/browser"
 cp -R "$SCRIPT_DIR/packages/projektor.browser/dist/." "$BUILD_DIR/browser/"
-# Serve the lab at /lab/ like flexibel.one/lab: the entry uses absolute
-# /browser/assets/... URLs, so it loads from either path.
-mkdir -p "$BUILD_DIR/lab"
-cp "$SCRIPT_DIR/packages/projektor.browser/dist/lab/index.html" "$BUILD_DIR/lab/index.html"
+# Serve the lab from the amway lane at /amway/lab/: the entry uses absolute
+# /browser/assets/... URLs, so it loads from any path. The build-output copy
+# under browser/lab is removed so the lane route stays the single address and
+# is never linked from any page.
+mkdir -p "$BUILD_DIR/amway/lab"
+cp "$SCRIPT_DIR/packages/projektor.browser/dist/lab/index.html" "$BUILD_DIR/amway/lab/index.html"
+rm -rf "$BUILD_DIR/browser/lab"
 
 if [ -d "$SCRIPT_DIR/docs" ]; then
     cp -R "$SCRIPT_DIR/docs" "$BUILD_DIR/docs"
@@ -98,13 +101,13 @@ if [ ! -f "$BUILD_DIR/browser/index.html" ]; then
     exit 1
 fi
 
-if [ ! -f "$BUILD_DIR/browser/lab/index.html" ]; then
-    echo -e "${RED}✗ Build verification failed: browser/lab/index.html not found${NC}"
+if [ ! -f "$BUILD_DIR/amway/lab/index.html" ]; then
+    echo -e "${RED}✗ Build verification failed: amway/lab/index.html not found${NC}"
     exit 1
 fi
 
-if [ ! -f "$BUILD_DIR/lab/index.html" ]; then
-    echo -e "${RED}✗ Build verification failed: lab/index.html not found${NC}"
+if [ -e "$BUILD_DIR/browser/lab" ]; then
+    echo -e "${RED}✗ Build verification failed: browser/lab must not ship (lane route is /amway/lab)${NC}"
     exit 1
 fi
 

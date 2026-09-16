@@ -59,8 +59,9 @@ npm run deploy
 ```
 
 The deploy also builds `packages/projektor.browser` and ships it under
-`/browser/`. The four-instance Amway lab is live at
-[https://projektor.one/lab/](https://projektor.one/lab/).
+`/browser/`. The four-instance Amway lab is served from the amway lane at
+`/amway/lab/` (live at `https://projektor.one/amway/lab/`); the route is
+deliberately not linked from any page.
 
 ## Prototype Intent
 
