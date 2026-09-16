@@ -130,9 +130,13 @@ export async function startLabHost<K extends string>({ keys, spawn }: {
     async pairAll() {
       for (let i = 0; i < keys.length; i += 1) {
         for (let j = i + 1; j < keys.length; j += 1) {
-          const invite = await clients[keys[i]].call<{ url: string; publicKey: string; token: string }>("connection", "createInvite", {});
+          // Primed pairing reuses the authenticated socket for CHUM instead
+          // of closing it and dialing a second connection. The mode lives on
+          // the invitation: createInvite sets it, and the acceptor hands the
+          // invitation through unchanged — no second knob to disagree.
+          const invite = await clients[keys[i]].call<{ url: string; publicKey: string; token: string; pairingMode?: string }>("connection", "createInvite", { mode: "primed" });
           await clients[keys[j]].call("connection", "connectWithInvite", {
-            url: invite.url, publicKey: invite.publicKey, token: invite.token,
+            url: invite.url, publicKey: invite.publicKey, token: invite.token, pairingMode: invite.pairingMode,
           });
         }
       }
