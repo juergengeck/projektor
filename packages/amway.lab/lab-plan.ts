@@ -39,6 +39,7 @@ import type {
 } from "./recipes.ts";
 import { LAB_STOCK, audience, canPublish, projectDepartment } from "./projection.ts";
 import type { DepartmentProjection } from "./projection.ts";
+import { createIoMOps } from "./iom.ts";
 
 const KIND_OF_TYPE: Record<string, string> = { AmwayDepartment: "department", AmwayRoleAssignment: "assignment", AmwayContact: "contact", AmwayOffer: "offer", AmwayOrder: "order" };
 const ID_FIELD: Record<string, string> = { AmwayDepartment: "department", AmwayRoleAssignment: "subject", AmwayContact: "person", AmwayOffer: "offerId", AmwayOrder: "idempotencyKey" };
@@ -60,9 +61,13 @@ export interface FeedRowInput {
   hash: string;
 }
 
-export function createLabPlan({ connections, now = () => Date.now() }: {
+export function createLabPlan({ connections, now = () => Date.now(), listenerUrl, email }: {
   connections: ConnectionsModel;
   now?: () => number;
+  /** Pairing listener id carrying the registered credential (lab:// url). */
+  listenerUrl: string;
+  /** Instance owner email; IoM invitations name it as the identity hint. */
+  email: string;
 }) {
   const self = (): string => {
     const owner = getInstanceOwnerIdHash();
@@ -224,6 +229,8 @@ export function createLabPlan({ connections, now = () => Date.now() }: {
       else await connections.disableAllConnections();
       return { online };
     },
+
+    ...createIoMOps({ connections, self, listenerUrl, email }),
   };
 }
 
