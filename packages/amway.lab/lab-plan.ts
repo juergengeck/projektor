@@ -37,7 +37,7 @@ import type {
   AmwayOrder,
   AmwayRoleAssignment,
 } from "./recipes.ts";
-import { LAB_STOCK, audience, canPublish, projectDepartment } from "./projection.ts";
+import { LAB_STOCK, audience, canPublish, projectDepartment, rolesOf } from "./projection.ts";
 import type { DepartmentProjection } from "./projection.ts";
 import { createIoMOps } from "./iom.ts";
 
@@ -196,18 +196,59 @@ export function createLabPlan({ connections, now = () => Date.now(), listenerUrl
       return publish("offer", state, obj);
     },
 
-    async admitOrder({ department, customer, offer, quantity, idempotencyKey }: {
-      department: string; customer: string; offer: string; quantity: number; idempotencyKey?: string;
+    /**
+     * A customer places an order for themselves. This records intent only
+     * (`admittedAt: 0`): nobody has bought anything until the seller admits
+     * it with admitOrder.
+     */
+    async placeOrder({ department, offer, quantity, idempotencyKey }: {
+      department: string; offer: string; quantity: number; idempotencyKey?: string;
     }): Promise<{ idHash: string }> {
       const state = await requireDepartment(department);
       if (!state.offers.some(entry => entry.offerId === offer)) {
         throw new Error(`Amway lab: offer ${offer} is not known in ${department}.`);
       }
+      const roles = rolesOf({ department: state.department, assignments: state.assignments, subject: self(), atTime: now() });
+      if (!roles.has("customer")) {
+        throw new Error("Amway lab: only a customer may place an order.");
+      }
+      const key = idempotencyKey ?? `lab-order-${now()}`;
+      if (state.orders.some(entry => entry.idempotencyKey === key)) {
+        throw new Error(`Amway lab: order ${key} is already placed.`);
+      }
       const obj = createOrder({
-        department: state.deptIdHash, idempotencyKey: idempotencyKey ?? `lab-order-${now()}`,
-        customer, seller: self(), offer, quantity, lot: LAB_STOCK.lot, facility: LAB_STOCK.facility, admittedAt: now(),
+        department: state.deptIdHash, idempotencyKey: key,
+        customer: self(), seller: self(), offer, quantity, lot: LAB_STOCK.lot, facility: LAB_STOCK.facility, admittedAt: 0,
       });
-      return publish("order", state, obj, customer);
+      return publish("order", state, obj, self());
+    },
+
+    /**
+     * A seller admits a placed order, recording the purchase. There is no
+     * other way for an admitted order to exist: admitting without a prior
+     * customer placement fails, as does admitting twice.
+     */
+    async admitOrder({ department, idempotencyKey }: {
+      department: string; idempotencyKey: string;
+    }): Promise<{ idHash: string }> {
+      const state = await requireDepartment(department);
+      const roles = rolesOf({ department: state.department, assignments: state.assignments, subject: self(), atTime: now() });
+      if (!roles.has("seller") && !roles.has("admin") && !roles.has("manager")) {
+        throw new Error("Amway lab: only the seller may admit orders.");
+      }
+      const placed = state.orders.find(entry => entry.idempotencyKey === idempotencyKey);
+      if (!placed) {
+        throw new Error(`Amway lab: order ${idempotencyKey} was never placed by a customer.`);
+      }
+      if (placed.admittedAt !== 0) {
+        throw new Error(`Amway lab: order ${idempotencyKey} is already admitted.`);
+      }
+      const obj = createOrder({
+        department: state.deptIdHash, idempotencyKey: placed.idempotencyKey,
+        customer: placed.customer, seller: self(), offer: placed.offer, quantity: placed.quantity,
+        lot: placed.lot, facility: placed.facility, admittedAt: now(),
+      });
+      return publish("order", state, obj, placed.customer);
     },
 
     async getDepartment({ department }: { department: string }): Promise<{ department: string; known: false } | ({ known: true } & DepartmentProjection)> {

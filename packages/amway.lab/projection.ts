@@ -92,7 +92,10 @@ export interface DepartmentProjection {
   assignments: AmwayRoleAssignment[];
   contacts: AmwayContact[];
   offers: AmwayOffer[];
+  /** Admitted orders only: a purchase exists iff the seller admitted a placed order. */
   orders: AmwayOrder[];
+  /** Placed but unadmitted orders (`admittedAt === 0`), awaiting the seller. */
+  pendingOrders: AmwayOrder[];
   availability: { lot: string; facility: string; gross: number; available: number };
   rejected: Rejection[];
 }
@@ -116,14 +119,19 @@ export function projectDepartment({ department, assignments, contacts, offers, o
     rolesOf({ department, assignments, subject: entry.subject, atTime }).has(entry.role));
   const viewerRoles = rolesOf({ department, assignments, subject: viewer, atTime });
   const customerOnly = viewerRoles.size === 1 && viewerRoles.has("customer");
-  const admittedOrders = orders.filter(entry => admit("order", "AmwayOrder", entry.idempotencyKey, entry.seller, entry.customer));
+  const authorizedOrders = orders.filter(entry => admit("order", "AmwayOrder", entry.idempotencyKey, entry.seller, entry.customer));
+  const admittedOrders = authorizedOrders.filter(entry => entry.admittedAt > 0);
+  const pendingOrders = authorizedOrders.filter(entry => entry.admittedAt === 0);
+  const scopeToViewer = (list: AmwayOrder[]): AmwayOrder[] =>
+    customerOnly ? list.filter(entry => entry.customer === viewer) : list;
   return {
     department: department.department,
     roles: [...viewerRoles].sort(),
     assignments: validAssignments,
     contacts: contacts.filter(entry => admit("contact", "AmwayContact", entry.person, entry.publishedBy, entry.person)),
     offers: offers.filter(entry => admit("offer", "AmwayOffer", entry.offerId, entry.publishedBy)),
-    orders: customerOnly ? admittedOrders.filter(entry => entry.customer === viewer) : admittedOrders,
+    orders: scopeToViewer(admittedOrders),
+    pendingOrders: scopeToViewer(pendingOrders),
     availability: {
       ...LAB_STOCK,
       available: LAB_STOCK.gross - admittedOrders.reduce((sum, entry) => sum + entry.quantity, 0),

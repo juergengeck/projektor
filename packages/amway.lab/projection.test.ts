@@ -39,6 +39,21 @@ test("orders reach staff and their customer only", () => {
     [ADMIN, MANAGER, SELLER, CUSTOMER].sort());
 });
 
+test("placed orders pend until the seller admits them", () => {
+  const placed: AmwayOrder = { $type$: "AmwayOrder", department: DEPT, idempotencyKey: "p1", customer: CUSTOMER, seller: CUSTOMER, offer: "o1", quantity: 2, lot: "demo-lot-a", facility: "demo-facility", admittedAt: 0 };
+  const customerView = projectDepartment({ department, assignments, contacts: [], offers: [], orders: [placed], viewer: CUSTOMER, atTime: 5 });
+  assert.deepEqual(customerView.orders, [], "placing alone buys nothing");
+  assert.deepEqual(customerView.pendingOrders.map(entry => entry.idempotencyKey), ["p1"]);
+  assert.equal(customerView.availability.available, 10, "unadmitted stock is untouched");
+  const sellerView = projectDepartment({ department, assignments, contacts: [], offers: [], orders: [placed], viewer: SELLER, atTime: 5 });
+  assert.deepEqual(sellerView.pendingOrders.map(entry => entry.idempotencyKey), ["p1"], "the seller sees what to admit");
+  const admitted: AmwayOrder = { ...placed, seller: SELLER, admittedAt: 9 };
+  const after = projectDepartment({ department, assignments, contacts: [], offers: [], orders: [admitted], viewer: CUSTOMER, atTime: 10 });
+  assert.deepEqual(after.orders.map(entry => entry.idempotencyKey), ["p1"]);
+  assert.deepEqual(after.pendingOrders, [], "admitting clears the pending order");
+  assert.equal(after.availability.available, 8);
+});
+
 test("projection rejects unauthorized rows and scopes customer reads", () => {
   const order: AmwayOrder = { $type$: "AmwayOrder", department: DEPT, idempotencyKey: "k1", customer: CUSTOMER, seller: SELLER, offer: "o1", quantity: 3, lot: "demo-lot-a", facility: "demo-facility", admittedAt: 2 };
   const forgedOffer: AmwayOffer = { $type$: "AmwayOffer", department: DEPT, offerId: "bad", item: "x", priceList: "p", channel: "facility", unitAmount: 1, currency: "EUR", publishedBy: SELLER };

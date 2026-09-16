@@ -19,6 +19,7 @@ interface ConnectionStatus {
 
 interface DepartmentView {
   orders: { idempotencyKey: string }[];
+  pendingOrders: { idempotencyKey: string; offer: string; quantity: number }[];
   offers: { offerId: string }[];
   availability: { available: number };
 }
@@ -113,31 +114,73 @@ test("a seller cannot publish offers", async () => {
   );
 });
 
-test("orders reach the customer they are for", async () => {
+test("a purchase exists only after the customer places and the seller admits", async () => {
   // Runs after the offer test (node:test runs top-level tests in order), so
-  // lab-offer-1 is already materialized on the seller.
-  const toCustomer = feedUntil(clients().customer, row => row.type === "AmwayOrder" && row.id === "lab-order-t1", "customer order");
-  await clients().seller.call("amwayLab", "admitOrder", {
-    department: "demo-de", customer: persons().customer, offer: "lab-offer-1", quantity: 2, idempotencyKey: "lab-order-t1",
+  // lab-offer-1 is already materialized on seller and customer.
+  const toSeller = feedUntil(clients().seller, row => row.type === "AmwayOrder" && row.id === "lab-order-t1", "seller sees placement");
+  await clients().customer.call("amwayLab", "placeOrder", {
+    department: "demo-de", offer: "lab-offer-1", quantity: 2, idempotencyKey: "lab-order-t1",
   });
+  await toSeller;
+  const placed = await clients().customer.call<DepartmentView>("amwayLab", "getDepartment", { department: "demo-de" });
+  assert.deepEqual(placed.orders, [], "placing alone buys nothing");
+  assert.deepEqual(placed.pendingOrders.map(entry => entry.idempotencyKey), ["lab-order-t1"]);
+  const sellerView = await clients().seller.call<DepartmentView>("amwayLab", "getDepartment", { department: "demo-de" });
+  assert.deepEqual(sellerView.pendingOrders.map(entry => entry.idempotencyKey), ["lab-order-t1"], "the seller sees what to admit");
+  const toCustomer = feedUntil(clients().customer, admittedRow("lab-order-t1"), "customer order");
+  await clients().seller.call("amwayLab", "admitOrder", { department: "demo-de", idempotencyKey: "lab-order-t1" });
   await toCustomer;
   const view = await clients().customer.call<DepartmentView>("amwayLab", "getDepartment", { department: "demo-de" });
   assert.deepEqual(view.orders.map(entry => entry.idempotencyKey), ["lab-order-t1"]);
+  assert.deepEqual(view.pendingOrders, [], "admitting clears the pending order");
   assert.equal(view.availability.available, 8);
 });
+
+test("a seller cannot admit an order nobody placed", async () => {
+  await assert.rejects(
+    clients().seller.call("amwayLab", "admitOrder", { department: "demo-de", idempotencyKey: "lab-order-ghost" }),
+    /never placed by a customer/,
+  );
+  const view = await clients().seller.call<DepartmentView>("amwayLab", "getDepartment", { department: "demo-de" });
+  assert.ok(!view.orders.some(entry => entry.idempotencyKey === "lab-order-ghost"), "no purchase appears");
+});
+
+test("only a customer may place an order", async () => {
+  await assert.rejects(
+    clients().seller.call("amwayLab", "placeOrder", { department: "demo-de", offer: "lab-offer-1", quantity: 1 }),
+    /only a customer may place an order/,
+  );
+});
+
+test("admitting twice fails", async () => {
+  await clients().customer.call("amwayLab", "placeOrder", {
+    department: "demo-de", offer: "lab-offer-1", quantity: 1, idempotencyKey: "lab-order-once",
+  });
+  await feedUntil(clients().seller, row => row.type === "AmwayOrder" && row.id === "lab-order-once", "seller sees placement");
+  await clients().seller.call("amwayLab", "admitOrder", { department: "demo-de", idempotencyKey: "lab-order-once" });
+  await assert.rejects(
+    clients().seller.call("amwayLab", "admitOrder", { department: "demo-de", idempotencyKey: "lab-order-once" }),
+    /already admitted/,
+  );
+});
+
+const admittedRow = (id: string) => (row: FeedRow): boolean =>
+  row.type === "AmwayOrder" && row.id === id && (row.obj?.admittedAt as number) > 0;
 
 test("a customer self-purchase feeds the admitted order back to staff", async () => {
   const id = "lab-order-customer-feedback";
   const arrivals = ["admin", "manager", "seller"].map(key =>
-    feedUntil(clients()[key], row => row.type === "AmwayOrder" && row.id === id, `${key} receives customer purchase`));
-  await clients().customer.call("amwayLab", "admitOrder", {
-    department: "demo-de", customer: persons().customer, offer: "lab-offer-1", quantity: 1, idempotencyKey: id,
+    feedUntil(clients()[key], admittedRow(id), `${key} receives customer purchase`));
+  await clients().customer.call("amwayLab", "placeOrder", {
+    department: "demo-de", offer: "lab-offer-1", quantity: 1, idempotencyKey: id,
   });
+  await feedUntil(clients().seller, row => row.type === "AmwayOrder" && row.id === id, "seller sees placement");
+  await clients().seller.call("amwayLab", "admitOrder", { department: "demo-de", idempotencyKey: id });
   const rows = await Promise.all(arrivals);
   assert.equal(new Set(rows.map(row => row.hash)).size, 1, "staff receives the exact admitted version");
   const manager = await clients().manager.call<DepartmentView>("amwayLab", "getDepartment", { department: "demo-de" });
   assert.ok(manager.orders.some(entry => entry.idempotencyKey === id));
-  assert.equal(manager.availability.available, 7);
+  assert.equal(manager.availability.available, 6);
 });
 
 test("a paused worker catches up after resume", async () => {
@@ -161,11 +204,13 @@ test("persisted workers feed an admitted purchase back after restart", async () 
   assert.deepEqual(restored.map(status => status.totalConnections), [3, 3, 3, 3], "persisted mesh is connected");
   const id = "lab-order-after-restart";
   const arrivals = ["admin", "manager", "seller"].map(key =>
-    feedUntil(clients()[key], row => row.type === "AmwayOrder" && row.id === id, `${key} receives post-restart purchase`));
-  await clients().customer.call("amwayLab", "admitOrder", {
-    department: "demo-de", customer: persons().customer, offer: "lab-offer-1", quantity: 1, idempotencyKey: id,
+    feedUntil(clients()[key], admittedRow(id), `${key} receives post-restart purchase`));
+  await clients().customer.call("amwayLab", "placeOrder", {
+    department: "demo-de", offer: "lab-offer-1", quantity: 1, idempotencyKey: id,
   });
+  await feedUntil(clients().seller, row => row.type === "AmwayOrder" && row.id === id, "seller sees placement");
+  await clients().seller.call("amwayLab", "admitOrder", { department: "demo-de", idempotencyKey: id });
   await Promise.all(arrivals);
   const manager = await clients().manager.call<DepartmentView>("amwayLab", "getDepartment", { department: "demo-de" });
-  assert.equal(manager.availability.available, 6);
+  assert.equal(manager.availability.available, 5);
 });

@@ -73,6 +73,7 @@ export interface View {
   contacts: Contact[];
   offers: Offer[];
   orders: Order[];
+  pendingOrders: Order[];
   availability: { lot: string; facility: string; gross: number; available: number } | null;
   rejected: { type: string; id: string; reason: string }[];
 }
@@ -115,6 +116,7 @@ const EMPTY_VIEW: View = {
   contacts: [],
   offers: [],
   orders: [],
+  pendingOrders: [],
   availability: null,
   rejected: [],
 };
@@ -139,7 +141,8 @@ function formatFeedLabel(row: FeedRow): string {
   }
   if (row.type === "AmwayOrder") {
     const obj = row.obj as Record<string, unknown>;
-    return `Order ${row.id} (${obj.offer} ×${obj.quantity})`;
+    const state = (obj.admittedAt as number) > 0 ? "admitted" : "placed";
+    return `Order ${row.id} ${state} (${obj.offer} ×${obj.quantity})`;
   }
   if (row.type === "AmwayContact") {
     const obj = row.obj as Record<string, unknown>;
@@ -223,7 +226,13 @@ function reduce(state: State, action: Action): State {
 
   if (row.type === "AmwayOrder") {
     const order = row.obj as unknown as Order;
-    const orders = upsert(view.orders, order, e => e.idempotencyKey === order.idempotencyKey);
+    const same = (e: Order): boolean => e.idempotencyKey === order.idempotencyKey;
+    // Placed (admittedAt 0) and admitted rows share the idempotency key:
+    // each version replaces the other, never both.
+    const orders = order.admittedAt > 0 ? upsert(view.orders, order, same) : view.orders.filter(e => !same(e));
+    const pendingOrders = order.admittedAt === 0
+      ? upsert(view.pendingOrders, order, same)
+      : view.pendingOrders.filter(e => !same(e));
     const availability = view.availability
       ? { ...view.availability, available: Math.max(0, view.availability.gross - orders.reduce((sum, e) => sum + e.quantity, 0)) }
       : null;
@@ -233,7 +242,7 @@ function reduce(state: State, action: Action): State {
         ...column,
         fresh,
         feedLog,
-        view: { ...view, orders, availability },
+        view: { ...view, orders, pendingOrders, availability },
       },
     };
   }
@@ -863,29 +872,27 @@ export default function Lab() {
                       </>
                     )}
 
-                    {seller && key === "seller" && (
+                    {seller && key === "seller" && view.pendingOrders.map(entry => (
                       <button
+                        key={entry.idempotencyKey}
                         type="button"
-                        disabled={!seller || view.offers.length === 0 || boot !== "live"}
+                        disabled={!seller || boot !== "live"}
                         onClick={() =>
                           void run(key, "admitOrder", {
-                            customer: lab.current?.persons.customer,
-                            offer: view.offers[0]?.offerId ?? "demo-offer",
-                            quantity: 2,
+                            idempotencyKey: entry.idempotencyKey,
                           })
                         }
                       >
-                        Admit Order ×2
+                        Admit {entry.offer} ×{entry.quantity}
                       </button>
-                    )}
+                    ))}
 
                     {key === "customer" && (
                       <button
                         type="button"
                         disabled={view.offers.length === 0 || boot !== "live"}
                         onClick={() =>
-                          void run(key, "admitOrder", {
-                            customer: lab.current?.persons.customer,
+                          void run(key, "placeOrder", {
                             offer: view.offers[0]?.offerId ?? "demo-offer",
                             quantity: 1,
                           })
