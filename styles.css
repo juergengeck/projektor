@@ -1164,6 +1164,260 @@ h3 {
   background: var(--panel);
 }
 
+.handover-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.handover-tabs button {
+  min-height: 36px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--panel);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+
+.handover-tabs button.active {
+  color: #fff;
+  border-color: var(--accent-2);
+  background: var(--accent-2);
+}
+
+.requirements-summary {
+  display: grid;
+  grid-template-columns: minmax(320px, 1.7fr) repeat(3, minmax(150px, 0.62fr));
+  gap: 12px;
+}
+
+.requirements-principle,
+.requirement-metric,
+.handover-card,
+.requirements-board {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.requirements-principle,
+.requirement-metric {
+  padding: 16px;
+}
+
+.requirements-principle {
+  background: linear-gradient(135deg, var(--panel), var(--soft));
+}
+
+.requirements-principle h3 {
+  margin: 8px 0 6px;
+  font-size: 1.24rem;
+}
+
+.requirements-principle p,
+.requirement-metric p,
+.handover-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.requirement-metric strong {
+  display: block;
+  margin: 8px 0 4px;
+  color: var(--ink);
+  font-size: 1.85rem;
+}
+
+.handover-points {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.handover-card {
+  display: block;
+  padding: 16px;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.handover-card:hover,
+.handover-card:focus-visible,
+.handover-card.active {
+  border-color: var(--accent-2);
+  box-shadow: 0 8px 26px rgba(15, 74, 95, 0.1);
+}
+
+.handover-card h3 {
+  min-height: 2.7em;
+  margin: 10px 0 6px;
+  font-size: 1rem;
+}
+
+.handover-card p {
+  min-height: 5.8em;
+  font-size: 0.88rem;
+}
+
+.handover-state,
+.requirement-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 5px 9px;
+  border: 1px solid rgba(28, 126, 100, 0.28);
+  border-radius: 999px;
+  color: var(--accent-2);
+  background: var(--soft);
+  font-size: 0.75rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.requirement-status:disabled {
+  cursor: default;
+}
+
+.handover-progress {
+  height: 7px;
+  margin: 16px 0 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--subtle);
+}
+
+.handover-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+}
+
+.handover-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.handover-meta strong {
+  color: var(--ink);
+}
+
+.requirements-board {
+  margin-top: 16px;
+  overflow: hidden;
+}
+
+.requirements-table-wrap {
+  overflow-x: auto;
+}
+
+.requirements-table {
+  width: 100%;
+  min-width: 980px;
+  border-collapse: collapse;
+}
+
+.requirements-table th,
+.requirements-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.requirements-table th {
+  color: var(--muted);
+  background: var(--subtle);
+  font-size: 0.74rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.requirements-table td:first-child {
+  min-width: 280px;
+}
+
+.requirements-table td:first-child strong,
+.requirements-table td:first-child span,
+.requirements-table td:first-child small {
+  display: block;
+}
+
+.requirements-table td:first-child span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.requirements-table td:first-child small {
+  max-width: 420px;
+  margin-top: 8px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.source-ref-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.source-ref-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 180px;
+}
+
+.source-ref-list code {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.requirement-status {
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.75rem;
+}
+
+.requirement-status.status-accepted {
+  color: #fff;
+  border-color: var(--accent-2);
+  background: var(--accent-2);
+}
+
+.requirement-status.status-ready {
+  color: var(--accent-2);
+  background: var(--soft);
+}
+
+.requirement-status.status-inProgress {
+  color: var(--accent);
+  border-color: rgba(28, 100, 126, 0.3);
+  background: rgba(28, 100, 126, 0.08);
+}
+
+.requirement-status.status-planned {
+  color: var(--muted);
+  border-color: var(--line);
+  background: var(--subtle);
+}
+
 .schedule-board {
   display: grid;
   grid-template-columns: minmax(260px, 0.72fr) minmax(420px, 1.46fr) minmax(280px, 0.82fr);
@@ -2759,6 +3013,7 @@ h3 {
   .segmented,
   .phase-picker,
   .flow-tabs,
+  .handover-tabs,
   .settings-tabs {
     justify-content: flex-start;
   }
@@ -2768,6 +3023,7 @@ h3 {
   .role-layout,
   .phase-board,
   .flow-board,
+  .requirements-summary,
   .schedule-board,
   .pert-visual,
   .burn-visual,
@@ -2785,6 +3041,10 @@ h3 {
   .onboarding-info-grid,
   .onboarding-password-grid {
     grid-template-columns: 1fr;
+  }
+
+  .handover-points {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .ngo-board-head {
@@ -2834,6 +3094,7 @@ h3 {
   .work-lanes,
   .metrics,
   .flow-chip-list,
+  .handover-points,
   .visual-tabs,
   .table-tabs,
   .kanban-visual,

@@ -1,5 +1,5 @@
 import { createProjectPlan, createProjectScheduleStateDagUpdate } from "./packages/project.core/index.js";
-import { createDemoProjectSchedule } from "./demo-kita-2028.project.js";
+import { createDemoProjectRequirements, createDemoProjectSchedule } from "./demo-kita-2028.project.js";
 import { createProjectEditorWorkbench } from "./content-editors.project.js";
 import {
   DEMO_DATASET_CREATOR_SKILL,
@@ -37,6 +37,12 @@ import {
   normalizeProjectSourceBundle,
   summarizeProjectFileIndex,
 } from "./packages/project-source.core/index.js";
+import {
+  REQUIREMENT_STATUSES,
+  normalizeProjectRequirements,
+  setRequirementStatus,
+  summarizeRequirementPlan,
+} from "./packages/requirement.core/index.js";
 
 const state = {
   activePanel: "cockpit",
@@ -44,6 +50,7 @@ const state = {
   activeRole: "architect",
   activePhase: "lp3",
   activeFlow: "invoices",
+  activeHandoverPoint: "all",
   theme: localStorage.getItem("projektor-theme") || localStorage.getItem("steering-theme") || "light",
   language: localStorage.getItem("projektor-language") || localStorage.getItem("steering-language") || "de",
   onboardingStep: localStorage.getItem("projektor-onboarding-complete") === "true" ? "done" : "identity",
@@ -92,6 +99,7 @@ const navItems = [
   ["roles", "RO", "navRoles"],
   ["phases", "LP", "navPhases"],
   ["flows", "FL", "navFlows"],
+  ["requirements", "AN", "navRequirements"],
   ["data", "DA", "navData"],
   ["ngo", "NG", "navNgo"],
   ["ai", "AS", "navAi"],
@@ -121,6 +129,7 @@ const onboardingSteps = ["identity", "web", "password", "stats", "review"];
 
 const onboardingCopy = {
   de: {
+    tagline: "Deine Projekte, auf deinem Gerät",
     appStoreStep: "Web",
     back: "Zurück",
     continue: "Weiter",
@@ -169,6 +178,7 @@ const onboardingCopy = {
     validationPassword: "Die Passwörter müssen übereinstimmen.",
   },
   en: {
+    tagline: "Your projects, on your device",
     appStoreStep: "Web",
     back: "Back",
     continue: "Continue",
@@ -217,6 +227,7 @@ const onboardingCopy = {
     validationPassword: "The passwords must match.",
   },
   fr: {
+    tagline: "Tes projets, sur ton appareil",
     appStoreStep: "Web",
     back: "Retour",
     continue: "Continuer",
@@ -265,6 +276,7 @@ const onboardingCopy = {
     validationPassword: "Les mots de passe doivent correspondre.",
   },
   es: {
+    tagline: "Tus proyectos, en tu dispositivo",
     appStoreStep: "Web",
     back: "Atrás",
     continue: "Continuar",
@@ -361,6 +373,7 @@ const i18n = {
     navRoles: "Rollen",
     navPhases: "Phasen",
     navFlows: "Flows",
+    navRequirements: "Anforderungen",
     navData: "Daten",
     navNgo: "NGO",
     navAi: "Assistenz",
@@ -381,6 +394,12 @@ const i18n = {
     phasesTitle: "Phasen, Querschnittsthemen und offene Entscheidungen",
     flowsEyebrow: "Projektflows",
     flowsTitle: "Verbindliche Abläufe für Dokumente, Termine und Änderungen",
+    requirementsEyebrow: "Projektanforderungen",
+    requirementsTitle: "Anforderungen planen und Übergaben klar gestalten",
+    requirementsAll: "Alle Übergaben",
+    requirementsStructuredTitle: "Strukturierte Projektdaten und Originalquellen",
+    requirementsStructuredText:
+      "Projektor speichert Anforderungen strukturiert lokal und hält jede Anforderung mit den gelieferten Originalquellen verbunden.",
     dataEyebrow: "Projektdateien",
     dataTitle: "Projektquellen und Tabellenprojektionen",
     template: "Template",
@@ -425,6 +444,7 @@ const i18n = {
     navRoles: "Roles",
     navPhases: "Phases",
     navFlows: "Flows",
+    navRequirements: "Requirements",
     navData: "Data",
     navNgo: "NGO",
     navAi: "Assistant",
@@ -445,6 +465,12 @@ const i18n = {
     phasesTitle: "Phases, cross-cutting topics and open decisions",
     flowsEyebrow: "Project flows",
     flowsTitle: "Binding workflows for documents, dates and changes",
+    requirementsEyebrow: "Project requirements",
+    requirementsTitle: "Plan requirements and make handovers clear",
+    requirementsAll: "All handovers",
+    requirementsStructuredTitle: "Structured project data and original sources",
+    requirementsStructuredText:
+      "Projektor stores requirements as structured local data and keeps every requirement connected to the delivered original sources.",
     dataEyebrow: "Project files",
     dataTitle: "Project sources and table projections",
     template: "Template",
@@ -489,6 +515,7 @@ const i18n = {
     navRoles: "Rôles",
     navPhases: "Phases",
     navFlows: "Flux",
+    navRequirements: "Exigences",
     navData: "Données",
     navNgo: "NGO",
     navAi: "Surface IA",
@@ -509,6 +536,12 @@ const i18n = {
     phasesTitle: "Phases, thèmes transversaux et décisions ouvertes",
     flowsEyebrow: "Flux projet",
     flowsTitle: "Processus contraignants pour documents, dates et changements",
+    requirementsEyebrow: "Exigences du projet",
+    requirementsTitle: "Planifier les exigences et clarifier les remises",
+    requirementsAll: "Toutes les remises",
+    requirementsStructuredTitle: "Données structurées et sources originales",
+    requirementsStructuredText:
+      "Projektor stocke les exigences localement sous forme structurée et relie chaque exigence aux sources originales livrées.",
     dataEyebrow: "Fichiers projet",
     dataTitle: "Sources projet et projections tabulaires",
     template: "Modèle",
@@ -553,6 +586,7 @@ const i18n = {
     navRoles: "Roles",
     navPhases: "Fases",
     navFlows: "Flujos",
+    navRequirements: "Requisitos",
     navData: "Datos",
     navNgo: "NGO",
     navAi: "Superficie IA",
@@ -573,6 +607,12 @@ const i18n = {
     phasesTitle: "Fases, temas transversales y decisiones abiertas",
     flowsEyebrow: "Flujos del proyecto",
     flowsTitle: "Procesos vinculantes para documentos, fechas y cambios",
+    requirementsEyebrow: "Requisitos del proyecto",
+    requirementsTitle: "Planificar requisitos y hacer claras las entregas",
+    requirementsAll: "Todas las entregas",
+    requirementsStructuredTitle: "Datos estructurados y fuentes originales",
+    requirementsStructuredText:
+      "Projektor guarda los requisitos como datos locales estructurados y conecta cada requisito con las fuentes originales entregadas.",
     dataEyebrow: "Archivos de proyecto",
     dataTitle: "Fuentes del proyecto y proyecciones tabulares",
     template: "Plantilla",
@@ -648,12 +688,18 @@ function applyRouteFromLocation() {
   if (state.activePanel === "flows" && flowDomains.some((flow) => flow.id === view)) {
     state.activeFlow = view;
   }
+  if (state.activePanel === "requirements") {
+    state.activeHandoverPoint = view === "all" || projectRequirements.handoverPoints.some((point) => point.id === view)
+      ? view
+      : "all";
+  }
   if (state.activePanel === "phases" && phases.some((phase) => phase.id === view)) {
     state.activePhase = view;
   }
 }
 
 function routeHash(panel = state.activePanel, settingsView = state.settingsView) {
+  if (panel === "requirements") return `#/requirements/${state.activeHandoverPoint}`;
   return `#/${panel}${panel === "settings" ? `/${settingsView}` : ""}`;
 }
 
@@ -684,6 +730,7 @@ function navigateSettings(view) {
 function routeHashForTarget(target) {
   if (target.panel === "data" && target.tableView) return `#/data/table/${target.tableView}`;
   if (target.panel === "flows" && target.flow) return `#/flows/${target.flow}`;
+  if (target.panel === "requirements" && target.handoverPoint) return `#/requirements/${target.handoverPoint}`;
   if (target.panel === "phases" && target.phase) return `#/phases/${target.phase}`;
   if (target.panel === "cockpit" && target.cockpitSummary) return cockpitSummaryHash(target.cockpitSummary);
   if (target.panel === "settings") return routeHash("settings", target.settingsView);
@@ -697,6 +744,9 @@ function applyNavigationTarget(target) {
   }
   if (target.flow && flowDomains.some((flow) => flow.id === target.flow)) {
     state.activeFlow = target.flow;
+  }
+  if (target.handoverPoint === "all" || projectRequirements.handoverPoints.some((point) => point.id === target.handoverPoint)) {
+    state.activeHandoverPoint = target.handoverPoint;
   }
   if (target.phase && phases.some((phase) => phase.id === target.phase)) {
     state.activePhase = target.phase;
@@ -873,6 +923,7 @@ let sharedTrieRoots = [
 let { labels: planningLabels, phases, topics, flowDomains } = createHoaiPlanningDefaults();
 
 let projectSchedule = createDemoProjectSchedule();
+let projectRequirements = normalizeProjectRequirements(createDemoProjectRequirements());
 
 let ai = {
   goal: {
@@ -1053,6 +1104,35 @@ function projectRuntime() {
   };
 }
 
+function requirementStorageKey(projectId = demoProject.id) {
+  return `projektor-requirements:${projectId}`;
+}
+
+function applyLocalRequirementStatuses(plan) {
+  const stored = localStorage.getItem(requirementStorageKey(plan.projectId));
+  if (!stored) return plan;
+  try {
+    const statusById = JSON.parse(stored)?.statusById || {};
+    return normalizeProjectRequirements({
+      ...plan,
+      requirements: plan.requirements.map((requirement) => ({
+        ...requirement,
+        status: REQUIREMENT_STATUSES.includes(statusById[requirement.id])
+          ? statusById[requirement.id]
+          : requirement.status,
+      })),
+    });
+  } catch (error) {
+    console.warn("Stored requirement state is invalid and was not applied.", error);
+    return plan;
+  }
+}
+
+function persistRequirementStatuses() {
+  const statusById = Object.fromEntries(projectRequirements.requirements.map((requirement) => [requirement.id, requirement.status]));
+  localStorage.setItem(requirementStorageKey(projectRequirements.projectId), JSON.stringify({ schemaVersion: 1, statusById }));
+}
+
 function createProjectDatatype() {
   return {
     kind: PROJECT_DATATYPE_KIND,
@@ -1077,6 +1157,7 @@ function createProjectDatatype() {
       flowDomains: deepClone(flowDomains),
       schedule: deepClone(projectSchedule),
     },
+    requirements: deepClone(projectRequirements),
     assistant: deepClone(ai),
     settings: sanitizeProjectSettings(settingsModel),
     projectSource: deepClone(projectSource),
@@ -1461,6 +1542,11 @@ function installProjectDatatype(projectData) {
   sharedTrieRoots = deepClone(normalized.roleModel?.sharedTrieRoots || []);
   ({ labels: planningLabels, phases, topics, flowDomains } = normalizeHoaiPlanning(normalizedPlanning));
   projectSchedule = createProjectPlan(normalizedPlanning.schedule || projectSchedule);
+  projectRequirements = applyLocalRequirementStatuses(normalizeProjectRequirements(normalized.requirements || {
+    projectId: normalized.project.id,
+    handoverPoints: [],
+    requirements: [],
+  }));
   ai = deepClone(normalizedAssistant || ai);
   settingsModel = sanitizeProjectSettings(normalized.settings || settingsModel);
   projectSource = normalizeProjectSourceBundle(
@@ -1476,6 +1562,9 @@ function installProjectDatatype(projectData) {
   state.activeRole = roles[runtime.activeRole] ? runtime.activeRole : Object.keys(roles)[0] || state.activeRole;
   state.activePhase = phases.some((phase) => phase.id === runtime.activePhase) ? runtime.activePhase : phases[0]?.id || state.activePhase;
   state.activeFlow = flowDomains.some((flow) => flow.id === runtime.activeFlow) ? runtime.activeFlow : flowDomains[0]?.id || state.activeFlow;
+  state.activeHandoverPoint = projectRequirements.handoverPoints.some((point) => point.id === state.activeHandoverPoint)
+    ? state.activeHandoverPoint
+    : "all";
   state.syncCount = Number.isFinite(runtime.syncAgeMinutes) ? runtime.syncAgeMinutes : state.syncCount;
   state.journalExtra = Number.isInteger(runtime.journalExtra) ? runtime.journalExtra : state.journalExtra;
   state.theme = settingsModel.ui?.theme || state.theme;
@@ -1663,7 +1752,7 @@ function renderOnboarding() {
           ]),
           el("div", {}, [
             el("span", { className: "card-kicker", text: "projektor.one" }),
-            el("strong", { text: tr("topEyebrow") }),
+            el("strong", { text: onb("tagline") }),
           ]),
         ]),
         renderOnboardingLanguage(),
@@ -1762,6 +1851,8 @@ function renderStaticText() {
   setText("phases-title", planningLabels.title || tr("phasesTitle"));
   setText("flowsEyebrow", planningLabels.flowsEyebrow || tr("flowsEyebrow"));
   setText("flows-title", planningLabels.flowsTitle || tr("flowsTitle"));
+  setText("requirementsEyebrow", tr("requirementsEyebrow"));
+  setText("requirements-title", tr("requirementsTitle"));
   setText("dataEyebrow", tr("dataEyebrow"));
   setText("data-title", tr("dataTitle"));
   setText("downloadTemplate", tr("template"));
@@ -1979,6 +2070,229 @@ function renderFlows() {
       ]),
     )),
   );
+}
+
+const requirementStatusCopy = {
+  de: { planned: "Geplant", inProgress: "In Bearbeitung", ready: "Bereit", accepted: "Bestätigt" },
+  en: { planned: "Planned", inProgress: "In progress", ready: "Ready", accepted: "Confirmed" },
+  fr: { planned: "Planifié", inProgress: "En cours", ready: "Prêt", accepted: "Confirmé" },
+  es: { planned: "Planificado", inProgress: "En curso", ready: "Listo", accepted: "Confirmado" },
+};
+
+const requirementUiCopy = {
+  de: {
+    accepted: "bestätigt",
+    due: "Zieldatum",
+    handoverPoints: "Übergabepunkte",
+    readiness: "Übergabebereitschaft",
+    ready: "bereit",
+    requirement: "Anforderung",
+    requirements: "Anforderungen",
+    role: "Verantwortung",
+    sources: "Originalquellen",
+    status: "Status",
+    empty: "Für diesen Projektdatensatz können jetzt Übergabepunkte und Anforderungen geplant werden.",
+    statusAction: "Status weiterschalten",
+  },
+  en: {
+    accepted: "confirmed",
+    due: "Target date",
+    handoverPoints: "Handover points",
+    readiness: "Handover readiness",
+    ready: "ready",
+    requirement: "Requirement",
+    requirements: "Requirements",
+    role: "Accountability",
+    sources: "Original sources",
+    status: "Status",
+    empty: "Handover points and requirements can now be planned for this project dataset.",
+    statusAction: "Advance status",
+  },
+  fr: {
+    accepted: "confirmé",
+    due: "Date cible",
+    handoverPoints: "Points de remise",
+    readiness: "Préparation de la remise",
+    ready: "prêt",
+    requirement: "Exigence",
+    requirements: "Exigences",
+    role: "Responsabilité",
+    sources: "Sources originales",
+    status: "Statut",
+    empty: "Les points de remise et les exigences peuvent maintenant être planifiés pour ce projet.",
+    statusAction: "Faire avancer le statut",
+  },
+  es: {
+    accepted: "confirmado",
+    due: "Fecha objetivo",
+    handoverPoints: "Puntos de entrega",
+    readiness: "Preparación de entrega",
+    ready: "listo",
+    requirement: "Requisito",
+    requirements: "Requisitos",
+    role: "Responsabilidad",
+    sources: "Fuentes originales",
+    status: "Estado",
+    empty: "Ahora se pueden planificar puntos de entrega y requisitos para este proyecto.",
+    statusAction: "Avanzar estado",
+  },
+};
+
+function requirementText(key) {
+  return requirementUiCopy[state.language]?.[key] || requirementUiCopy.de[key] || key;
+}
+
+function requirementStatusLabel(status) {
+  return requirementStatusCopy[state.language]?.[status] || requirementStatusCopy.de[status] || status;
+}
+
+function formatRequirementDate(date) {
+  if (!date) return "–";
+  const locale = state.language === "de" ? "de-DE" : state.language === "fr" ? "fr-FR" : state.language === "es" ? "es-ES" : "en-US";
+  return new Intl.DateTimeFormat(locale, { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" })
+    .format(new Date(`${date}T00:00:00Z`));
+}
+
+function handoverReadinessLabel(readiness) {
+  if (readiness === 100) return requirementStatusLabel("ready");
+  if (readiness >= 50) return requirementStatusLabel("inProgress");
+  return requirementStatusLabel("planned");
+}
+
+function nextRequirementStatus(status) {
+  const index = REQUIREMENT_STATUSES.indexOf(status);
+  return REQUIREMENT_STATUSES[(index + 1) % REQUIREMENT_STATUSES.length] || REQUIREMENT_STATUSES[0];
+}
+
+function advanceRequirementStatus(requirementId) {
+  const requirement = projectRequirements.requirements.find((item) => item.id === requirementId);
+  if (!requirement) return;
+  projectRequirements = setRequirementStatus(projectRequirements, requirementId, nextRequirementStatus(requirement.status));
+  persistRequirementStatuses();
+  state.journalExtra += 1;
+  renderRequirements();
+  renderJournal();
+}
+
+function renderRequirements() {
+  const tabs = document.querySelector("#handoverTabs");
+  const summaryRoot = document.querySelector("#requirementsSummary");
+  const pointsRoot = document.querySelector("#handoverPoints");
+  const boardRoot = document.querySelector("#requirementsBoard");
+  if (!tabs || !summaryRoot || !pointsRoot || !boardRoot) return;
+
+  const summary = summarizeRequirementPlan(projectRequirements);
+  tabs.replaceChildren(
+    ...[
+      { id: "all", label: tr("requirementsAll") },
+      ...summary.handoverPoints.map((point) => ({ id: point.id, label: point.phase || point.label })),
+    ].map((point) => {
+      const button = el("button", {
+        type: "button",
+        className: state.activeHandoverPoint === point.id ? "active" : "",
+        "aria-pressed": state.activeHandoverPoint === point.id ? "true" : "false",
+        text: point.label,
+      });
+      button.addEventListener("click", () => applyNavigationTarget({ panel: "requirements", handoverPoint: point.id }));
+      return button;
+    }),
+  );
+
+  if (!summary.requirementCount) {
+    summaryRoot.replaceChildren(
+      el("article", { className: "requirements-principle" }, [
+        el("span", { className: "card-kicker", text: tr("requirementsStructuredTitle") }),
+        el("h3", { text: tr("requirementsTitle") }),
+        el("p", { text: requirementText("empty") }),
+      ]),
+    );
+    pointsRoot.replaceChildren();
+    boardRoot.replaceChildren();
+    return;
+  }
+
+  const sourceCount = projectRequirements.requirements.reduce((count, requirement) => count + requirement.sourceRefs.length, 0);
+  summaryRoot.replaceChildren(
+    el("article", { className: "requirements-principle" }, [
+      el("span", { className: "card-kicker", text: tr("requirementsStructuredTitle") }),
+      el("h3", { text: `${summary.readiness}% ${requirementText("readiness")}` }),
+      el("p", { text: tr("requirementsStructuredText") }),
+    ]),
+    ...[
+      [summary.requirementCount, requirementText("requirements"), `${summary.readyCount} ${requirementText("ready")}`],
+      [summary.handoverPoints.length, requirementText("handoverPoints"), `${summary.acceptedCount} ${requirementText("accepted")}`],
+      [sourceCount, requirementText("sources"), conciseProjectRef()],
+    ].map(([value, label, text]) => el("article", { className: "requirement-metric" }, [
+      el("span", { className: "card-kicker", text: label }),
+      el("strong", { text: String(value) }),
+      el("p", { text }),
+    ])),
+  );
+
+  pointsRoot.replaceChildren(
+    ...summary.handoverPoints.map((point) => {
+      const button = el("button", {
+        type: "button",
+        className: `handover-card${state.activeHandoverPoint === point.id ? " active" : ""}`,
+        "aria-label": `${point.label}: ${point.readiness}%`,
+        "aria-pressed": state.activeHandoverPoint === point.id ? "true" : "false",
+      }, [
+        el("div", { className: "book-top" }, [
+          el("span", { className: "card-kicker", text: point.phase || requirementText("handoverPoints") }),
+          el("span", { className: `handover-state state-${handoverReadinessLabel(point.readiness).toLowerCase().replaceAll(" ", "-")}`, text: handoverReadinessLabel(point.readiness) }),
+        ]),
+        el("h3", { text: point.label }),
+        el("p", { text: point.benefit || "" }),
+        el("div", { className: "handover-progress" }, [el("span", { style: `width: ${point.readiness}%` })]),
+        el("div", { className: "handover-meta" }, [
+          el("strong", { text: `${point.readyCount}/${point.requirementCount} ${requirementText("ready")}` }),
+          el("span", { text: `${requirementText("due")}: ${formatRequirementDate(point.targetDate)}` }),
+        ]),
+      ]);
+      button.addEventListener("click", () => applyNavigationTarget({ panel: "requirements", handoverPoint: point.id }));
+      return button;
+    }),
+  );
+
+  const visibleRequirements = projectRequirements.requirements.filter((requirement) =>
+    state.activeHandoverPoint === "all" || requirement.handoverPointId === state.activeHandoverPoint,
+  );
+  const pointById = new Map(projectRequirements.handoverPoints.map((point) => [point.id, point]));
+  const table = el("table", { className: "requirements-table" });
+  table.append(
+    el("thead", {}, [el("tr", {}, [
+      el("th", { text: requirementText("requirement") }),
+      el("th", { text: requirementText("handoverPoints") }),
+      el("th", { text: requirementText("role") }),
+      el("th", { text: requirementText("sources") }),
+      el("th", { text: requirementText("status") }),
+    ])]),
+    el("tbody", {}, visibleRequirements.map((requirement) => {
+      const statusButton = el("button", {
+        type: "button",
+        className: `requirement-status status-${requirement.status}`,
+        title: requirementText("statusAction"),
+        "aria-label": `${requirement.title}: ${requirementStatusLabel(requirement.status)}. ${requirementText("statusAction")}`,
+        text: requirementStatusLabel(requirement.status),
+      });
+      statusButton.disabled = requirement.status === "accepted";
+      statusButton.addEventListener("click", () => advanceRequirementStatus(requirement.id));
+      return el("tr", {}, [
+        el("td", {}, [
+          el("strong", { text: requirement.title }),
+          el("span", { text: `${requirement.category} · ${requirementText("due")} ${formatRequirementDate(requirement.dueDate)}` }),
+          el("small", { text: requirement.acceptanceCriteria.join(" · ") }),
+        ]),
+        el("td", { text: pointById.get(requirement.handoverPointId)?.label || requirement.handoverPointId }),
+        el("td", { text: requirement.accountableRole }),
+        el("td", {}, [el("ul", { className: "source-ref-list" }, requirement.sourceRefs.map((sourceRef) =>
+          el("li", {}, [el("strong", { text: sourceRef.label }), el("code", { text: sourceRef.kind })]),
+        ))]),
+        el("td", {}, [statusButton]),
+      ]);
+    })),
+  );
+  boardRoot.replaceChildren(el("div", { className: "requirements-table-wrap" }, [table]));
 }
 
 function dateFromProjectDay(projectStart, day) {
@@ -4270,6 +4584,7 @@ function render() {
   renderRoles();
   renderPhases();
   renderFlows();
+  renderRequirements();
   renderScheduleBoard();
   renderProjectVisuals();
   renderEditorBoard();
