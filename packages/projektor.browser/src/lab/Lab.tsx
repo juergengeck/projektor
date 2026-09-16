@@ -1,5 +1,6 @@
 // packages/projektor.browser/src/lab/Lab.tsx
 import { useEffect, useReducer, useRef, useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import { bootJoinInstance, bootLab, LAB_KEYS, type FeedRow, type LabHandle, type LabKey } from "./transport";
 import { Badge, RoleBadge, StatusBadge } from "../components/ui";
 
@@ -912,6 +913,16 @@ export default function Lab() {
                           >
                             Copy
                           </button>
+                        </div>
+                      )}
+                      {iomInvites[key].url && (
+                        <div style={{ display: "flex", justifyContent: "center", marginTop: "0.4rem" }}>
+                          <QRCodeSVG
+                            value={iomInvites[key].url}
+                            size={112}
+                            role="img"
+                            aria-label={`Device invitation QR for ${key}`}
+                          />
                         </div>
                       )}
                       <div style={{ color: "var(--amway-muted)", marginTop: "0.2rem" }}>{iomInvites[key].status}</div>
