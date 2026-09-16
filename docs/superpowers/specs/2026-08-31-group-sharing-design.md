@@ -456,6 +456,14 @@ are those that catch the conflation:
   `mayReshare` each fail closed.
 - A `ProjektorEvidenceDispute` marks assertions in its window disputed while leaving
   them verifiable, and alters no certificate.
+- A bare Assembly or custody-tier bundle assesses explicitly as `neither`, not as
+  participation-backed and not as missing state.
+- Only the person already attributed to an exact act can affirm or repudiate it,
+  and both operations require participation-backed signing evidence.
+- A receiver that has not established a later repudiation retains its earlier
+  assessment, while a receiver that has established it sees `repudiated`.
+- A reliance certificate pins the exact assessment and tier visible at
+  `reliedAt`; importing a later repudiation never mutates or invalidates it.
 - A living grant admits a later-added member; a pinned grant does not.
 - A `HashGroup` hash changes with membership, so a pinned grant cannot drift.
 

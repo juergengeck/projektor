@@ -10,6 +10,11 @@ This folder contains a static browser prototype for `projektor.one`, based on:
 
 ## Run
 
+The local inventory application now supports persisted opening stock, movements,
+and physical counts. Run `npm run inventory:start`, then open
+[Inventory](http://127.0.0.1:4175). See the [Inventory App Book](./docs/inventory-app-book.md)
+for storage, evidence, and current scope.
+
 Open `index.html` directly, or serve the folder:
 
 ```bash
@@ -58,6 +63,7 @@ npm run deploy
 The app models project management software for architecture offices first. The current seeded dataset uses a municipal Kita build only as an example from the source docs:
 
 - project cockpit for communication, documents, and decisions
+- structured local requirements with explicit project handover points and linked original sources
 - role certificates with trust/context filtered trie sharing
 - HOAI phase tracking with cross-cutting topics
 - VGER-style AI surface with `ProjectGoal`, `ProjectPreparedWorkload`, and `ProjectAIRun`
@@ -95,6 +101,8 @@ authenticated identity graph supplies its trust.core dependencies at runtime.
 
 ## Project Files
 
+Projektor now exposes owner-published project document collections through Filer's authenticated RPC interface. The local demo includes document downloads and a tested Swift-client connection. See [Filer integration](./docs/filer-integration.md) for startup, validation, current Finder limitations, and the editable spreadsheet follow-up.
+
 Git should manage project-file bytes, revisions, diffs, branches and isolated worktrees. Projektor project objects should manage meaning: roles, document provenance, approvals, journal events, AI workloads and access policy.
 
 The current implementation models that boundary in `packages/project-source.core`. `ProjectGitSource` and `ProjectSourceArtifact` are registered ONE objects. An artifact references its source by ID and its immutable bytes with a native `referenceToBlob`; `ProjectFileIndex` is only a read-model projection and is not registered as authoritative storage. Project interchange is not a JSON bundle.
@@ -115,7 +123,10 @@ The owning runtime initializes ONE.core with `ProjectSourceCoreRecipes` before c
 
 ## Product Docs
 
+- [Inventory App Book](./docs/inventory-app-book.md): application purpose, journeys, core evidence, and runtime catalog registration
+- [Amway App Book](./docs/amway-app-book.md): foundation for `/amway`, department phonebooks, contract chat, inventory/revenue and the trust/Assembly journal; run `npm run test:amway`
 - [Product MRD](./docs/projektor-mrd.md)
+- [Requirements and handover plan](./docs/requirements-and-handover-plan.md)
 - [Onboarding MRD](./docs/projektor-onboarding-mrd.md)
 - [Onboarding PRD](./docs/projektor-onboarding-prd.md)
 - [admin.cube PRD](./docs/projektor-admin-cube-prd.md)

@@ -63,6 +63,21 @@ local-first project management system for architects, not a SaaS login screen.
 
 ## 5. Core Message
 
+Lead with **"Your projects, on your device"** in the onboarding header, visible
+from the first screen and retained across onboarding steps. Use these localized
+versions:
+
+| Language | Slogan |
+|---|---|
+| English | Your projects, on your device |
+| German | Deine Projekte, auf deinem Gerät |
+| French | Tes projets, sur ton appareil |
+| Spanish | Tus proyectos, en tu dispositivo |
+
+The slogan introduces local ownership. The storage explanation must still make
+clear that sharing or sync is an explicit choice and explain where data resides;
+the slogan alone does not satisfy OR-2.
+
 1. The web is the app store: install or open projektor.one from the browser.
 2. User and project data stays local on the user's machine, in the user's
    browser, unless they explicitly configure sharing or sync.
@@ -119,6 +134,8 @@ Priority: **M** = must, **S** = should, **C** = later.
 
 ### OR-2 Storage And Location
 
+- **M** Show the localized product slogan from §5 in the onboarding header from
+  the first screen and throughout the flow.
 - **M** The user is told where data resides, in concrete terms — this browser,
   this machine — before the first project opens.
 - **M** Onboarding states plainly that project data is not transmitted

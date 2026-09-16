@@ -116,6 +116,16 @@ revocation, disclosure as evidence — is unchanged.
    Without this binding, a valid claim/signature could be repackaged at a
    different historical authority or roster time.
 
+10. **Custody, participation and reliance are explicit evidence.** Every
+    trust.core attestation result carries `custody` or `participation-backed`;
+    the built-in software-key path can produce only the former. A
+    `ProjektorActParticipationStatement` affirms or repudiates one exact act and
+    requires an injected user-verifying signer/verifier. A receiver stores an
+    immutable `ProjektorActAttributionAssessment` over every locally established
+    statement at the decision time, including explicit `neither`, and a
+    `ProjektorRelianceCertificate` pins that assessment. Later contradiction
+    changes future assessments but cannot rewrite earlier reliance.
+
 **What is genuinely new in `trust.projektor`:** the reused one.models domain
 certificate shapes carry no membership validity window.
 `AffirmationCertificate` is `{data, license}`; `RelationCertificate` is `{app,
@@ -1093,19 +1103,32 @@ identifies the missing adapter demand/registration/disposal as a concrete
 runtime defect. Port that validated path before putting another facade over the
 lifecycle provider.
 
+The Assembly module also supplies a read-only `AssemblyAuthorshipVerifier`.
+Projektor uses that capability when an attributed act is itself an Assembly; it
+must not read `Assembly.signer` from stored bytes and call that verified
+authorship. The narrow verifier exposes no authoring, storage or publication
+operation.
+
 **Produces:** a typed attestation service with three responsibilities:
 
 - `attest({type, certData, issuer, purpose, assertedAt})` stores the License,
   builds the typed claim, signs the exact claim and returns an exact authorship
-  value containing the claim, signature, `Keys`, issuer-key bundle and any
-  applicable Assembly occurrence hashes;
+  value containing the claim, signature, `Keys`, issuer-key bundle and
+  attribution evidence;
 - `findByType({subject, type})` performs one informed lookup for one configured
   type and reverse-map property;
 - `verify({receiver, claimHash, signatureHash, signingKeysHash,
   issuerKeyBundleHashes, expectedIssuer, purpose, authorityMode, atTime,
-  assemblyOccurrence})` returns
+  attributionTier, participationEvidenceHashes})` returns
   `verified`, `pending-authority` or `rejected` with exact lifecycle
   provenance. `authorityMode` is explicitly `evidence-time` or `current`.
+
+The configured claims in this facade are unversioned certificate-shaped
+objects, so they do not pretend to have an optional Assembly occurrence.
+`assembly.core` remains the sole causal-authorship owner for real versioned
+payloads. A valid Assembly proves credential authorship of an exact occurrence,
+not user participation; Projektor therefore assesses a bare Assembly at the
+`custody` tier until an exact participation-backed statement affirms it.
 
 The names may change to match local trust.core style; the semantics may not.
 
@@ -1917,6 +1940,45 @@ Expected: all tests pass.
 git add packages/trust.projektor package.json
 git commit -m "Express Projektor evidence disputes separately"
 ```
+
+---
+
+### Task 7B: Attribution, Repudiation And As-Of Reliance
+
+**Files:**
+- Create: `packages/trust.projektor/attribution.js`
+- Create: `packages/trust.projektor/attribution-model.js`
+- Create: `packages/trust.projektor/attribution.test.js`
+- Modify: `packages/trust.projektor/evidence.js`, recipes, declarations, facade
+  definitions, README and test registration
+- Modify: `packages/trust.core/src/services/TypedAttestationService.ts` and test
+
+**Implemented contract:**
+
+- Every typed attestation states `custody` or `participation-backed`; raw
+  software-key signing is restricted to `custody`.
+- Participation-backed authorship requires explicit user-verifying signer and
+  verifier capabilities and exact participation-evidence hashes.
+- Affirmation and repudiation are opposite values of one immutable, per-act
+  claim. The verified issuer must equal the person already attributed to the
+  target act.
+- Assessment asks trust.core for one informed statement type, then follows
+  trust.projektor's exact bundle and receiver-local status reverse maps. It
+  stores an immutable complete local evidence cut at the current decision time,
+  with `affirmed`, `repudiated`, or `neither` explicit.
+- Reliance is itself participation-backed and pins the exact assessment, tier
+  and statement state seen at `reliedAt`. Later evidence only affects later
+  assessments.
+- `ProjektorTrustModule` demands the runtime-owned issuer-key provider,
+  assembly.core's read-only authorship verifier, receiver config and optional
+  user-verifying capabilities, supplies both Projektor
+  models and the configured attestation service, and registers public operations
+  in `trust.projektor`. It does not demand Leute or AssemblyStore: Assembly
+  construction remains owned below this boundary by assembly.core, while bare
+  Assembly attribution fails closed unless structural verification succeeds.
+
+Run: `node ./packages/trust.projektor/attribution.test.js`, the trust.core test
+suite, then `npm test`. Expected: all pass.
 
 ---
 

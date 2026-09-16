@@ -101,6 +101,15 @@ want in advance; the two diverge routinely in this market.
 
 ## 5. Positioning
 
+**Product slogan: "Your projects, on your device."**
+
+The slogan leads first-contact messaging and the onboarding header. It expresses
+the participant's ownership of their project record and its local home. Selected
+records can still be shared or synced when the participant explicitly configures
+it. The slogan does not imply automatic backup or protection against device loss.
+The [Onboarding MRD](./projektor-onboarding-mrd.md#5-core-message) defines the
+localized wording used in the interface.
+
 projektor.one is a **local-first coordination and provenance layer** for
 multi-organization projects. Project data stays under the organization's
 control, next to the systems where it is produced. Participants explicitly align
