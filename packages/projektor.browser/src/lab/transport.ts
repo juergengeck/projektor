@@ -18,6 +18,17 @@ export interface LabHandle {
   stop(): Promise<void>;
 }
 
+function spawnWorker(key: LabKey, session: string, prune: boolean) {
+  // Inline `new URL` so Vite emits a worker chunk; the key follows as the first message.
+  const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
+  worker.postMessage({ kind: "lab-key", key, session, prune });
+  return {
+    port: worker,
+    terminate: async () => worker.terminate(),
+    onError: (cb: (error: Error) => void) => worker.addEventListener("error", event => cb(new Error(event.message))),
+  };
+}
+
 export async function bootLab(onStage: (stage: string) => void = () => {}): Promise<LabHandle> {
   const stage = (text: string) => {
     console.info(`[lab boot] ${text}`);
@@ -29,16 +40,7 @@ export async function bootLab(onStage: (stage: string) => void = () => {}): Prom
   // startLabHost is untyped JS; the shape below is its documented contract.
   const host = (await startLabHost({
     keys: [...LAB_KEYS],
-    spawn: (key: LabKey) => {
-      // Inline `new URL` so Vite emits a worker chunk; the key follows as the first message.
-      const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
-      worker.postMessage({ kind: "lab-key", key, session });
-      return {
-        port: worker,
-        terminate: async () => worker.terminate(),
-        onError: (cb: (error: Error) => void) => worker.addEventListener("error", event => cb(new Error(event.message))),
-      };
-    },
+    spawn: (key: LabKey) => spawnWorker(key, session, true),
   })) as unknown as LabHandle & { pairAll(): Promise<void> };
   const { admin } = host.clients;
   stage("workers ready");
@@ -56,5 +58,32 @@ export async function bootLab(onStage: (stage: string) => void = () => {}): Prom
   } else {
     stage("department known, skipping seed");
   }
+  return host;
+}
+
+/**
+ * Boot one worker for a joining device: same role credentials (hence the
+ * same Person), fresh session storage, no mesh pairing and no seed. The
+ * caller then runs acceptIoMInvite on the returned handle to pair this
+ * instance with its counterpart over the rendezvous relay.
+ */
+export async function bootJoinInstance(
+  key: LabKey,
+  onStage: (stage: string) => void = () => {},
+): Promise<LabHandle> {
+  const stage = (text: string) => {
+    console.info(`[lab join] ${text}`);
+    onStage(text);
+  };
+  const session = crypto.randomUUID().slice(0, 8);
+  stage("spawning join worker");
+  const host = (await startLabHost({
+    keys: [key],
+    // No pruning: sibling mesh workers in this profile hold live databases
+    // under the same key prefix; deleting them wedges their connections.
+    // Stale join sessions are swept by the next full mesh boot instead.
+    spawn: (spawned: LabKey) => spawnWorker(spawned, session, false),
+  })) as unknown as LabHandle;
+  stage("join worker ready");
   return host;
 }

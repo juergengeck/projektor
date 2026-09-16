@@ -1,7 +1,24 @@
 // packages/projektor.browser/src/lab/Lab.tsx
 import { useEffect, useReducer, useRef, useState } from "react";
-import { bootLab, LAB_KEYS, type FeedRow, type LabHandle, type LabKey } from "./transport";
+import { bootJoinInstance, bootLab, LAB_KEYS, type FeedRow, type LabHandle, type LabKey } from "./transport";
 import { Badge, RoleBadge, StatusBadge } from "../components/ui";
+
+/** Best-effort role resolution for a pasted invite; the worker validates strictly on accept. */
+function roleKeyFromInvite(invitationUrl: string): LabKey | null {
+  try {
+    const fragment = new URL(invitationUrl.trim()).hash.replace(/^#/, "");
+    const json = JSON.parse(atob(fragment.replace(/-/g, "+").replace(/_/g, "/"))) as { email?: unknown };
+    const prefix = String(json?.email ?? "").split("@")[0];
+    return (LAB_KEYS as readonly string[]).includes(prefix) ? (prefix as LabKey) : null;
+  } catch {
+    return null;
+  }
+}
+
+function defaultRelayUrl(): string {
+  const secure = window.location.protocol === "https:";
+  return `${secure ? "wss:" : "ws:"}//${window.location.host}/lab/relay`;
+}
 
 const TITLES: Record<LabKey, { title: string; subtitle: string; icon: string; roleType: string }> = {
   admin: { title: "Org Admin", subtitle: "Root Authority & Scope Governance", icon: "🏛️", roleType: "admin" },
@@ -246,6 +263,17 @@ export default function Lab() {
   const [bootStage, setBootStage] = useState("spawning workers");
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const lab = useRef<LabHandle | null>(null);
+  const [relayUrl, setRelayUrl] = useState<string>(() => defaultRelayUrl());
+  const [iomInvites, setIomInvites] = useState<Record<string, { url: string; status: string }>>({});
+  const [joinUrl, setJoinUrl] = useState("");
+  const [joinStatus, setJoinStatus] = useState("");
+  const joinHandle = useRef<LabHandle | null>(null);
+  const [joined, setJoined] = useState<null | {
+    key: LabKey;
+    person: string;
+    view: View;
+    feed: FeedEntry[];
+  }>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -343,6 +371,100 @@ export default function Lab() {
     setTimeout(() => setCopiedKey(null), 1800);
   }
 
+  function inviteNotice(key: LabKey, url: string, status: string) {
+    setIomInvites(current => {
+      const entry = current[key];
+      if (url && entry && entry.url !== url) return current;
+      return { ...current, [key]: { url, status } };
+    });
+  }
+
+  /** Create a same-person pairing invitation for this column's device lane. */
+  async function inviteDevice(key: LabKey) {
+    const handle = lab.current;
+    if (!handle || boot !== "live") return;
+    setIomInvites(current => ({ ...current, [key]: { url: "", status: "creating invitation…" } }));
+    try {
+      const result = await handle.clients[key].call("amwayLab", "createIoMInvite", {
+        department: DEPARTMENT,
+        relayUrl: relayUrl.trim(),
+      }) as { invitationUrl: string; token: string };
+      setIomInvites(current => ({ ...current, [key]: { url: result.invitationUrl, status: "waiting for device…" } }));
+      // The room stays hosted; this only observes the pairing outcome.
+      void handle.clients[key].call("amwayLab", "awaitIoMInvite", { token: result.token, timeoutMs: 600_000 })
+        .then(() => inviteNotice(key, result.invitationUrl, "device paired ✓"))
+        .catch(error => inviteNotice(
+          key,
+          result.invitationUrl,
+          `pairing failed: ${error instanceof Error ? error.message : String(error)}`,
+        ));
+    } catch (error) {
+      setIomInvites(current => ({
+        ...current,
+        [key]: { url: "", status: `invite failed: ${error instanceof Error ? error.message : String(error)}` },
+      }));
+    }
+  }
+
+  /** Join this lane as a second device of the invited person. */
+  async function joinWithInvite() {
+    const key = roleKeyFromInvite(joinUrl);
+    if (!key) {
+      setJoinStatus("That URL is not a lab device invitation.");
+      return;
+    }
+    if (joinHandle.current) {
+      setJoinStatus("A joined device is already active; leave it first.");
+      return;
+    }
+    setJoinStatus("booting device…");
+    setJoined(null);
+    try {
+      const handle = await bootJoinInstance(key);
+      joinHandle.current = handle;
+      const client = handle.clients[key];
+      // A freshly paired instance answers { known: false } without projection
+      // fields until the department replicates; keep the empty view instead
+      // of storing a shapeless answer that crashes role rendering.
+      const snapshotJoined = async () => {
+        const raw = await client.call("amwayLab", "getDepartment", { department: DEPARTMENT }) as View;
+        const view = raw.known ? raw : { ...EMPTY_VIEW };
+        setJoined(current => current ? { ...current, view } : current);
+      };
+      client.onFeed((row: FeedRow) => {
+        const entry: FeedEntry = {
+          at: new Date().toLocaleTimeString([], { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+          type: row.type,
+          id: row.id,
+          hash: row.hash,
+          label: formatFeedLabel(row),
+        };
+        setJoined(current => current ? { ...current, feed: [entry, ...current.feed].slice(0, 30) } : current);
+        if (row.type === "AmwayRoleAssignment" || row.type === "AmwayDepartment") {
+          void snapshotJoined().catch(() => {});
+        }
+      });
+      const accepted = await client.call("amwayLab", "acceptIoMInvite", {
+        invitationUrl: joinUrl.trim(),
+      }) as { person: string };
+      setJoined({ key, person: accepted.person, view: { ...EMPTY_VIEW }, feed: [] });
+      await snapshotJoined().catch(() => {});
+      setJoinStatus("");
+    } catch (error) {
+      await joinHandle.current?.stop().catch(() => {});
+      joinHandle.current = null;
+      setJoined(null);
+      setJoinStatus(`join failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  async function leaveJoined() {
+    await joinHandle.current?.stop().catch(() => {});
+    joinHandle.current = null;
+    setJoined(null);
+    setJoinStatus("");
+  }
+
   const allOnline = LAB_KEYS.every(k => state[k].online);
   const onlineCount = LAB_KEYS.filter(k => state[k].online).length;
 
@@ -402,6 +524,88 @@ export default function Lab() {
           )}
         </div>
       )}
+
+      {/* Device pairing: second device joins as the same person (IoM) */}
+      <details className="card" style={{ marginBottom: "1.25rem", fontSize: "0.8rem" }}>
+        <summary style={{ cursor: "pointer", fontWeight: 600 }}>Device pairing</summary>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.5rem" }}>
+          <label style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
+            <span style={{ color: "var(--amway-muted)" }}>Rendezvous</span>
+            <input
+              value={relayUrl}
+              onChange={event => setRelayUrl(event.target.value)}
+              aria-label="Pairing rendezvous URL"
+              style={{ flex: 1, minWidth: 0, fontSize: "0.72rem" }}
+            />
+          </label>
+          <label style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
+            <span style={{ color: "var(--amway-muted)" }}>Invitation</span>
+            <input
+              value={joinUrl}
+              onChange={event => setJoinUrl(event.target.value)}
+              placeholder="Paste a device invitation URL"
+              aria-label="Device invitation URL to join with"
+              style={{ flex: 1, minWidth: 0, fontSize: "0.72rem" }}
+            />
+            <button type="button" className="secondary sm" onClick={() => void joinWithInvite()}>
+              Join
+            </button>
+          </label>
+          {joinStatus && <div style={{ color: "var(--amway-muted)" }}>{joinStatus}</div>}
+          {joined && (
+            <div className="lab-column" style={{ marginTop: "0.25rem" }}>
+              <header className="lab-column-header">
+                <div className="lab-role-title">
+                  <span>{TITLES[joined.key].icon}</span>
+                  <span>{TITLES[joined.key].title} · second device</span>
+                </div>
+                <button type="button" className="secondary sm" onClick={() => void leaveJoined()}>
+                  Leave
+                </button>
+              </header>
+              <div style={{ fontSize: "0.72rem", display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+                <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
+                  <span style={{ color: "var(--amway-muted)" }}>ID:</span>
+                  <span>{joined.person.slice(0, 10)}…{joined.person.slice(-4)}</span>
+                  <button
+                    type="button"
+                    className="secondary sm"
+                    onClick={() => void navigator.clipboard?.writeText(joined.person)}
+                  >
+                    Copy
+                  </button>
+                </div>
+                <div>
+                  <span style={{ color: "var(--amway-muted)" }}>Roles: </span>
+                  {joined.view.roles.length > 0
+                    ? joined.view.roles.map(role => <RoleBadge key={role} role={role} />)
+                    : "none yet — the department has not replicated"}
+                </div>
+                <div style={{ color: "var(--amway-muted)" }}>
+                  {joined.view.contacts.length} contacts · {joined.view.offers.length} offers ·{" "}
+                  {joined.view.orders.length} orders ·{" "}
+                  {joined.view.availability ? `${joined.view.availability.available} units` : "no stock projection"}
+                </div>
+                {joined.feed.length > 0 && (
+                  <div className="lab-feed-list">
+                    {joined.feed.map((item, index) => (
+                      <div key={`${item.hash}-${index}`} className={`lab-feed-item lab-feed-${item.type}`}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                          <span style={{ fontWeight: 600 }}>{item.label}</span>
+                          <span style={{ fontSize: "0.65rem", color: "var(--amway-muted)" }}>
+                            #{item.hash.slice(0, 12)}…
+                          </span>
+                        </div>
+                        <span style={{ fontSize: "0.65rem", color: "var(--amway-muted)" }}>{item.at}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </details>
 
       {/* 4-Node Multi-Worker Grid */}
       <div className="lab-grid">
@@ -616,6 +820,15 @@ export default function Lab() {
                       </button>
                     )}
 
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={boot !== "live"}
+                      onClick={() => void inviteDevice(key)}
+                    >
+                      Invite device
+                    </button>
+
                     {(staff || key === "manager") && (
                       <>
                         <button
@@ -683,6 +896,29 @@ export default function Lab() {
                       </button>
                     )}
                   </div>
+                  {iomInvites[key] && (iomInvites[key].url || iomInvites[key].status) && (
+                    <div style={{ marginTop: "0.5rem", fontSize: "0.72rem" }}>
+                      {iomInvites[key].url && (
+                        <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
+                          <input
+                            readOnly
+                            value={iomInvites[key].url}
+                            aria-label="Device invitation URL"
+                            style={{ flex: 1, minWidth: 0, fontSize: "0.68rem" }}
+                            onFocus={event => event.target.select()}
+                          />
+                          <button
+                            type="button"
+                            className="secondary sm"
+                            onClick={() => void navigator.clipboard?.writeText(iomInvites[key].url)}
+                          >
+                            Copy
+                          </button>
+                        </div>
+                      )}
+                      <div style={{ color: "var(--amway-muted)", marginTop: "0.2rem" }}>{iomInvites[key].status}</div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Admin holds no inventory of its own: network telemetry instead */}

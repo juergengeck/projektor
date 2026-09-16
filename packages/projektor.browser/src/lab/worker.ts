@@ -34,7 +34,7 @@ const port: LabPort = {
 };
 
 scope.onmessage = (event: MessageEvent) => {
-  const message = event.data as { kind?: string; key?: string; session?: string };
+  const message = event.data as { kind?: string; key?: string; session?: string; prune?: boolean };
   if (message?.kind !== "lab-key" || typeof message.key !== "string") return;
   scope.onmessage = null;
   const key = message.key;
@@ -45,7 +45,9 @@ scope.onmessage = (event: MessageEvent) => {
   // the same pairAll-plus-seed path the integration test proves.
   const session = typeof message.session === "string" && message.session !== "" ? message.session : "default";
   const directory = `amway-lab-${key}-${session}`;
-  void pruneOldSessions(key, directory);
+  // Join workers share the key prefix with live mesh workers in this
+  // profile; pruning here would delete their databases mid-handshake.
+  if (message.prune !== false) void pruneOldSessions(key, directory);
   startLabInstance({
     port,
     key,
