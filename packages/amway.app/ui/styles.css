@@ -1256,7 +1256,7 @@ details.settings-card > summary:hover {
 }
 
 .lab-role-admin .lab-column-header::before {
-  background: var(--amway-warning);
+  background: var(--amway-muted);
 }
 
 .lab-role-manager .lab-column-header::before {

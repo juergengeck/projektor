@@ -1,0 +1,22 @@
+{
+  "name": "@projektor/amway.app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Amway App Book: departments, contract chat, inventory, revenue and journal",
+  "exports": {
+    "./app-book": "./app-book.js",
+    "./brand": "./brand.js",
+    "./config": "./config.js",
+    "./departments": "./departments.js",
+    "./roles": "./roles.js",
+    "./phonebook": "./phonebook.js",
+    "./i18n": "./i18n.js",
+    "./settings": "./settings.js",
+    "./export": "./export.js",
+    "./demo": "./demo.js",
+    "./invites": "./invites.js"
+  },
+  "appBook": { "name": "amway", "module": "./app-book.js" },
+  "scripts": { "test": "node --test *.test.js" }
+}
