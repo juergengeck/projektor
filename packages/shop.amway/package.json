@@ -1,0 +1,19 @@
+{
+  "name": "@projektor/shop.amway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Amway commercial operations: catalog, reservations, orders, fulfilment, recognition, settlement, returns",
+  "exports": {
+    "./transactions": "./transactions.js",
+    "./catalog": "./catalog.js",
+    "./shop": "./shop.js",
+    "./lifecycle": "./lifecycle.js",
+    "./subscriptions": "./subscriptions.js",
+    "./returns": "./returns.js",
+    "./reconciliation": "./reconciliation.js",
+    "./journal": "./journal.js",
+    "./chat": "./chat.js"
+  },
+  "scripts": { "test": "node --test *.test.js" }
+}
