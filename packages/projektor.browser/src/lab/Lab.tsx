@@ -141,7 +141,11 @@ function formatFeedLabel(row: FeedRow): string {
 function reduce(state: State, action: Action): State {
   const column = state[action.key];
   if (action.kind === "snapshot") {
-    return { ...state, [action.key]: { ...column, view: action.view, notice: "" } };
+    // getDepartment answers { known: false } without projection fields until
+    // the department reaches that worker. Keep the empty view for those
+    // answers; storing them would crash role rendering on missing fields.
+    const view = action.view.known ? action.view : { ...EMPTY_VIEW };
+    return { ...state, [action.key]: { ...column, view, notice: "" } };
   }
   if (action.kind === "online") {
     return { ...state, [action.key]: { ...column, online: action.online } };
@@ -593,6 +597,22 @@ export default function Lab() {
                         }
                       >
                         Appoint Seller
+                      </button>
+                    )}
+
+                    {key === "manager" && (
+                      <button
+                        type="button"
+                        className="btn-accent"
+                        disabled={!staff || boot !== "live"}
+                        onClick={() =>
+                          void run(key, "assignRole", {
+                            subject: lab.current?.persons.customer,
+                            role: "customer",
+                          })
+                        }
+                      >
+                        Appoint Customer
                       </button>
                     )}
 

@@ -18,16 +18,6 @@ export interface LabHandle {
   stop(): Promise<void>;
 }
 
-function waitForRow(client: PortApiClient, match: (row: { type: string; id: string }) => boolean): Promise<void> {
-  return new Promise(resolve => {
-    const off = client.onFeed((row: { type: string; id: string }) => {
-      if (!match(row)) return;
-      off();
-      resolve();
-    });
-  });
-}
-
 export async function bootLab(onStage: (stage: string) => void = () => {}): Promise<LabHandle> {
   const stage = (text: string) => {
     console.info(`[lab boot] ${text}`);
@@ -50,26 +40,19 @@ export async function bootLab(onStage: (stage: string) => void = () => {}): Prom
       };
     },
   })) as unknown as LabHandle & { pairAll(): Promise<void> };
-  const { admin, manager } = host.clients;
+  const { admin } = host.clients;
   stage("workers ready");
   // Pairings and the department persist in each worker's IndexedDB; seed once.
+  // Role appointments are deliberately NOT seeded: the admin appoints the
+  // manager and the manager appoints the team through the lab buttons, so
+  // every capability visibly unlocks through the appointment ceremony.
   const status = await admin.call<{ known: boolean }>("amwayLab", "getDepartment", { department: "demo-de" });
   if (!status.known) {
     stage("pairing 6 lanes");
     await host.pairAll();
     stage("paired, creating department");
-    const appointed = waitForRow(manager, row => row.type === "AmwayRoleAssignment" && row.id === host.persons.manager);
     await admin.call("amwayLab", "createDepartment", { department: "demo-de", name: "Demo DE" });
-    await admin.call("amwayLab", "assignRole", { department: "demo-de", subject: host.persons.manager, role: "manager" });
-    stage("waiting for manager appointment");
-    await appointed;
-    stage("manager appointed, assigning team");
-    const members = [host.clients.seller, host.clients.customer].map(client => waitForRow(client, row => row.type === "AmwayDepartment"));
-    await manager.call("amwayLab", "assignRole", { department: "demo-de", subject: host.persons.seller, role: "seller" });
-    await manager.call("amwayLab", "assignRole", { department: "demo-de", subject: host.persons.customer, role: "customer" });
-    stage("waiting for team sync");
-    await Promise.all(members);
-    stage("team synced");
+    stage("department ready, appointments are manual");
   } else {
     stage("department known, skipping seed");
   }
