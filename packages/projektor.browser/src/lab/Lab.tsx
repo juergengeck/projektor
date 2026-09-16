@@ -812,11 +812,26 @@ export default function Lab() {
                       </button>
                     )}
 
-                    {key === "manager" && (
+                    {seller && key === "seller" && view.pendingOrders.map(entry => (
+                      <button
+                        key={entry.idempotencyKey}
+                        type="button"
+                        disabled={!seller || boot !== "live"}
+                        onClick={() =>
+                          void run(key, "admitOrder", {
+                            idempotencyKey: entry.idempotencyKey,
+                          })
+                        }
+                      >
+                        Admit {entry.offer} ×{entry.quantity}
+                      </button>
+                    ))}
+
+                    {key === "seller" && (
                       <button
                         type="button"
                         className="btn-accent"
-                        disabled={!staff || boot !== "live"}
+                        disabled={!seller || boot !== "live"}
                         onClick={() =>
                           void run(key, "assignRole", {
                             subject: lab.current?.persons.customer,
@@ -872,25 +887,10 @@ export default function Lab() {
                       </>
                     )}
 
-                    {seller && key === "seller" && view.pendingOrders.map(entry => (
-                      <button
-                        key={entry.idempotencyKey}
-                        type="button"
-                        disabled={!seller || boot !== "live"}
-                        onClick={() =>
-                          void run(key, "admitOrder", {
-                            idempotencyKey: entry.idempotencyKey,
-                          })
-                        }
-                      >
-                        Admit {entry.offer} ×{entry.quantity}
-                      </button>
-                    ))}
-
                     {key === "customer" && (
                       <button
                         type="button"
-                        disabled={view.offers.length === 0 || boot !== "live"}
+                        disabled={!view.roles.includes("customer") || view.offers.length === 0 || boot !== "live"}
                         onClick={() =>
                           void run(key, "placeOrder", {
                             offer: view.offers[0]?.offerId ?? "demo-offer",

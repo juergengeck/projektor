@@ -9,7 +9,7 @@ const ADMIN = P("a"), MANAGER = P("b"), SELLER = P("c"), CUSTOMER = P("d"), DEPT
 const department: AmwayDepartment = { $type$: "AmwayDepartment", department: "demo-de", name: "Demo DE", admin: ADMIN };
 const assign = (subject: string, role: string, issuer: string): AmwayRoleAssignment =>
   ({ $type$: "AmwayRoleAssignment", department: DEPT, subject, role, issuer, validFrom: 1 });
-const assignments = [assign(MANAGER, "manager", ADMIN), assign(SELLER, "seller", MANAGER), assign(CUSTOMER, "customer", MANAGER)];
+const assignments = [assign(MANAGER, "manager", ADMIN), assign(SELLER, "seller", MANAGER), assign(CUSTOMER, "customer", SELLER)];
 
 test("roles derive from the department admin chain", () => {
   assert.deepEqual([...rolesOf({ department, assignments, subject: ADMIN, atTime: 5 })], ["admin"]);
@@ -17,6 +17,19 @@ test("roles derive from the department admin chain", () => {
   assert.equal(rolesOf({ department, assignments, subject: SELLER, atTime: 0 }).size, 0);
   const forged = [...assignments, assign(CUSTOMER, "manager", SELLER)];
   assert.deepEqual([...rolesOf({ department, assignments: forged, subject: CUSTOMER, atTime: 5 })], ["customer"]);
+});
+
+test("appointment chain runs admin to manager to seller to customer", () => {
+  const ctx = { department, atTime: 5 };
+  assert.deepEqual([...rolesOf({ ...ctx, assignments, subject: SELLER })], ["seller"]);
+  const sellerIssued = [...assignments, assign(P("f"), "customer", SELLER)];
+  assert.deepEqual([...rolesOf({ ...ctx, assignments: sellerIssued, subject: P("f") })], ["customer"]);
+  const managerIssued = [...assignments, assign(P("f"), "customer", MANAGER)];
+  assert.deepEqual([...rolesOf({ ...ctx, assignments: managerIssued, subject: P("f") })], [], "managers cannot appoint customers");
+  const sellerAppointsSeller = [...assignments, assign(P("f"), "seller", SELLER)];
+  assert.deepEqual([...rolesOf({ ...ctx, assignments: sellerAppointsSeller, subject: P("f") })], [], "sellers cannot appoint sellers");
+  assert.equal(canPublish("assignment", { department, assignments, author: SELLER, atTime: 5 }), true);
+  assert.equal(canPublish("assignment", { department, assignments, author: CUSTOMER, atTime: 5 }), false);
 });
 
 test("publish authority per kind", () => {
@@ -35,7 +48,7 @@ test("orders reach staff and their customer only", () => {
   const row = { customer: CUSTOMER };
   assert.deepEqual(audience("order", { department, assignments, row }), [ADMIN, MANAGER, SELLER, CUSTOMER].sort());
   const other = P("f");
-  assert.deepEqual(audience("order", { department, assignments: [...assignments, assign(other, "customer", MANAGER)], row }),
+  assert.deepEqual(audience("order", { department, assignments: [...assignments, assign(other, "customer", SELLER)], row }),
     [ADMIN, MANAGER, SELLER, CUSTOMER].sort());
 });
 

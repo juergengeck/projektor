@@ -157,8 +157,17 @@ export function createLabPlan({ connections, now = () => Date.now(), listenerUrl
     async assignRole({ department, subject, role }: { department: string; subject: string; role: string }): Promise<{ idHash: string }> {
       const state = await requireDepartment(department);
       const obj = createRoleAssignment({ department: state.deptIdHash, subject, role, issuer: self(), validFrom: now() });
+      // Appointment chain: admin appoints managers, managers appoint
+      // sellers, sellers appoint customers. The root admin keeps authority.
+      const issuerRoles = rolesOf({ department: state.department, assignments: state.assignments, subject: self(), atTime: now() });
       if (role === "manager" && self() !== state.department.admin) {
         throw new Error("Amway lab: only the department admin may appoint managers.");
+      }
+      if (role === "seller" && self() !== state.department.admin && !issuerRoles.has("manager")) {
+        throw new Error("Amway lab: only the department admin or a manager may appoint sellers.");
+      }
+      if (role === "customer" && self() !== state.department.admin && !issuerRoles.has("seller")) {
+        throw new Error("Amway lab: only the seller may appoint customers.");
       }
       const result = await publish("assignment", state, obj, subject);
       const next = await requireDepartment(department);

@@ -76,8 +76,11 @@ before(async () => {
   await managerAppointed;
   const membersReached = ["seller", "customer"].map(key =>
     feedUntil(clients()[key], row => row.type === "AmwayDepartment", `${key} receives department`));
+  const sellerAppointed = feedUntil(clients().seller, row => row.type === "AmwayRoleAssignment" && row.id === persons().seller, "seller receives appointment");
   await manager.call("amwayLab", "assignRole", { department: "demo-de", subject: persons().seller, role: "seller" });
-  await manager.call("amwayLab", "assignRole", { department: "demo-de", subject: persons().customer, role: "customer" });
+  // Appointment chain: customers are appointed by the seller, not the manager.
+  await sellerAppointed;
+  await clients().seller.call("amwayLab", "assignRole", { department: "demo-de", subject: persons().customer, role: "customer" });
   await Promise.all(membersReached);
 }, { timeout: 120_000 });
 
@@ -103,6 +106,23 @@ test("an offer published by the manager arrives by CHUM at every member", async 
   assert.equal(new Set(rows.map(row => row.hash)).size, 1, "every worker holds the exact same version");
   const seen = await clients().seller.call<DepartmentView>("amwayLab", "getDepartment", { department: "demo-de" });
   assert.ok(seen.offers.some(entry => entry.offerId === "lab-offer-1"));
+});
+
+test("customers are appointed by the seller, not the manager", async () => {
+  const stranger = "f".repeat(64);
+  await assert.rejects(
+    clients().manager.call("amwayLab", "assignRole", { department: "demo-de", subject: stranger, role: "customer" }),
+    /only the seller may appoint customers/,
+  );
+  await assert.rejects(
+    clients().seller.call("amwayLab", "assignRole", { department: "demo-de", subject: stranger, role: "manager" }),
+    /only the department admin may appoint managers/,
+  );
+  await assert.rejects(
+    clients().seller.call("amwayLab", "assignRole", { department: "demo-de", subject: stranger, role: "seller" }),
+    /only the department admin or a manager may appoint sellers/,
+  );
+  await clients().seller.call("amwayLab", "assignRole", { department: "demo-de", subject: stranger, role: "customer" });
 });
 
 test("a seller cannot publish offers", async () => {

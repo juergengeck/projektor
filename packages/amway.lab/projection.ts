@@ -43,10 +43,21 @@ export function rolesOf({ department, assignments, subject, atTime }: {
   const managers = new Set(assignments
     .filter(entry => entry.role === "manager" && entry.issuer === department.admin && entry.validFrom <= atTime)
     .map(entry => entry.subject));
+  // Appointment chain: admin appoints managers, managers appoint sellers,
+  // sellers appoint customers. The root admin keeps universal authority.
+  const sellers = new Set(assignments
+    .filter(entry => entry.role === "seller" && entry.validFrom <= atTime &&
+      (entry.issuer === department.admin || managers.has(entry.issuer)))
+    .map(entry => entry.subject));
   for (const entry of assignments) {
     if (entry.subject !== subject || entry.validFrom > atTime) continue;
     const issuerIsAdmin = entry.issuer === department.admin;
-    if (entry.role === "manager" ? issuerIsAdmin : issuerIsAdmin || managers.has(entry.issuer)) {
+    const appointed =
+      entry.role === "manager" ? issuerIsAdmin :
+      entry.role === "seller" ? issuerIsAdmin || managers.has(entry.issuer) :
+      entry.role === "customer" ? issuerIsAdmin || sellers.has(entry.issuer) :
+      issuerIsAdmin || managers.has(entry.issuer);
+    if (appointed) {
       roles.add(entry.role);
     }
   }
@@ -63,7 +74,9 @@ export function canPublish(kind: string, { department, assignments, author, subj
     // Preferred-customer self-service: a customer may buy for themselves only.
     return roles.has("customer") && author === subject;
   }
-  if (kind === "assignment") return roles.has("admin") || roles.has("manager");
+  // Sellers may only ever issue customer appointments; assignRole gates the
+  // exact chain and rolesOf re-validates it on every read.
+  if (kind === "assignment") return roles.has("admin") || roles.has("manager") || roles.has("seller");
   throw new Error(`Amway lab: unknown publish kind ${kind}.`);
 }
 
