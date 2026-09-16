@@ -506,6 +506,11 @@ export function createAmwayServer({ directory, instanceDir, shop, journal } = {}
         res.writeHead(200, { "Content-Type": MIME[".html"], "Cache-Control": "no-store" });
         return res.end(html);
       }
+      if (req.method === "GET" && (url.pathname === "/lab/" || url.pathname === "/lab")) {
+        const html = await readFile(path.join(BROWSER_DIR, "lab", "index.html"), "utf8");
+        res.writeHead(200, { "Content-Type": MIME[".html"], "Cache-Control": "no-store" });
+        return res.end(html);
+      }
       if (req.method === "GET" && url.pathname.startsWith("/browser/assets/")) {
         const file = path.join(BROWSER_DIR, "assets", path.basename(url.pathname));
         if (!file.startsWith(BROWSER_DIR)) return send(403, { error: "Not found." });

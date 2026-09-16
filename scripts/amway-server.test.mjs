@@ -86,6 +86,8 @@ test("Lab entry is served same-origin when built", async (t) => {
   assert.match(html, /<div id="lab-root"><\/div>/);
   assert.match(html, /Amway · Lab/);
   assert.match(html, /\/browser\/assets\//);
+  const alias = await (await fetch(`${base}/lab/`)).text();
+  assert.match(alias, /<div id="lab-root"><\/div>/);
 });
 
 test("one instance unlocks, gates scope, and refuses a second unlock", async (t) => {

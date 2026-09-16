@@ -60,7 +60,7 @@ npm run deploy
 
 The deploy also builds `packages/projektor.browser` and ships it under
 `/browser/`. The four-instance Amway lab is live at
-[https://projektor.one/browser/lab/](https://projektor.one/browser/lab/).
+[https://projektor.one/lab/](https://projektor.one/lab/).
 
 ## Prototype Intent
 

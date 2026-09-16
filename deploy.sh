@@ -56,6 +56,10 @@ fi
 (cd "$SCRIPT_DIR/packages/projektor.browser" && npm run build)
 mkdir -p "$BUILD_DIR/browser"
 cp -R "$SCRIPT_DIR/packages/projektor.browser/dist/." "$BUILD_DIR/browser/"
+# Serve the lab at /lab/ like flexibel.one/lab: the entry uses absolute
+# /browser/assets/... URLs, so it loads from either path.
+mkdir -p "$BUILD_DIR/lab"
+cp "$SCRIPT_DIR/packages/projektor.browser/dist/lab/index.html" "$BUILD_DIR/lab/index.html"
 
 if [ -d "$SCRIPT_DIR/docs" ]; then
     cp -R "$SCRIPT_DIR/docs" "$BUILD_DIR/docs"
@@ -96,6 +100,11 @@ fi
 
 if [ ! -f "$BUILD_DIR/browser/lab/index.html" ]; then
     echo -e "${RED}✗ Build verification failed: browser/lab/index.html not found${NC}"
+    exit 1
+fi
+
+if [ ! -f "$BUILD_DIR/lab/index.html" ]; then
+    echo -e "${RED}✗ Build verification failed: lab/index.html not found${NC}"
     exit 1
 fi
 
