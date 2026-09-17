@@ -843,6 +843,23 @@ export default function Lab() {
                       </button>
                     )}
 
+                    {key === "seller" && view.offers.map(offer => (
+                      <button
+                        key={offer.offerId}
+                        type="button"
+                        className="secondary"
+                        disabled={!seller || boot !== "live" || !view.assignments.some(a => a.role === "customer")}
+                        onClick={() =>
+                          void run(key, "shareOffer", {
+                            offerId: offer.offerId,
+                            customer: lab.current?.persons.customer,
+                          })
+                        }
+                      >
+                        Share {offer.offerId} down
+                      </button>
+                    ))}
+
                     <button
                       type="button"
                       className="secondary"

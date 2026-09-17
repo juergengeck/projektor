@@ -50,6 +50,15 @@ test("orders reach staff and their customer only", () => {
   const other = P("f");
   assert.deepEqual(audience("order", { department, assignments: [...assignments, assign(other, "customer", SELLER)], row }),
     [ADMIN, MANAGER, SELLER, CUSTOMER].sort());
+  // Placed orders stay between the parties: managers see the admitted
+  // purchase, never the pending intent.
+  assert.deepEqual(audience("order", { department, assignments, row: { ...row, admittedAt: 0 } }),
+    [ADMIN, SELLER, CUSTOMER].sort());
+});
+
+test("inventory stops at sellers until the seller shares it down", () => {
+  const offer: AmwayOffer = { $type$: "AmwayOffer", department: DEPT, offerId: "o1", item: "x", priceList: "p", channel: "facility", unitAmount: 1, currency: "EUR", publishedBy: MANAGER };
+  assert.deepEqual(audience("offer", { department, assignments, row: offer }), [ADMIN, MANAGER, SELLER].sort());
 });
 
 test("placed orders pend until the seller admits them", () => {

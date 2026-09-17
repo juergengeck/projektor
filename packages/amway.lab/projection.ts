@@ -87,11 +87,26 @@ export function audience(kind: string, { department, assignments, row }: {
 }): string[] {
   const people = new Set<string>([department.admin]);
   if (kind === "order") {
+    // Placed orders stay between the two parties; the admitted purchase is
+    // shared down with the customer and reported up to staff.
+    if ("admittedAt" in row && (row.admittedAt as number) === 0) {
+      for (const entry of assignments) {
+        if (entry.role === "seller") people.add(entry.subject);
+      }
+    } else {
+      for (const entry of assignments) {
+        if (entry.role === "manager" || entry.role === "seller") people.add(entry.subject);
+      }
+    }
+    if ("customer" in row && typeof row.customer === "string") people.add(row.customer);
+  } else if (kind === "offer") {
+    // Inventory flows down the chain: a published offer reaches sellers
+    // through their manager, never customers. Only the seller shares it
+    // further down (shareOffer).
     for (const entry of assignments) {
       if (entry.role === "manager" || entry.role === "seller") people.add(entry.subject);
     }
-    if ("customer" in row && typeof row.customer === "string") people.add(row.customer);
-  } else if (["department", "assignment", "contact", "offer"].includes(kind)) {
+  } else if (["department", "assignment", "contact"].includes(kind)) {
     for (const entry of assignments) people.add(entry.subject);
   } else {
     throw new Error(`Amway lab: unknown audience kind ${kind}.`);

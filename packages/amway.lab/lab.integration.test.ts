@@ -96,16 +96,33 @@ test("every worker is paired directly with every other", async () => {
   }
 });
 
-test("an offer published by the manager arrives by CHUM at every member", async () => {
-  const arrivals = ["admin", "seller", "customer"].map(key =>
+test("a published offer reaches sellers through their manager, never customers", async () => {
+  const arrivals = ["admin", "seller"].map(key =>
     feedUntil(clients()[key], row => row.type === "AmwayOffer" && row.id === "lab-offer-1", `${key} offer`));
   await clients().manager.call("amwayLab", "publishOffer", {
     department: "demo-de", offerId: "lab-offer-1", item: "GLISTER-100@1", priceList: "demo-retail@2026-09", unitAmount: 10000, currency: "EUR",
   });
   const rows = await Promise.all(arrivals);
-  assert.equal(new Set(rows.map(row => row.hash)).size, 1, "every worker holds the exact same version");
+  assert.equal(new Set(rows.map(row => row.hash)).size, 1, "staff hold the exact same version");
   const seen = await clients().seller.call<DepartmentView>("amwayLab", "getDepartment", { department: "demo-de" });
   assert.ok(seen.offers.some(entry => entry.offerId === "lab-offer-1"));
+  // The offer lane to the seller is proven above; disclose nothing further
+  // and the customer must still be empty — publishing skips no level.
+  await new Promise(resolve => setTimeout(resolve, 2000));
+  const unshared = await clients().customer.call<DepartmentView>("amwayLab", "getDepartment", { department: "demo-de" });
+  assert.deepEqual(unshared.offers, [], "publishing alone shares nothing with customers");
+});
+
+test("inventory reaches the customer only through the seller", async () => {
+  await assert.rejects(
+    clients().manager.call("amwayLab", "shareOffer", { department: "demo-de", offerId: "lab-offer-1", customer: persons().customer }),
+    /only the seller may share offers/,
+  );
+  const shared = feedUntil(clients().customer, row => row.type === "AmwayOffer" && row.id === "lab-offer-1", "customer receives shared offer");
+  await clients().seller.call("amwayLab", "shareOffer", { department: "demo-de", offerId: "lab-offer-1", customer: persons().customer });
+  await shared;
+  const view = await clients().customer.call<DepartmentView>("amwayLab", "getDepartment", { department: "demo-de" });
+  assert.ok(view.offers.some(entry => entry.offerId === "lab-offer-1"));
 });
 
 test("customers are appointed by the seller, not the manager", async () => {
@@ -211,9 +228,15 @@ test("a paused worker catches up after resume", async () => {
   });
   const before = await clients().customer.call<DepartmentView>("amwayLab", "getDepartment", { department: "demo-de" });
   assert.equal(before.offers.some(entry => entry.offerId === "lab-offer-2"), false);
-  const caughtUp = feedUntil(clients().customer, row => row.type === "AmwayOffer" && row.id === "lab-offer-2", "customer catch-up");
   host?.setSwitch("customer", true);
   await clients().customer.call("amwayLab", "setOnline", { online: true });
+  // Resuming does not broadcast inventory either: it still flows only
+  // through the seller.
+  await new Promise(resolve => setTimeout(resolve, 2000));
+  const unshared = await clients().customer.call<DepartmentView>("amwayLab", "getDepartment", { department: "demo-de" });
+  assert.equal(unshared.offers.some(entry => entry.offerId === "lab-offer-2"), false);
+  const caughtUp = feedUntil(clients().customer, row => row.type === "AmwayOffer" && row.id === "lab-offer-2", "customer catch-up");
+  await clients().seller.call("amwayLab", "shareOffer", { department: "demo-de", offerId: "lab-offer-2", customer: persons().customer });
   await caughtUp;
 });
 

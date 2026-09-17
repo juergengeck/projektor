@@ -171,22 +171,29 @@ export function createLabPlan({ connections, now = () => Date.now(), listenerUrl
       }
       const result = await publish("assignment", state, obj, subject);
       const next = await requireDepartment(department);
-      const everyone = audience("assignment", { department: next.department, assignments: next.assignments, row: obj });
-      await grant(next.deptIdHash, everyone);
-      for (const type of ["AmwayRoleAssignment", "AmwayContact", "AmwayOffer"]) {
-        for (const idHash of await getAllIdObjectEntries(idHashOf(next.deptIdHash), typeNameOf(type))) await grant(idHash, everyone);
+      // Disclosure follows the chain, never broadcasts: appointments share
+      // the department, team and directory with the newcomer, but inventory
+      // (offers) and purchases keep the audience each row already carries.
+      // A membership change must never leak a level's rows to another level.
+      const team = audience("assignment", { department: next.department, assignments: next.assignments, row: obj });
+      await grant(next.deptIdHash, team);
+      for (const type of ["AmwayRoleAssignment", "AmwayContact"] as const) {
+        for (const idHash of await getAllIdObjectEntries(idHashOf(next.deptIdHash), typeNameOf(type))) await grant(idHash, team);
       }
-      for (const idHash of await getAllIdObjectEntries(idHashOf(next.deptIdHash), typeNameOf("AmwayOrder"))) {
-        let order: AmwayOrder;
-        try {
-          order = (await getObjectByIdHash(idHash)).obj as AmwayOrder;
-        } catch (error) {
-          // Same transient as latest(): skip this grant pass; the next
-          // membership change re-grants every entry.
-          if (!isMissingVersionHeadError(error)) throw error;
-          continue;
+      for (const type of ["AmwayOffer", "AmwayOrder"] as const) {
+        for (const idHash of await getAllIdObjectEntries(idHashOf(next.deptIdHash), typeNameOf(type))) {
+          let row: AmwayLabObject;
+          try {
+            row = (await getObjectByIdHash(idHash)).obj as AmwayLabObject;
+          } catch (error) {
+            // Same transient as latest(): skip this grant pass; the next
+            // membership change re-grants every entry.
+            if (!isMissingVersionHeadError(error)) throw error;
+            continue;
+          }
+          const kind = type === "AmwayOffer" ? "offer" : "order";
+          await grant(idHash, audience(kind, { department: next.department, assignments: next.assignments, row }));
         }
-        await grant(idHash, audience("order", { department: next.department, assignments: next.assignments, row: order as AmwayOrder }));
       }
       return result;
     },
@@ -203,6 +210,44 @@ export function createLabPlan({ connections, now = () => Date.now(), listenerUrl
       const state = await requireDepartment(department);
       const obj = createOffer({ department: state.deptIdHash, offerId, item, priceList, channel: "facility", unitAmount, currency, publishedBy: self() });
       return publish("offer", state, obj);
+    },
+
+    /**
+     * The seller shares a published offer down with an appointed customer.
+     * This is the only way inventory reaches customers: publishing discloses
+     * to sellers through their manager, never further. Pure disclosure, no
+     * new object; repeating it is harmless.
+     */
+    async shareOffer({ department, offerId, customer }: {
+      department: string; offerId: string; customer: string;
+    }): Promise<{ idHash: string }> {
+      const state = await requireDepartment(department);
+      const roles = rolesOf({ department: state.department, assignments: state.assignments, subject: self(), atTime: now() });
+      if (!roles.has("seller") && self() !== state.department.admin) {
+        throw new Error("Amway lab: only the seller may share offers with customers.");
+      }
+      const customerRoles = rolesOf({ department: state.department, assignments: state.assignments, subject: customer, atTime: now() });
+      if (!customerRoles.has("customer")) {
+        throw new Error("Amway lab: offers are shared with appointed customers only.");
+      }
+      if (!state.offers.some(entry => entry.offerId === offerId)) {
+        throw new Error(`Amway lab: offer ${offerId} is not known in ${department}.`);
+      }
+      let idHash: string | undefined;
+      for (const candidate of await getAllIdObjectEntries(idHashOf(state.deptIdHash), typeNameOf("AmwayOffer"))) {
+        try {
+          const obj = (await getObjectByIdHash(idHashOf(candidate))).obj as AmwayOffer;
+          if (obj.offerId === offerId) {
+            idHash = candidate;
+            break;
+          }
+        } catch (error) {
+          if (!isMissingVersionHeadError(error)) throw error;
+        }
+      }
+      if (!idHash) throw new Error(`Amway lab: offer ${offerId} has not reached this instance.`);
+      await grant(idHash, [customer]);
+      return { idHash };
     },
 
     /**
