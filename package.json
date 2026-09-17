@@ -12,7 +12,7 @@
     "test:amway": "node --test ./packages/amway.app/*.test.js",
     "test:shop": "node --test ./packages/shop.amway/*.test.js",
     "test:amway-server": "node --test ./scripts/amway-server.test.mjs",
-    "test:amway-lab": "node --test ./packages/amway.lab/*.test.ts",
+    "test:amway-lab": "node --test --test-concurrency=1 ./packages/amway.lab/*.test.ts",
     "typecheck:browser": "npm run typecheck --prefix packages/projektor.browser",
     "amway:start": "node scripts/amway-server.mjs",
     "test:filer": "node --test ./packages/project-documents.core/*.test.js",

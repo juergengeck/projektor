@@ -4,5 +4,5 @@
   "private": true,
   "type": "module",
   "description": "Amway lab: one ONE instance per worker, CHUM between workers, refinio.api over IPC",
-  "scripts": { "test": "node --test *.test.ts" }
+  "scripts": { "test": "node --test --test-concurrency=1 *.test.ts" }
 }
