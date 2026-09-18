@@ -39,6 +39,11 @@ test("four-instance browser lab specifies real isolation and propagation evidenc
   assert.match(chapter.body, /Artifact \| Admin \| Manager \| Seller \| Customer/);
   assert.match(chapter.body, /\/invites\/inviteDevice\//);
   assert.match(chapter.body, /placing alone buys nothing/);
+  const ek = catalog.documents.find(({ name }) => name === "ek.four-instance-browser-lab");
+  assert.ok(ek, "the Elektro Klein lane is recorded");
+  assert.match(ek.body, /\/ek\/lab/);
+  assert.match(ek.body, /ek-de/);
+  assert.match(ek.body, /There are no deltas/);
 
   const flow = catalog.journeys.find(({ id }) => id === "amway.flow.observe-four-instance-propagation");
   assert.ok(flow, "Four-instance propagation journey is present");

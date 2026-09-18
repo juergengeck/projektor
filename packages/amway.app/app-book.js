@@ -207,6 +207,25 @@ Implementation order: capture the confirmed brand assets and resolve source mapp
 Open inputs: deployable brand asset/font packaging; initial department/facility roster and owners; the inventory source/export and access boundary for each source app; recognized-revenue/tax/returns policy; and who may issue or delegate each role and phonebook contract. These do not block recording the product foundation. They do block silently inventing deployment configuration or business authority.`,
     sourceRefs: [DOC, FOUNDATION],
   },
+  {
+    name: "ek.four-instance-browser-lab",
+    title: "Elektro Klein lane: the same four-instance contract, second department",
+    body: `Provide a second lane at /ek/lab, distinguished by lane and deliberately unlinked from every page, that runs the exact four-instance contract of the Amway lane for Elektro Klein AG (Elektroinstallationen, Brandmeldeanlagen, Gebäudeautomation): country-organisation admin, department manager, seller and customer columns in one browser window, each backed by its own ONE runtime in a dedicated module Web Worker (packages/ek.lab, a department copy of the Amway lane with ek-de scope, @ek.local lane accounts, eklab:// mesh endpoints and a BMA service catalog).
+
+The lane reuses the contract unchanged: the appointment chain admin appoints managers, managers appoint sellers, sellers appoint customers; cascade disclosure with the same who-sees-what table (published offers reach sellers through their manager only, the seller shares inventory down with shareOffer, placed orders stay between the parties, admitted purchases are shared down and reported up); the place-then-admit purchase ceremony with identical failure modes; canonical /invites/inviteDevice/ same-person invitations with per-column QR over the shared token-room relay; and lane buttons that stay disabled until the worker's own projection shows the action can succeed. Lane copies must not drift from this contract: any behavior change lands in both lanes or is an explicit, documented delta below. There are no deltas.
+
+Verification is the department copy of the Amway lane suite (packages/ek.lab, serial files) plus the EK smoke coverage: pairing mesh, cascade disclosure, appointment chain, purchase ceremony, pause/resume catch-up and restart persistence.`,
+    sourceRefs: [DOC,
+      "repo://projektor/packages/ek.lab/lab-instance.ts",
+      "repo://projektor/packages/ek.lab/lab-plan.ts",
+      "repo://projektor/packages/ek.lab/projection.ts",
+      "repo://projektor/packages/ek.lab/iom.ts",
+      "repo://projektor/packages/ek.lab/lab.integration.test.ts",
+      "repo://projektor/packages/projektor.browser/src/eklab/Lab.tsx",
+      "repo://projektor/packages/projektor.browser/src/eklab/transport.ts",
+      "repo://projektor/scripts/amway-server.mjs",
+      "repo://projektor/packages/amway.app/app-book.js"],
+  },
 ];
 
 const journey = (key, title, role, purpose, inputs, actions, outputs, checks, refs) => ({
