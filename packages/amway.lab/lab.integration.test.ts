@@ -142,6 +142,26 @@ test("customers are appointed by the seller, not the manager", async () => {
   await clients().seller.call("amwayLab", "assignRole", { department: "demo-de", subject: stranger, role: "customer" });
 });
 
+test("republishing a contact edits its name", async () => {
+  const seller = persons().seller;
+  await clients().seller.call("amwayLab", "publishContact", {
+    department: "demo-de", name: "Seller One", role: "seller",
+  });
+  const renamed = feedUntil(clients().manager, row =>
+    row.type === "AmwayContact" && row.obj?.name === "Seller Renamed", "manager sees renamed contact");
+  await clients().seller.call("amwayLab", "publishContact", {
+    department: "demo-de", name: "Seller Renamed", role: "seller",
+  });
+  await renamed;
+  const seen = await clients().seller.call<DepartmentView & { contacts: { person: string; name: string }[] }>(
+    "amwayLab", "getDepartment", { department: "demo-de" });
+  assert.deepEqual(
+    seen.contacts.filter(entry => entry.person === seller).map(entry => entry.name),
+    ["Seller Renamed"],
+    "exactly one contact row carries the edited name",
+  );
+});
+
 test("a seller cannot publish offers", async () => {
   await assert.rejects(
     clients().seller.call("amwayLab", "publishOffer", {
