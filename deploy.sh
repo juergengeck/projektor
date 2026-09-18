@@ -63,6 +63,12 @@ cp -R "$SCRIPT_DIR/packages/projektor.browser/dist/." "$BUILD_DIR/browser/"
 mkdir -p "$BUILD_DIR/amway/lab"
 cp "$SCRIPT_DIR/packages/projektor.browser/dist/lab/index.html" "$BUILD_DIR/amway/lab/index.html"
 rm -rf "$BUILD_DIR/browser/lab"
+# Second lane, same contract: the entry uses absolute /browser/assets/... URLs,
+# so it loads from any path. The build-output copy under browser/eklab is
+# removed so the lane route stays the single address and is never linked.
+mkdir -p "$BUILD_DIR/ek/lab"
+cp "$SCRIPT_DIR/packages/projektor.browser/dist/eklab/index.html" "$BUILD_DIR/ek/lab/index.html"
+rm -rf "$BUILD_DIR/browser/eklab"
 
 if [ -d "$SCRIPT_DIR/docs" ]; then
     cp -R "$SCRIPT_DIR/docs" "$BUILD_DIR/docs"
@@ -108,6 +114,16 @@ fi
 
 if [ -e "$BUILD_DIR/browser/lab" ]; then
     echo -e "${RED}✗ Build verification failed: browser/lab must not ship (lane route is /amway/lab)${NC}"
+    exit 1
+fi
+
+if [ ! -f "$BUILD_DIR/ek/lab/index.html" ]; then
+    echo -e "${RED}✗ Build verification failed: ek/lab/index.html not found${NC}"
+    exit 1
+fi
+
+if [ -e "$BUILD_DIR/browser/eklab" ]; then
+    echo -e "${RED}✗ Build verification failed: browser/eklab must not ship (lane route is /ek/lab)${NC}"
     exit 1
 fi
 

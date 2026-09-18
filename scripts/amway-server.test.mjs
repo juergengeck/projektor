@@ -92,6 +92,19 @@ test("Lab entry is served same-origin when built", async (t) => {
   }
 });
 
+test("EK lane entry is served same-origin when built", async (t) => {
+  const { server, base } = await started();
+  t.after(() => close(server));
+  const html = await (await fetch(`${base}/ek/lab/`)).text();
+  assert.match(html, /<div id="eklab-root"><\/div>/);
+  assert.match(html, /EK · Lab/);
+  assert.match(html, /\/browser\/assets\//);
+  for (const unadvertised of [`${base}/eklab/`, `${base}/browser/eklab/`]) {
+    const body = await (await fetch(unadvertised)).text();
+    assert.doesNotMatch(body, /eklab-root/, `${unadvertised} must not serve the EK lane`);
+  }
+});
+
 test("Lab IoM relay pipes device sockets through the server", async (t) => {
   const { server, base } = await started();
   const relay = (token, side) => {
