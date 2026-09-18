@@ -3,6 +3,7 @@ import { EMAIL_KEY, currentDepartment, operation, setDepartment } from "./api";
 import { applyTheme, setLanguage, t, useLang } from "./i18n";
 import Auth from "./screens/Auth";
 import Lab from "./lab/Lab";
+import EkLab from "./eklab/Lab";
 import Chat from "./screens/Chat";
 import { Earnings, Returns } from "./screens/Finance";
 import Inventory from "./screens/Inventory";
@@ -24,6 +25,10 @@ function screenFromHash(): Screen {
 
 function isLabHash(): boolean {
   return window.location.hash.replace(/^#\/?/, "").startsWith("lab");
+}
+
+function isEkLabHash(): boolean {
+  return window.location.hash.replace(/^#\/?/, "").startsWith("eklab");
 }
 
 function ScopeBanner({ department, onScope }: { department: string; onScope: (dept: string) => void }) {
@@ -94,11 +99,12 @@ export default function App() {
   const [email, setEmail] = useState(localStorage.getItem(EMAIL_KEY) || "");
   const [screen, setScreen] = useState<Screen>(screenFromHash());
   const [isLab, setIsLab] = useState(isLabHash());
+  const [isEkLab, setIsEkLab] = useState(isEkLabHash());
   const [department, setDept] = useState(currentDepartment());
   const [refresh, setRefresh] = useState(0);
 
   useEffect(() => {
-    const onHash = () => { setScreen(screenFromHash()); setIsLab(isLabHash()); };
+    const onHash = () => { setScreen(screenFromHash()); setIsLab(isLabHash()); setIsEkLab(isEkLabHash()); };
     window.addEventListener("hashchange", onHash);
     document.title = t("app.title");
     setLanguage(document.documentElement.lang === "fr" || document.documentElement.lang === "en"
@@ -106,7 +112,7 @@ export default function App() {
     applyTheme();
     // The lab is deliberately sessionless; do not issue a guaranteed 401 from
     // the single-instance shell when it is opened directly.
-    if (!isLabHash()) {
+    if (!isLabHash() && !isEkLabHash()) {
       operation<{ values: { language: string; theme: string } }>("getSettings", {})
         .then(({ values }) => {
           localStorage.setItem("amway.lang", values.language);
@@ -125,6 +131,11 @@ export default function App() {
   // session, so the global single-instance login must not gate or leak into it.
   if (isLab) {
     return <Lab />;
+  }
+
+  // Second lane, same contract: Elektro Klein columns, worker-owned sessions.
+  if (isEkLab) {
+    return <EkLab />;
   }
 
   if (!email) {
