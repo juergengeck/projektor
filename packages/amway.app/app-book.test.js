@@ -34,13 +34,20 @@ test("four-instance browser lab specifies real isolation and propagation evidenc
   assert.match(chapter.body, /must not copy domain objects/);
   assert.match(chapter.body, /customer self-purchase feeds the same admitted order version back/);
   assert.match(chapter.body, /reload restores the live CHUM mesh before readiness/);
-  assert.match(chapter.body, /remaining Order & Reservation slice must separate/);
+  assert.match(chapter.body, /admin appoints managers, managers appoint sellers, sellers appoint customers/);
+  assert.match(chapter.body, /shareOffer operation/);
+  assert.match(chapter.body, /Artifact \| Admin \| Manager \| Seller \| Customer/);
+  assert.match(chapter.body, /\/invites\/inviteDevice\//);
+  assert.match(chapter.body, /placing alone buys nothing/);
 
   const flow = catalog.journeys.find(({ id }) => id === "amway.flow.observe-four-instance-propagation");
   assert.ok(flow, "Four-instance propagation journey is present");
   assert.ok(flow.verificationChecks.some(check => /four concurrently active ONE instances/.test(check)));
   assert.ok(flow.verificationChecks.some(check => /customer receives only their authorized order projection/.test(check)));
   assert.ok(flow.verificationChecks.some(check => /catches up after reconnection/.test(check)));
+  assert.ok(flow.verificationChecks.some(check => /Appointments follow the chain/.test(check)));
+  assert.ok(flow.verificationChecks.some(check => /Publishing alone shares nothing/.test(check)));
+  assert.ok(flow.verificationChecks.some(check => /Admitting an unknown/.test(check)));
 
   const binding = catalog.flowBindings.find(({ flowId }) => flowId === flow.id);
   assert.equal(binding?.scope, "app-book-contract");
