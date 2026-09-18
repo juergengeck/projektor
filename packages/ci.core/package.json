@@ -1,0 +1,8 @@
+{
+  "name": "@projektor/ci.core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared verification for browser lanes: lane registry, suite runner, smoke ceremony driver",
+  "scripts": { "test": "node --test ci-core.test.mjs" }
+}
