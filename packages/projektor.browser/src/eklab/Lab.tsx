@@ -90,6 +90,34 @@ export interface FeedEntry {
 
 export type TabKey = "overview" | "offers" | "orders" | "contacts" | "activity";
 
+function ContactNameField({ currentName, role, disabled, onSave }: {
+  currentName: string; role: string; disabled: boolean; onSave: (name: string, role: string) => void;
+}) {
+  const [name, setName] = useState(currentName);
+  const trimmed = name.trim();
+  return (
+    <div className="lab-contact-name">
+      <input
+        type="text"
+        value={name}
+        maxLength={120}
+        placeholder="Contact name"
+        aria-label="Contact name"
+        disabled={disabled}
+        onChange={e => setName(e.target.value)}
+      />
+      <button
+        type="button"
+        className="secondary"
+        disabled={disabled || !trimmed || trimmed === currentName}
+        onClick={() => onSave(trimmed, role)}
+      >
+        {currentName ? "Save Name" : "Publish Contact"}
+      </button>
+    </div>
+  );
+}
+
 export interface Column {
   online: boolean;
   view: View;
@@ -766,19 +794,13 @@ export default function Lab() {
                     <span>⚡ Quick Actions</span>
                   </div>
                   <div className="lab-action-buttons">
-                    <button
-                      type="button"
-                      className="secondary"
+                    <ContactNameField
+                      key={view.contacts.find(entry => entry.person === personId)?.name ?? ""}
+                      currentName={view.contacts.find(entry => entry.person === personId)?.name ?? ""}
+                      role={view.roles[0] ?? "customer"}
                       disabled={!view.known || boot !== "live"}
-                      onClick={() =>
-                        void run(key, "publishContact", {
-                          name: `${meta.title} Contact`,
-                          role: view.roles[0] ?? "customer",
-                        })
-                      }
-                    >
-                      Publish Contact
-                    </button>
+                      onSave={(name, role) => void run(key, "publishContact", { name, role })}
+                    />
 
                     {key === "admin" && (
                       <button

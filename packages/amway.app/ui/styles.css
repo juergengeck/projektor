@@ -1382,6 +1382,19 @@ details.settings-card > summary:hover {
   white-space: nowrap;
 }
 
+.lab-contact-name {
+  display: flex;
+  flex: 1 1 100%;
+  gap: 0.4rem;
+}
+
+.lab-contact-name input {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.75rem;
+  padding: 0.35rem 0.5rem;
+}
+
 .lab-section {
   display: flex;
   flex-direction: column;
