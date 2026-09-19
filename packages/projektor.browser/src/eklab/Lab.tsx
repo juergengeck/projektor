@@ -74,7 +74,7 @@ export interface View {
   offers: Offer[];
   orders: Order[];
   pendingOrders: Order[];
-  availability: { lot: string; facility: string; gross: number; available: number } | null;
+  availability: { lot: string; facility: string; gross: number; stocked: number; available: number } | null;
   rejected: { type: string; id: string; reason: string }[];
 }
 
@@ -113,6 +113,35 @@ function ContactNameField({ currentName, role, disabled, onSave }: {
         onClick={() => onSave(trimmed, role)}
       >
         {currentName ? "Save Name" : "Publish Contact"}
+      </button>
+    </div>
+  );
+}
+
+function StockUpField({ disabled, onSave }: {
+  disabled: boolean; onSave: (receiptId: string, quantity: number) => void;
+}) {
+  const [quantity, setQuantity] = useState("10");
+  const amount = Number(quantity);
+  const valid = Number.isSafeInteger(amount) && amount > 0;
+  return (
+    <div className="lab-contact-name">
+      <input
+        type="number"
+        min={1}
+        step={1}
+        value={quantity}
+        aria-label="Stock quantity"
+        disabled={disabled}
+        onChange={e => setQuantity(e.target.value)}
+      />
+      <button
+        type="button"
+        className="btn-accent"
+        disabled={disabled || !valid}
+        onClick={() => onSave(`stock-${Date.now()}`, amount)}
+      >
+        Stock Up
       </button>
     </div>
   );
@@ -261,16 +290,16 @@ function reduce(state: State, action: Action): State {
     const pendingOrders = order.admittedAt === 0
       ? upsert(view.pendingOrders, order, same)
       : view.pendingOrders.filter(e => !same(e));
-    const availability = view.availability
-      ? { ...view.availability, available: Math.max(0, view.availability.gross - orders.reduce((sum, e) => sum + e.quantity, 0)) }
-      : null;
+    // The balance itself comes from the projection snapshot (refreshed on
+    // every order row below): recomputing it here from the viewer-scoped
+    // order list showed each column its own number.
     return {
       ...state,
       [action.key]: {
         ...column,
         fresh,
         feedLog,
-        view: { ...view, orders, pendingOrders, availability },
+        view: { ...view, orders, pendingOrders },
       },
     };
   }
@@ -335,7 +364,7 @@ export default function Lab() {
           offs.push(
             client.onFeed((row: FeedRow) => {
               dispatch({ kind: "feed", key, row });
-              if (row.type === "EkRoleAssignment" || row.type === "EkDepartment") {
+              if (row.type === "EkRoleAssignment" || row.type === "EkDepartment" || row.type === "EkOrder" || row.type === "EkStockReceipt") {
                 snapshot().catch(error => dispatch({ kind: "notice", key, notice: error.message }));
               }
             }),
@@ -654,7 +683,7 @@ export default function Lab() {
           const personId = lab.current?.persons[key] ?? "";
           const activeTab = column.tab;
 
-          const totalStock = view.availability?.gross ?? 10;
+          const totalStock = view.availability?.stocked ?? 10;
           const currentStock = view.availability?.available ?? totalStock;
           const stockPct = Math.max(0, Math.min(100, (currentStock / totalStock) * 100));
           const nameOf = (person: string) =>
@@ -803,19 +832,25 @@ export default function Lab() {
                     />
 
                     {key === "admin" && (
-                      <button
-                        type="button"
-                        className="btn-accent"
-                        disabled={!view.known || boot !== "live"}
-                        onClick={() =>
-                          void run(key, "assignRole", {
-                            subject: lab.current?.persons.manager,
-                            role: "manager",
-                          })
-                        }
-                      >
-                        Appoint Manager
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          className="btn-accent"
+                          disabled={!view.known || boot !== "live"}
+                          onClick={() =>
+                            void run(key, "assignRole", {
+                              subject: lab.current?.persons.manager,
+                              role: "manager",
+                            })
+                          }
+                        >
+                          Appoint Manager
+                        </button>
+                        <StockUpField
+                          disabled={!view.known || boot !== "live"}
+                          onSave={(receiptId, quantity) => void run(key, "stockUp", { receiptId, quantity })}
+                        />
+                      </>
                     )}
 
                     {key === "manager" && (
