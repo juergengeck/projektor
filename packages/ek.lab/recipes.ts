@@ -6,7 +6,7 @@
 
 export const LAB_ROLES = ["admin", "manager", "seller", "customer"] as const;
 export type LabRole = (typeof LAB_ROLES)[number];
-export const EK_LAB_TYPES = ["EkDepartment", "EkRoleAssignment", "EkContact", "EkOffer", "EkOrder"] as const;
+export const EK_LAB_TYPES = ["EkDepartment", "EkRoleAssignment", "EkContact", "EkOffer", "EkOrder", "EkStockReceipt"] as const;
 export type EkLabType = (typeof EK_LAB_TYPES)[number];
 
 interface RecipeRule {
@@ -32,6 +32,7 @@ export const EkLabRecipes: LabRecipe[] = [
   { $type$: "Recipe", name: "EkContact", rule: [departmentRef, person("person", true), text("name"), text("role"), person("publishedBy"), integer("publishedAt")] },
   { $type$: "Recipe", name: "EkOffer", rule: [departmentRef, text("offerId", true), text("item"), text("priceList"), text("channel"), integer("unitAmount"), text("currency"), person("publishedBy")] },
   { $type$: "Recipe", name: "EkOrder", rule: [departmentRef, text("idempotencyKey", true), person("customer"), person("seller"), text("offer"), integer("quantity"), text("lot"), text("facility"), integer("admittedAt")] },
+  { $type$: "Recipe", name: "EkStockReceipt", rule: [departmentRef, text("receiptId", true), text("lot"), text("facility"), integer("quantity"), person("receivedBy"), integer("receivedAt")] },
 ];
 
 export const EkLabReverseMapsForIdObjects: [string, Set<string>][] = EK_LAB_TYPES
@@ -107,7 +108,18 @@ export interface EkOrder {
   admittedAt: number;
 }
 
-export type EkLabObject = EkDepartment | EkRoleAssignment | EkContact | EkOffer | EkOrder;
+export interface EkStockReceipt {
+  $type$: "EkStockReceipt";
+  department: string;
+  receiptId: string;
+  lot: string;
+  facility: string;
+  quantity: number;
+  receivedBy: string;
+  receivedAt: number;
+}
+
+export type EkLabObject = EkDepartment | EkRoleAssignment | EkContact | EkOffer | EkOrder | EkStockReceipt;
 
 function isRole(role: unknown): role is LabRole {
   return typeof role === "string" && (LAB_ROLES as readonly string[]).includes(role);
@@ -148,6 +160,18 @@ export function createOffer({ department, offerId, item, priceList, channel, uni
     $type$: "EkOffer", department: hash(department, "department"), offerId: nonEmpty(offerId, "offerId"),
     item: nonEmpty(item, "item"), priceList: nonEmpty(priceList, "priceList"), channel: nonEmpty(channel, "channel"),
     unitAmount: unitAmount as number, currency: nonEmpty(currency, "currency"), publishedBy: hash(publishedBy, "publishedBy"),
+  };
+}
+
+export function createStockReceipt({ department, receiptId, lot, facility, quantity, receivedBy, receivedAt }: {
+  department?: unknown; receiptId?: unknown; lot?: unknown; facility?: unknown; quantity?: unknown;
+  receivedBy?: unknown; receivedAt?: unknown;
+} = {}): EkStockReceipt {
+  if (!Number.isSafeInteger(quantity) || (quantity as number) <= 0) fail("quantity must be a positive integer.");
+  return {
+    $type$: "EkStockReceipt", department: hash(department, "department"), receiptId: nonEmpty(receiptId, "receiptId"),
+    lot: nonEmpty(lot, "lot"), facility: nonEmpty(facility, "facility"), quantity: quantity as number,
+    receivedBy: hash(receivedBy, "receivedBy"), receivedAt: timestamp(receivedAt, "receivedAt"),
   };
 }
 

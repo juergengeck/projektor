@@ -6,7 +6,7 @@
 
 export const LAB_ROLES = ["admin", "manager", "seller", "customer"] as const;
 export type LabRole = (typeof LAB_ROLES)[number];
-export const AMWAY_LAB_TYPES = ["AmwayDepartment", "AmwayRoleAssignment", "AmwayContact", "AmwayOffer", "AmwayOrder"] as const;
+export const AMWAY_LAB_TYPES = ["AmwayDepartment", "AmwayRoleAssignment", "AmwayContact", "AmwayOffer", "AmwayOrder", "AmwayStockReceipt"] as const;
 export type AmwayLabType = (typeof AMWAY_LAB_TYPES)[number];
 
 interface RecipeRule {
@@ -32,6 +32,7 @@ export const AmwayLabRecipes: LabRecipe[] = [
   { $type$: "Recipe", name: "AmwayContact", rule: [departmentRef, person("person", true), text("name"), text("role"), person("publishedBy"), integer("publishedAt")] },
   { $type$: "Recipe", name: "AmwayOffer", rule: [departmentRef, text("offerId", true), text("item"), text("priceList"), text("channel"), integer("unitAmount"), text("currency"), person("publishedBy")] },
   { $type$: "Recipe", name: "AmwayOrder", rule: [departmentRef, text("idempotencyKey", true), person("customer"), person("seller"), text("offer"), integer("quantity"), text("lot"), text("facility"), integer("admittedAt")] },
+  { $type$: "Recipe", name: "AmwayStockReceipt", rule: [departmentRef, text("receiptId", true), text("lot"), text("facility"), integer("quantity"), person("receivedBy"), integer("receivedAt")] },
 ];
 
 export const AmwayLabReverseMapsForIdObjects: [string, Set<string>][] = AMWAY_LAB_TYPES
@@ -107,7 +108,18 @@ export interface AmwayOrder {
   admittedAt: number;
 }
 
-export type AmwayLabObject = AmwayDepartment | AmwayRoleAssignment | AmwayContact | AmwayOffer | AmwayOrder;
+export interface AmwayStockReceipt {
+  $type$: "AmwayStockReceipt";
+  department: string;
+  receiptId: string;
+  lot: string;
+  facility: string;
+  quantity: number;
+  receivedBy: string;
+  receivedAt: number;
+}
+
+export type AmwayLabObject = AmwayDepartment | AmwayRoleAssignment | AmwayContact | AmwayOffer | AmwayOrder | AmwayStockReceipt;
 
 function isRole(role: unknown): role is LabRole {
   return typeof role === "string" && (LAB_ROLES as readonly string[]).includes(role);
@@ -148,6 +160,18 @@ export function createOffer({ department, offerId, item, priceList, channel, uni
     $type$: "AmwayOffer", department: hash(department, "department"), offerId: nonEmpty(offerId, "offerId"),
     item: nonEmpty(item, "item"), priceList: nonEmpty(priceList, "priceList"), channel: nonEmpty(channel, "channel"),
     unitAmount: unitAmount as number, currency: nonEmpty(currency, "currency"), publishedBy: hash(publishedBy, "publishedBy"),
+  };
+}
+
+export function createStockReceipt({ department, receiptId, lot, facility, quantity, receivedBy, receivedAt }: {
+  department?: unknown; receiptId?: unknown; lot?: unknown; facility?: unknown; quantity?: unknown;
+  receivedBy?: unknown; receivedAt?: unknown;
+} = {}): AmwayStockReceipt {
+  if (!Number.isSafeInteger(quantity) || (quantity as number) <= 0) fail("quantity must be a positive integer.");
+  return {
+    $type$: "AmwayStockReceipt", department: hash(department, "department"), receiptId: nonEmpty(receiptId, "receiptId"),
+    lot: nonEmpty(lot, "lot"), facility: nonEmpty(facility, "facility"), quantity: quantity as number,
+    receivedBy: hash(receivedBy, "receivedBy"), receivedAt: timestamp(receivedAt, "receivedAt"),
   };
 }
 

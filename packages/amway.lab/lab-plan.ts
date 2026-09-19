@@ -28,6 +28,7 @@ import {
   createOffer,
   createOrder,
   createRoleAssignment,
+  createStockReceipt,
 } from "./recipes.ts";
 import type {
   AmwayContact,
@@ -36,13 +37,14 @@ import type {
   AmwayOffer,
   AmwayOrder,
   AmwayRoleAssignment,
+  AmwayStockReceipt,
 } from "./recipes.ts";
 import { LAB_STOCK, audience, canPublish, projectDepartment, rolesOf } from "./projection.ts";
 import type { DepartmentProjection } from "./projection.ts";
 import { createIoMOps } from "./iom.ts";
 
-const KIND_OF_TYPE: Record<string, string> = { AmwayDepartment: "department", AmwayRoleAssignment: "assignment", AmwayContact: "contact", AmwayOffer: "offer", AmwayOrder: "order" };
-const ID_FIELD: Record<string, string> = { AmwayDepartment: "department", AmwayRoleAssignment: "subject", AmwayContact: "person", AmwayOffer: "offerId", AmwayOrder: "idempotencyKey" };
+const KIND_OF_TYPE: Record<string, string> = { AmwayDepartment: "department", AmwayRoleAssignment: "assignment", AmwayContact: "contact", AmwayOffer: "offer", AmwayOrder: "order", AmwayStockReceipt: "stock" };
+const ID_FIELD: Record<string, string> = { AmwayDepartment: "department", AmwayRoleAssignment: "subject", AmwayContact: "person", AmwayOffer: "offerId", AmwayOrder: "idempotencyKey", AmwayStockReceipt: "receiptId" };
 
 const versioned = (obj: AmwayLabObject): never => obj as never;
 
@@ -53,6 +55,7 @@ interface DepartmentState {
   contacts: AmwayContact[];
   offers: AmwayOffer[];
   orders: AmwayOrder[];
+  stock: AmwayStockReceipt[];
 }
 
 export interface FeedRowInput {
@@ -95,11 +98,12 @@ export function createLabPlan({ connections, now = () => Date.now(), listenerUrl
 
   async function load(department: string): Promise<DepartmentState> {
     const deptIdHash = await departmentIdHash(department);
-    const [assignments, contacts, offers, orders] = await Promise.all([
+    const [assignments, contacts, offers, orders, stock] = await Promise.all([
       latest<AmwayRoleAssignment>(await getAllIdObjectEntries(idHashOf(deptIdHash), typeNameOf("AmwayRoleAssignment"))),
       latest<AmwayContact>(await getAllIdObjectEntries(idHashOf(deptIdHash), typeNameOf("AmwayContact"))),
       latest<AmwayOffer>(await getAllIdObjectEntries(idHashOf(deptIdHash), typeNameOf("AmwayOffer"))),
       latest<AmwayOrder>(await getAllIdObjectEntries(idHashOf(deptIdHash), typeNameOf("AmwayOrder"))),
+      latest<AmwayStockReceipt>(await getAllIdObjectEntries(idHashOf(deptIdHash), typeNameOf("AmwayStockReceipt"))),
     ]);
     // Not yet replicated is a normal state, asked explicitly — no error swallowing.
     let departmentObj: AmwayDepartment | null = null;
@@ -113,9 +117,9 @@ export function createLabPlan({ connections, now = () => Date.now(), listenerUrl
       }
     }
     if (!departmentObj) {
-      return { deptIdHash, department: null, assignments, contacts, offers, orders };
+      return { deptIdHash, department: null, assignments, contacts, offers, orders, stock };
     }
-    return { deptIdHash, department: departmentObj, assignments, contacts, offers, orders };
+    return { deptIdHash, department: departmentObj, assignments, contacts, offers, orders, stock };
   }
 
   async function grant(idHash: string, people: string[]): Promise<void> {
@@ -177,7 +181,7 @@ export function createLabPlan({ connections, now = () => Date.now(), listenerUrl
       // A membership change must never leak a level's rows to another level.
       const team = audience("assignment", { department: next.department, assignments: next.assignments, row: obj });
       await grant(next.deptIdHash, team);
-      for (const type of ["AmwayRoleAssignment", "AmwayContact"] as const) {
+      for (const type of ["AmwayRoleAssignment", "AmwayContact", "AmwayStockReceipt"] as const) {
         for (const idHash of await getAllIdObjectEntries(idHashOf(next.deptIdHash), typeNameOf(type))) await grant(idHash, team);
       }
       for (const type of ["AmwayOffer", "AmwayOrder"] as const) {
@@ -210,6 +214,27 @@ export function createLabPlan({ connections, now = () => Date.now(), listenerUrl
       const state = await requireDepartment(department);
       const obj = createOffer({ department: state.deptIdHash, offerId, item, priceList, channel: "facility", unitAmount, currency, publishedBy: self() });
       return publish("offer", state, obj);
+    },
+
+    /**
+     * The department admin is also the purchasing department: receiving
+     * goods stocks up the facility inventory every member projects from.
+     * The receipt id makes stocking idempotent — re-recording the same
+     * receipt replaces it instead of counting the goods twice.
+     */
+    async stockUp({ department, receiptId, quantity, lot, facility }: {
+      department: string; receiptId: string; quantity: number; lot?: string; facility?: string;
+    }): Promise<{ idHash: string }> {
+      const state = await requireDepartment(department);
+      if (self() !== state.department.admin) {
+        throw new Error("Amway lab: only the department admin (purchasing) may stock up inventory.");
+      }
+      const obj = createStockReceipt({
+        department: state.deptIdHash, receiptId,
+        lot: lot ?? LAB_STOCK.lot, facility: facility ?? LAB_STOCK.facility,
+        quantity, receivedBy: self(), receivedAt: now(),
+      });
+      return publish("stock", state, obj);
     },
 
     /**
@@ -288,7 +313,7 @@ export function createLabPlan({ connections, now = () => Date.now(), listenerUrl
       const state = await requireDepartment(department);
       const roles = rolesOf({ department: state.department, assignments: state.assignments, subject: self(), atTime: now() });
       if (!roles.has("seller") && !roles.has("admin") && !roles.has("manager")) {
-        throw new Error("Amway lab: only the seller may admit orders.");
+        throw new Error("Amway lab: only the seller or staff may admit orders.");
       }
       const placed = state.orders.find(entry => entry.idempotencyKey === idempotencyKey);
       if (!placed) {
@@ -296,6 +321,18 @@ export function createLabPlan({ connections, now = () => Date.now(), listenerUrl
       }
       if (placed.admittedAt !== 0) {
         throw new Error(`Amway lab: order ${idempotencyKey} is already admitted.`);
+      }
+      // No oversell: the purchase settles against the same shared balance
+      // every member projects — opening stock plus purchasing's receipts
+      // minus everything already admitted.
+      const stocked = LAB_STOCK.gross + state.stock.reduce((sum, entry) => sum + entry.quantity, 0);
+      const admitted = state.orders
+        .filter(entry => entry.admittedAt > 0)
+        .reduce((sum, entry) => sum + entry.quantity, 0);
+      if (placed.quantity > stocked - admitted) {
+        throw new Error(
+          `Amway lab: order ${idempotencyKey} wants ${placed.quantity} units but only ${stocked - admitted} are available.`,
+        );
       }
       const obj = createOrder({
         department: state.deptIdHash, idempotencyKey: placed.idempotencyKey,

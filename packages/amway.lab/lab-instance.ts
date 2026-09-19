@@ -154,7 +154,7 @@ export async function startLabInstance({ port, key, email, secret, directory, cr
   const registry = new OperationRegistry();
   registry.register("amwayLab", plan, {
     description: "Amway lab department operations over ONE storage",
-    methods: ["whoAmI", "createDepartment", "assignRole", "publishContact", "publishOffer", "shareOffer", "placeOrder", "admitOrder", "getDepartment", "setOnline", "createIoMInvite", "awaitIoMInvite", "acceptIoMInvite"]
+    methods: ["whoAmI", "createDepartment", "assignRole", "publishContact", "publishOffer", "stockUp", "shareOffer", "placeOrder", "admitOrder", "getDepartment", "setOnline", "createIoMInvite", "awaitIoMInvite", "acceptIoMInvite"]
       .map(name => ({ name, description: `amwayLab.${name}` })),
   });
   registry.register("connection", new OneConnectionPlan(leuteModel, connections, channelManager), {

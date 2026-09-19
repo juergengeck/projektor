@@ -11,12 +11,13 @@ import type {
   AmwayOffer,
   AmwayOrder,
   AmwayRoleAssignment,
+  AmwayStockReceipt,
 } from "./recipes.ts";
 
 export const LAB_STOCK = { lot: "demo-lot-a", facility: "demo-facility", gross: 10 };
 
-export type PublishKind = "contact" | "offer" | "order" | "assignment";
-export type AudienceKind = "department" | "assignment" | "contact" | "offer" | "order";
+export type PublishKind = "contact" | "offer" | "order" | "assignment" | "stock";
+export type AudienceKind = "department" | "assignment" | "contact" | "offer" | "order" | "stock";
 
 export interface Rejection {
   type: string;
@@ -69,6 +70,9 @@ export function canPublish(kind: string, { department, assignments, author, subj
   const staff = roles.has("admin") || roles.has("manager");
   if (kind === "contact") return author === subject || staff;
   if (kind === "offer") return staff;
+  // Stocking up is purchasing's job: the department admin — and only the
+  // admin — receives goods into inventory.
+  if (kind === "stock") return roles.has("admin");
   if (kind === "order") {
     if (staff || roles.has("seller")) return true;
     // Preferred-customer self-service: a customer may buy for themselves only.
@@ -106,7 +110,9 @@ export function audience(kind: string, { department, assignments, row }: {
     for (const entry of assignments) {
       if (entry.role === "manager" || entry.role === "seller") people.add(entry.subject);
     }
-  } else if (["department", "assignment", "contact"].includes(kind)) {
+  } else if (["department", "assignment", "contact", "stock"].includes(kind)) {
+    // Stock receipts reach every member: each worker projects the same
+    // shared balance from its local store, so the meter agrees per column.
     for (const entry of assignments) people.add(entry.subject);
   } else {
     throw new Error(`Amway lab: unknown audience kind ${kind}.`);
@@ -124,16 +130,17 @@ export interface DepartmentProjection {
   orders: AmwayOrder[];
   /** Placed but unadmitted orders (`admittedAt === 0`), awaiting the seller. */
   pendingOrders: AmwayOrder[];
-  availability: { lot: string; facility: string; gross: number; available: number };
+  availability: { lot: string; facility: string; gross: number; stocked: number; available: number };
   rejected: Rejection[];
 }
 
-export function projectDepartment({ department, assignments, contacts, offers, orders, viewer, atTime }: {
+export function projectDepartment({ department, assignments, contacts, offers, orders, stock, viewer, atTime }: {
   department: AmwayDepartment;
   assignments: AmwayRoleAssignment[];
   contacts: AmwayContact[];
   offers: AmwayOffer[];
   orders: AmwayOrder[];
+  stock: AmwayStockReceipt[];
   viewer: string;
   atTime: number;
 }): DepartmentProjection {
@@ -152,6 +159,10 @@ export function projectDepartment({ department, assignments, contacts, offers, o
   const pendingOrders = authorizedOrders.filter(entry => entry.admittedAt === 0);
   const scopeToViewer = (list: AmwayOrder[]): AmwayOrder[] =>
     customerOnly ? list.filter(entry => entry.customer === viewer) : list;
+  // One shared balance for every viewer: opening stock plus everything
+  // purchasing received, minus everything admitted. Never viewer-scoped —
+  // the meter must agree in every column.
+  const stocked = LAB_STOCK.gross + stock.reduce((sum, entry) => sum + entry.quantity, 0);
   return {
     department: department.department,
     roles: [...viewerRoles].sort(),
@@ -162,7 +173,8 @@ export function projectDepartment({ department, assignments, contacts, offers, o
     pendingOrders: scopeToViewer(pendingOrders),
     availability: {
       ...LAB_STOCK,
-      available: LAB_STOCK.gross - admittedOrders.reduce((sum, entry) => sum + entry.quantity, 0),
+      stocked,
+      available: stocked - admittedOrders.reduce((sum, entry) => sum + entry.quantity, 0),
     },
     rejected,
   };
