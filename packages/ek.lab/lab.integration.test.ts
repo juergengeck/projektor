@@ -215,9 +215,58 @@ test("a customer self-purchase feeds the admitted order back to staff", async ()
   await clients().seller.call("ekLab", "admitOrder", { department: "ek-de", idempotencyKey: id });
   const rows = await Promise.all(arrivals);
   assert.equal(new Set(rows.map(row => row.hash)).size, 1, "staff receives the exact admitted version");
+  // The manager settles against every earlier purchase too: poll until the
+  // previously admitted order is projected there before asserting the balance.
+  const onceDeadline = Date.now() + 30_000;
+  for (;;) {
+    const probe = await clients().manager.call<DepartmentView>("ekLab", "getDepartment", { department: "ek-de" });
+    if (probe.orders.some(entry => entry.idempotencyKey === "ek-order-once")) break;
+    if (Date.now() > onceDeadline) throw new Error("manager never projected admitted once");
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
   const manager = await clients().manager.call<DepartmentView>("ekLab", "getDepartment", { department: "ek-de" });
   assert.ok(manager.orders.some(entry => entry.idempotencyKey === id));
   assert.equal(manager.availability.available, 6);
+});
+
+test("admitting more than the shared balance fails", async () => {
+  // ek-order-t1 (2) + ek-order-once (1) + the self-purchase (1) settled
+  // before, so 6 are available: an 11-unit purchase never settles.
+  await clients().customer.call("ekLab", "placeOrder", {
+    department: "ek-de", offer: "ek-offer-1", quantity: 11, idempotencyKey: "ek-order-oversell",
+  });
+  await feedUntil(clients().seller, row => row.type === "EkOrder" && row.id === "ek-order-oversell", "seller sees oversell placement");
+  await assert.rejects(
+    clients().seller.call("ekLab", "admitOrder", { department: "ek-de", idempotencyKey: "ek-order-oversell" }),
+    /wants 11 units but only 6 are available/,
+  );
+});
+
+test("only purchasing stocks up, and stocking funds later purchases", async () => {
+  await assert.rejects(
+    clients().seller.call("ekLab", "stockUp", { department: "ek-de", receiptId: "ek-stock-no", quantity: 5 }),
+    /only the department admin \(purchasing\) may stock up/,
+  );
+  await clients().admin.call("ekLab", "stockUp", { department: "ek-de", receiptId: "ek-stock-1", quantity: 20 });
+  // Re-recording the same receipt replaces it instead of counting twice.
+  await clients().admin.call("ekLab", "stockUp", { department: "ek-de", receiptId: "ek-stock-1", quantity: 20 });
+  const receiptArrived = (row: FeedRow): boolean => row.type === "EkStockReceipt" && row.id === "ek-stock-1";
+  await feedUntil(clients().customer, receiptArrived, "customer receives receipt");
+  await feedUntil(clients().seller, receiptArrived, "seller receives receipt");
+  type Balance = DepartmentView & {
+    orders: { idempotencyKey: string; quantity: number }[];
+    availability: { stocked: number; available: number };
+  };
+  const customerView = await clients().customer.call<Balance>("ekLab", "getDepartment", { department: "ek-de" });
+  assert.equal(customerView.availability.stocked, 30, "receipts reach every member's balance");
+  const sellerView = await clients().seller.call<Balance>("ekLab", "getDepartment", { department: "ek-de" });
+  const settled = sellerView.orders.reduce((sum, entry) => sum + entry.quantity, 0);
+  assert.equal(sellerView.availability.available, 30 - settled);
+  // The previously impossible purchase now settles against the restocked balance.
+  await clients().seller.call("ekLab", "admitOrder", { department: "ek-de", idempotencyKey: "ek-order-oversell" });
+  const after = await clients().seller.call<Balance>("ekLab", "getDepartment", { department: "ek-de" });
+  assert.ok(after.orders.some(entry => entry.idempotencyKey === "ek-order-oversell"));
+  assert.equal(after.availability.available, 30 - settled - 11);
 });
 
 test("a paused worker catches up after resume", async () => {
@@ -254,6 +303,18 @@ test("persisted workers feed an admitted purchase back after restart", async () 
   await feedUntil(clients().seller, row => row.type === "EkOrder" && row.id === id, "seller sees placement");
   await clients().seller.call("ekLab", "admitOrder", { department: "ek-de", idempotencyKey: id });
   await Promise.all(arrivals);
-  const manager = await clients().manager.call<DepartmentView>("ekLab", "getDepartment", { department: "ek-de" });
-  assert.equal(manager.availability.available, 5);
+  // A restarted worker may briefly skip rows whose version head is not yet
+  // readable: poll until every settled purchase is projected, then the
+  // balance (10 opening + 20 stocked − 16 admitted) must agree.
+  const settledIds = ["ek-order-t1", "ek-order-once", "ek-order-customer-feedback", "ek-order-oversell", id];
+  const deadline = Date.now() + 30_000;
+  for (;;) {
+    const manager = await clients().manager.call<DepartmentView>("ekLab", "getDepartment", { department: "ek-de" });
+    if (settledIds.every(wanted => manager.orders.some(entry => entry.idempotencyKey === wanted))) {
+      assert.equal(manager.availability.available, 14);
+      break;
+    }
+    if (Date.now() > deadline) throw new Error("manager never projected every settled purchase after restart");
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
 });

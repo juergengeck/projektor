@@ -235,9 +235,58 @@ test("a customer self-purchase feeds the admitted order back to staff", async ()
   await clients().seller.call("amwayLab", "admitOrder", { department: "demo-de", idempotencyKey: id });
   const rows = await Promise.all(arrivals);
   assert.equal(new Set(rows.map(row => row.hash)).size, 1, "staff receives the exact admitted version");
+  // The manager settles against every earlier purchase too: poll until the
+  // previously admitted order is projected there before asserting the balance.
+  const onceDeadline = Date.now() + 30_000;
+  for (;;) {
+    const probe = await clients().manager.call<DepartmentView>("amwayLab", "getDepartment", { department: "demo-de" });
+    if (probe.orders.some(entry => entry.idempotencyKey === "lab-order-once")) break;
+    if (Date.now() > onceDeadline) throw new Error("manager never projected admitted once");
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
   const manager = await clients().manager.call<DepartmentView>("amwayLab", "getDepartment", { department: "demo-de" });
   assert.ok(manager.orders.some(entry => entry.idempotencyKey === id));
   assert.equal(manager.availability.available, 6);
+});
+
+test("admitting more than the shared balance fails", async () => {
+  // lab-order-t1 (2) + lab-order-once (1) + the self-purchase (1) settled
+  // before, so 6 are available: an 11-unit purchase never settles.
+  await clients().customer.call("amwayLab", "placeOrder", {
+    department: "demo-de", offer: "lab-offer-1", quantity: 11, idempotencyKey: "lab-order-oversell",
+  });
+  await feedUntil(clients().seller, row => row.type === "AmwayOrder" && row.id === "lab-order-oversell", "seller sees oversell placement");
+  await assert.rejects(
+    clients().seller.call("amwayLab", "admitOrder", { department: "demo-de", idempotencyKey: "lab-order-oversell" }),
+    /wants 11 units but only 6 are available/,
+  );
+});
+
+test("only purchasing stocks up, and stocking funds later purchases", async () => {
+  await assert.rejects(
+    clients().seller.call("amwayLab", "stockUp", { department: "demo-de", receiptId: "lab-stock-no", quantity: 5 }),
+    /only the department admin \(purchasing\) may stock up/,
+  );
+  await clients().admin.call("amwayLab", "stockUp", { department: "demo-de", receiptId: "lab-stock-1", quantity: 20 });
+  // Re-recording the same receipt replaces it instead of counting twice.
+  await clients().admin.call("amwayLab", "stockUp", { department: "demo-de", receiptId: "lab-stock-1", quantity: 20 });
+  const receiptArrived = (row: FeedRow): boolean => row.type === "AmwayStockReceipt" && row.id === "lab-stock-1";
+  await feedUntil(clients().customer, receiptArrived, "customer receives receipt");
+  await feedUntil(clients().seller, receiptArrived, "seller receives receipt");
+  type Balance = DepartmentView & {
+    orders: { idempotencyKey: string; quantity: number }[];
+    availability: { stocked: number; available: number };
+  };
+  const customerView = await clients().customer.call<Balance>("amwayLab", "getDepartment", { department: "demo-de" });
+  assert.equal(customerView.availability.stocked, 30, "receipts reach every member's balance");
+  const sellerView = await clients().seller.call<Balance>("amwayLab", "getDepartment", { department: "demo-de" });
+  const settled = sellerView.orders.reduce((sum, entry) => sum + entry.quantity, 0);
+  assert.equal(sellerView.availability.available, 30 - settled);
+  // The previously impossible purchase now settles against the restocked balance.
+  await clients().seller.call("amwayLab", "admitOrder", { department: "demo-de", idempotencyKey: "lab-order-oversell" });
+  const after = await clients().seller.call<Balance>("amwayLab", "getDepartment", { department: "demo-de" });
+  assert.ok(after.orders.some(entry => entry.idempotencyKey === "lab-order-oversell"));
+  assert.equal(after.availability.available, 30 - settled - 11);
 });
 
 test("a paused worker catches up after resume", async () => {
@@ -274,6 +323,18 @@ test("persisted workers feed an admitted purchase back after restart", async () 
   await feedUntil(clients().seller, row => row.type === "AmwayOrder" && row.id === id, "seller sees placement");
   await clients().seller.call("amwayLab", "admitOrder", { department: "demo-de", idempotencyKey: id });
   await Promise.all(arrivals);
-  const manager = await clients().manager.call<DepartmentView>("amwayLab", "getDepartment", { department: "demo-de" });
-  assert.equal(manager.availability.available, 5);
+  // A restarted worker may briefly skip rows whose version head is not yet
+  // readable: poll until every settled purchase is projected, then the
+  // balance (10 opening + 20 stocked − 16 admitted) must agree.
+  const settledIds = ["lab-order-t1", "lab-order-once", "lab-order-customer-feedback", "lab-order-oversell", id];
+  const deadline = Date.now() + 30_000;
+  for (;;) {
+    const manager = await clients().manager.call<DepartmentView>("amwayLab", "getDepartment", { department: "demo-de" });
+    if (settledIds.every(wanted => manager.orders.some(entry => entry.idempotencyKey === wanted))) {
+      assert.equal(manager.availability.available, 14);
+      break;
+    }
+    if (Date.now() > deadline) throw new Error("manager never projected every settled purchase after restart");
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
 });
