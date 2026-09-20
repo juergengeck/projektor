@@ -63,7 +63,17 @@ export interface Order {
   seller: string;
   offer: string;
   quantity: number;
+  currency: string;
+  unitAmount: number;
   admittedAt: number;
+}
+
+export interface Balance {
+  party: string;
+  role: string;
+  receivable: number;
+  payable: number;
+  currency: string;
 }
 
 export interface View {
@@ -74,7 +84,8 @@ export interface View {
   offers: Offer[];
   orders: Order[];
   pendingOrders: Order[];
-  availability: { lot: string; facility: string; gross: number; stocked: number; available: number } | null;
+  availability: { lot: string; facility: string; stocked: number; available: number } | null;
+  balances: Balance[];
   rejected: { type: string; id: string; reason: string }[];
 }
 
@@ -175,6 +186,7 @@ const EMPTY_VIEW: View = {
   orders: [],
   pendingOrders: [],
   availability: null,
+  balances: [],
   rejected: [],
 };
 
@@ -694,6 +706,8 @@ export default function Lab() {
               month: "short", day: "numeric",
               hour: "2-digit", minute: "2-digit", hour12: false,
             });
+          const fmtMoney = (value: number, currency: string) =>
+            `${(value / 100).toFixed(2)} ${currency}`;
           const unitsByCustomer = new Map<string, { units: number; orders: number; lastAt: number; seller: string }>();
           for (const entry of view.orders) {
             const agg = unitsByCustomer.get(entry.customer) ?? { units: 0, orders: 0, lastAt: 0, seller: entry.seller };
@@ -1176,6 +1190,34 @@ export default function Lab() {
                             </div>
                           );
                         })
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {(activeTab === "overview" || activeTab === "orders") && (
+                  <div className="lab-section">
+                    <div className="lab-section-title">
+                      <span>Balances</span>
+                      <span style={{ fontSize: "0.7rem", color: "var(--amway-muted)" }}>{view.balances.length} parties</span>
+                    </div>
+                    <div className="lab-items-list">
+                      {view.balances.length === 0 ? (
+                        <div className="state-empty" style={{ padding: "0.8rem", fontSize: "0.75rem" }}>
+                          No receivables or payables yet.
+                        </div>
+                      ) : (
+                        view.balances.map(entry => (
+                          <div key={`${entry.party}:${entry.currency}`} className="lab-item-card">
+                            <div className="lab-item-main">
+                              <span className="lab-item-title">{nameOf(entry.party)}</span>
+                              <span className="lab-item-sub">
+                                Receivable {fmtMoney(entry.receivable, entry.currency)} · Payable {fmtMoney(entry.payable, entry.currency)}
+                              </span>
+                            </div>
+                            <RoleBadge role={entry.role} />
+                          </div>
+                        ))
                       )}
                     </div>
                   </div>
