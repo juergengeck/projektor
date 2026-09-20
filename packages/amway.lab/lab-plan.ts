@@ -78,6 +78,25 @@ export function createLabPlan({ connections, now = () => Date.now(), listenerUrl
     return owner;
   };
 
+  // Admissions check the shared balance and then write: without a lock two
+  // concurrent admissions on this worker both pass the check against the
+  // same pre-write state and oversell. The chain below serializes
+  // admissions on this instance so the second re-checks against the first's
+  // write and fails fast; concurrent admissions on different workers
+  // converge through deterministic settlement in the projection.
+  let admitTail: Promise<void> = Promise.resolve();
+  async function serializedAdmit<T>(work: () => Promise<T>): Promise<T> {
+    const previous = admitTail;
+    let release!: () => void;
+    admitTail = new Promise<void>(resolve => { release = resolve; });
+    await previous;
+    try {
+      return await work();
+    } finally {
+      release();
+    }
+  }
+
   const departmentIdHash = (department: string): Promise<string> =>
     calculateIdHashOfObj(versioned({ $type$: "AmwayDepartment", department, name: "", admin: "0".repeat(64) }));
 
@@ -174,8 +193,12 @@ export function createLabPlan({ connections, now = () => Date.now(), listenerUrl
       const state = await requireDepartment(department);
       const obj = createRoleAssignment({ department: state.deptIdHash, subject, role, issuer: self(), validFrom: now() });
       // Appointment chain: admin appoints managers, managers appoint
-      // sellers, sellers appoint customers. The root admin keeps authority.
+      // sellers, sellers appoint customers. Admin authority itself is never
+      // delegated down: only the root admin appoints admins.
       const issuerRoles = rolesOf({ department: state.department, assignments: state.assignments, subject: self(), atTime: now() });
+      if (role === "admin" && self() !== state.department.admin) {
+        throw new Error("Amway lab: only the department admin may appoint admins.");
+      }
       if (role === "manager" && self() !== state.department.admin) {
         throw new Error("Amway lab: only the department admin may appoint managers.");
       }
@@ -353,37 +376,41 @@ export function createLabPlan({ connections, now = () => Date.now(), listenerUrl
     async admitOrder({ department, idempotencyKey }: {
       department: string; idempotencyKey: string;
     }): Promise<{ idHash: string }> {
-      const state = await requireDepartment(department);
-      const roles = rolesOf({ department: state.department, assignments: state.assignments, subject: self(), atTime: now() });
-      if (!roles.has("seller") && !roles.has("admin") && !roles.has("manager")) {
-        throw new Error("Amway lab: only the seller or staff may admit orders.");
-      }
-      const placed = state.orders.find(entry => entry.idempotencyKey === idempotencyKey);
-      if (!placed) {
-        throw new Error(`Amway lab: order ${idempotencyKey} was never placed by a customer.`);
-      }
-      if (placed.admittedAt !== 0) {
-        throw new Error(`Amway lab: order ${idempotencyKey} is already admitted.`);
-      }
-      // No oversell: the purchase settles against the same shared balance
-      // every member projects — opening stock plus purchasing's receipts
-      // minus everything already admitted.
-      const stocked = state.stock.reduce((sum, entry) => sum + entry.quantity, 0);
-      const admitted = state.orders
-        .filter(entry => entry.admittedAt > 0)
-        .reduce((sum, entry) => sum + entry.quantity, 0);
-      if (placed.quantity > stocked - admitted) {
-        throw new Error(
-          `Amway lab: order ${idempotencyKey} wants ${placed.quantity} units but only ${stocked - admitted} are available.`,
-        );
-      }
-      const obj = createOrder({
-        department: state.deptIdHash, idempotencyKey: placed.idempotencyKey,
-        customer: placed.customer, seller: self(), offer: placed.offer, quantity: placed.quantity,
-        lot: placed.lot, facility: placed.facility,
-        currency: placed.currency, unitAmount: placed.unitAmount, admittedAt: now(),
+      return serializedAdmit(async () => {
+        const state = await requireDepartment(department);
+        const roles = rolesOf({ department: state.department, assignments: state.assignments, subject: self(), atTime: now() });
+        if (!roles.has("seller") && !roles.has("admin") && !roles.has("manager")) {
+          throw new Error("Amway lab: only the seller or staff may admit orders.");
+        }
+        const placed = state.orders.find(entry => entry.idempotencyKey === idempotencyKey);
+        if (!placed) {
+          throw new Error(`Amway lab: order ${idempotencyKey} was never placed by a customer.`);
+        }
+        if (placed.admittedAt !== 0) {
+          throw new Error(`Amway lab: order ${idempotencyKey} is already admitted.`);
+        }
+        // No oversell: the purchase settles against the same shared balance
+        // every member projects — purchasing's receipts minus everything
+        // already admitted. Serialized above, this check sees every earlier
+        // admission on this instance; admissions racing in from other
+        // workers converge through deterministic settlement in projection.
+        const stocked = state.stock.reduce((sum, entry) => sum + entry.quantity, 0);
+        const admitted = state.orders
+          .filter(entry => entry.admittedAt > 0)
+          .reduce((sum, entry) => sum + entry.quantity, 0);
+        if (placed.quantity > stocked - admitted) {
+          throw new Error(
+            `Amway lab: order ${idempotencyKey} wants ${placed.quantity} units but only ${stocked - admitted} are available.`,
+          );
+        }
+        const obj = createOrder({
+          department: state.deptIdHash, idempotencyKey: placed.idempotencyKey,
+          customer: placed.customer, seller: self(), offer: placed.offer, quantity: placed.quantity,
+          lot: placed.lot, facility: placed.facility,
+          currency: placed.currency, unitAmount: placed.unitAmount, admittedAt: now(),
+        });
+        return publish("order", state, obj, placed.customer);
       });
-      return publish("order", state, obj, placed.customer);
     },
 
     async getDepartment({ department }: { department: string }): Promise<{ department: string; known: false } | ({ known: true } & DepartmentProjection)> {
