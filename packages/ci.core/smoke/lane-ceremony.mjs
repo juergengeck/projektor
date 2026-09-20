@@ -36,6 +36,9 @@ export async function runLaneCeremony(page, lane, expect) {
   // anything is offered, shared, or sold.
   await admin.getByRole("button", { name: "Stock Up" }).click();
   await manager.getByRole("button", { name: "+ Offer (100.00€)" }).click();
+  // Publishing discloses nothing: the manager shares the offer down with
+  // the chosen seller first, the seller then with the customer.
+  await manager.getByRole("button", { name: `Share ${lane.offerId} with seller` }).click();
   await seller.getByRole("button", { name: `Share ${lane.offerId} down` }).click();
   await customer.getByRole("button", { name: /Buy 1x/ }).click();
 

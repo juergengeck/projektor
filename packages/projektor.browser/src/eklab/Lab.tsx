@@ -695,9 +695,11 @@ export default function Lab() {
           const personId = lab.current?.persons[key] ?? "";
           const activeTab = column.tab;
 
-          const totalStock = view.availability?.stocked ?? 10;
-          const currentStock = view.availability?.available ?? totalStock;
-          const stockPct = Math.max(0, Math.min(100, (currentStock / totalStock) * 100));
+          // Staff-only meter: sellers and customers project no availability
+          // and must never see a phantom number here.
+          const totalStock = view.availability?.stocked ?? 0;
+          const currentStock = view.availability?.available ?? 0;
+          const stockPct = totalStock > 0 ? Math.max(0, Math.min(100, (currentStock / totalStock) * 100)) : 0;
           const nameOf = (person: string) =>
             view.contacts.find(entry => entry.person === person)?.name
             ?? `${person.slice(0, 10)}…`;
@@ -826,7 +828,7 @@ export default function Lab() {
                     <span className="lab-metric-mini-lbl">Orders</span>
                   </div>
                   <div className="lab-metric-mini">
-                    <span className="lab-metric-mini-val">{currentStock}</span>
+                    <span className="lab-metric-mini-val">{view.availability ? currentStock : "—"}</span>
                     <span className="lab-metric-mini-lbl">{key === "admin" ? "Avail." : "Stock"}</span>
                   </div>
                 </div>
@@ -928,6 +930,23 @@ export default function Lab() {
                         }
                       >
                         Share {offer.offerId} down
+                      </button>
+                    ))}
+
+                    {key === "manager" && view.offers.map(offer => (
+                      <button
+                        key={offer.offerId}
+                        type="button"
+                        className="secondary"
+                        disabled={!staff || boot !== "live" || !view.assignments.some(a => a.role === "seller")}
+                        onClick={() =>
+                          void run(key, "shareOfferWithSeller", {
+                            offerId: offer.offerId,
+                            seller: lab.current?.persons.seller,
+                          })
+                        }
+                      >
+                        Share {offer.offerId} with seller
                       </button>
                     ))}
 
