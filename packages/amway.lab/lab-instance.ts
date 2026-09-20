@@ -8,6 +8,7 @@
 import MultiUser from "../../../one/packages/one.models/lib/models/Authenticator/MultiUser.js";
 import LeuteModel from "../../../one/packages/one.models/lib/models/Leute/LeuteModel.js";
 import ChannelManager from "../../../one/packages/one.models/lib/models/ChannelManager.js";
+import TopicModel from "../../../one/packages/one.models/lib/models/Chat/TopicModel.js";
 import ConnectionsModel from "../../../one/packages/one.models/lib/models/ConnectionsModel.js";
 import Connection from "../../../one/packages/one.models/lib/misc/Connection/Connection.js";
 import MessagePortPlugin from "../../../one/packages/one.models/lib/misc/Connection/plugins/MessagePortPlugin.js";
@@ -27,6 +28,7 @@ import { OneConnectionPlan } from "../../../one/packages/refinio.api/dist/src/pl
 import { AccessRightsRecipes } from "../../../one/packages/refinio.api/dist/src/helpers/AccessRightsHelper.js";
 import { AmwayLabRecipes, AmwayLabReverseMapsForIdObjects } from "./recipes.ts";
 import { createLabPlan } from "./lab-plan.ts";
+import { createChatPlan } from "./chat-plan.ts";
 import { createPortIpcMain, postFeed } from "./port-ipc.ts";
 import type { LabPort } from "./port-ipc.ts";
 import type { Recipe } from "../../../one/packages/one.core/lib/recipes.js";
@@ -151,11 +153,30 @@ export async function startLabInstance({ port, key, email, secret, directory, cr
   );
 
   const plan = createLabPlan({ connections, listenerUrl: url, email });
+  // Chat rides the commserver channel stack every ONE app uses: 1:1 topics
+  // between lane persons, synced over the mesh connections.
+  const topicModel = new TopicModel(channelManager, leuteModel);
+  await topicModel.init();
+  const chatPlan = createChatPlan({
+    topicModel,
+    channelManager,
+    self: () => {
+      const owner = getInstanceOwnerIdHash();
+      if (!owner) throw new Error("Amway lab: instance has no owner.");
+      return owner;
+    },
+    notify: peer => postFeed(port, { type: "AmwayChat", id: peer, hash: peer, kind: "chat" }),
+  });
   const registry = new OperationRegistry();
   registry.register("amwayLab", plan, {
     description: "Amway lab department operations over ONE storage",
     methods: ["whoAmI", "createDepartment", "assignRole", "publishContact", "publishOffer", "stockUp", "shareOffer", "shareOfferWithSeller", "placeOrder", "admitOrder", "getDepartment", "setOnline", "createIoMInvite", "awaitIoMInvite", "acceptIoMInvite"]
       .map(name => ({ name, description: `amwayLab.${name}` })),
+  });
+  registry.register("amwayChat", chatPlan, {
+    description: "Amway lab 1:1 chat over topic channels",
+    methods: ["openChat", "sendChat", "readChat"]
+      .map(name => ({ name, description: `amwayChat.${name}` })),
   });
   registry.register("connection", new OneConnectionPlan(leuteModel, connections, channelManager), {
     description: "Pairing and connection status",
@@ -178,6 +199,7 @@ export async function startLabInstance({ port, key, email, secret, directory, cr
     async shutdown() {
       stopFeed();
       unregisterDialer();
+      await topicModel.shutdown();
       await connections.shutdown();
       await channelManager.shutdown();
       await leuteModel.shutdown();
