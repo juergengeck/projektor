@@ -517,7 +517,7 @@ export default function Lab() {
           label: formatFeedLabel(row),
         };
         setJoined(current => current ? { ...current, feed: [entry, ...current.feed].slice(0, 30) } : current);
-        if (row.type === "AmwayRoleAssignment" || row.type === "AmwayDepartment") {
+        if (row.type === "AmwayRoleAssignment" || row.type === "AmwayDepartment" || row.type === "AmwayOrder" || row.type === "AmwayStockReceipt") {
           void snapshotJoined().catch(() => {});
         }
       });
