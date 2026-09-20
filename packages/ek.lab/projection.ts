@@ -48,7 +48,9 @@ export function rolesOf({ department, assignments, subject, atTime }: {
     .filter(entry => entry.role === "manager" && entry.issuer === department.admin && entry.validFrom <= atTime)
     .map(entry => entry.subject));
   // Appointment chain: admin appoints managers, managers appoint sellers,
-  // sellers appoint customers. The root admin keeps universal authority.
+  // sellers appoint customers. Admin authority itself is never delegated
+  // down the chain: only the root admin grants it, so a manager-issued
+  // admin assignment confers nothing anywhere it replicates.
   const sellers = new Set(assignments
     .filter(entry => entry.role === "seller" && entry.validFrom <= atTime &&
       (entry.issuer === department.admin || managers.has(entry.issuer)))
@@ -58,6 +60,7 @@ export function rolesOf({ department, assignments, subject, atTime }: {
     const issuerIsAdmin = entry.issuer === department.admin;
     const appointed =
       entry.role === "manager" ? issuerIsAdmin :
+      entry.role === "admin" ? issuerIsAdmin :
       entry.role === "seller" ? issuerIsAdmin || managers.has(entry.issuer) :
       entry.role === "customer" ? issuerIsAdmin || sellers.has(entry.issuer) :
       issuerIsAdmin || managers.has(entry.issuer);
@@ -136,7 +139,12 @@ export interface DepartmentProjection {
   assignments: EkRoleAssignment[];
   contacts: EkContact[];
   offers: EkOffer[];
-  /** Admitted orders only: a purchase exists iff the seller admitted a placed order. */
+  /**
+   * Settled purchases only: an admitted order exists here iff stock settled
+   * it; oversold admissions land in rejected. Customers replicate neither
+   * receipts nor competing admissions, so they see their own admitted
+   * orders instead of the global settlement.
+   */
   orders: EkOrder[];
   /** Placed but unadmitted orders (`admittedAt === 0`), awaiting the seller. */
   pendingOrders: EkOrder[];
@@ -181,7 +189,6 @@ export function projectDepartment({ department, assignments, contacts, offers, o
   const viewerRoles = rolesOf({ department, assignments, subject: viewer, atTime });
   const customerOnly = viewerRoles.size === 1 && viewerRoles.has("customer");
   const authorizedOrders = orders.filter(entry => admit("order", "EkOrder", entry.idempotencyKey, entry.seller, entry.customer));
-  const admittedOrders = authorizedOrders.filter(entry => entry.admittedAt > 0);
   const pendingOrders = authorizedOrders.filter(entry => entry.admittedAt === 0);
   const scopeToViewer = (list: EkOrder[]): EkOrder[] =>
     customerOnly ? list.filter(entry => entry.customer === viewer) : list;
@@ -189,6 +196,29 @@ export function projectDepartment({ department, assignments, contacts, offers, o
   // minus everything admitted. Never viewer-scoped — the meter must agree
   // in every column.
   const stocked = stock.reduce((sum, entry) => sum + entry.quantity, 0);
+  const admittedAll = authorizedOrders.filter(entry => entry.admittedAt > 0);
+  // Settlement is deterministic across workers: every instance holding the
+  // full picture settles the same admitted rows in the same order —
+  // earliest admission first, ties broken by key — so concurrent admissions
+  // for the last unit converge on one winner instead of driving
+  // availability negative. The losers are rejected, never silently merged;
+  // availability can never go below zero. Customers replicate neither
+  // receipts nor competing admissions, so they cannot project the global
+  // settlement and instead see their own admitted orders.
+  const settledOrders: EkOrder[] = [];
+  let settledQuantity = 0;
+  if (!customerOnly) {
+    for (const entry of [...admittedAll].sort((a, b) => a.admittedAt - b.admittedAt ||
+      (a.idempotencyKey < b.idempotencyKey ? -1 : a.idempotencyKey > b.idempotencyKey ? 1 : 0))) {
+      if (settledQuantity + entry.quantity <= stocked) {
+        settledOrders.push(entry);
+        settledQuantity += entry.quantity;
+      } else {
+        rejected.push({ type: "EkOrder", id: entry.idempotencyKey, reason: "oversold" });
+      }
+    }
+  }
+  const listedOrders = customerOnly ? scopeToViewer(admittedAll) : settledOrders;
   const staffViewer = viewerRoles.has("admin") || viewerRoles.has("manager");
   const balancesByKey = new Map<string, Balance>();
   const addBalance = (party: string, role: Balance["role"], receivable: number, payable: number, currency: string): void => {
@@ -198,7 +228,7 @@ export function projectDepartment({ department, assignments, contacts, offers, o
     entry.payable += payable;
     balancesByKey.set(key, entry);
   };
-  for (const entry of admittedOrders) {
+  for (const entry of listedOrders) {
     const value = entry.quantity * entry.unitAmount;
     addBalance(entry.customer, "customer", 0, value, entry.currency);
     addBalance(entry.seller, "seller", value, value, entry.currency);
@@ -213,14 +243,10 @@ export function projectDepartment({ department, assignments, contacts, offers, o
     assignments: validAssignments,
     contacts: contacts.filter(entry => admit("contact", "EkContact", entry.person, entry.publishedBy, entry.person)),
     offers: offers.filter(entry => admit("offer", "EkOffer", entry.offerId, entry.publishedBy)),
-    orders: scopeToViewer(admittedOrders),
+    orders: listedOrders,
     pendingOrders: scopeToViewer(pendingOrders),
     availability: staffViewer
-      ? {
-        ...EK_STOCK,
-        stocked,
-        available: stocked - admittedOrders.reduce((sum, entry) => sum + entry.quantity, 0),
-      }
+      ? { ...EK_STOCK, stocked, available: stocked - settledQuantity }
       : null,
     balances,
     rejected,

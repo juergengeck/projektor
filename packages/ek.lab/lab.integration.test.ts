@@ -402,3 +402,90 @@ test("persisted workers feed an admitted purchase back after restart", async () 
     await new Promise(resolve => setTimeout(resolve, 250));
   }
 });
+
+test("only the department admin may appoint admins", async () => {
+  const stranger = "9".repeat(64);
+  await assert.rejects(
+    clients().manager.call("ekLab", "assignRole", { department: "ek-de", subject: persons().customer, role: "admin" }),
+    /only the department admin may appoint admins/,
+  );
+  await assert.rejects(
+    clients().seller.call("ekLab", "assignRole", { department: "ek-de", subject: stranger, role: "admin" }),
+    /only the department admin may appoint admins/,
+  );
+  // The manager-promoted customer from the defect report holds no admin
+  // authority: publishing an offer still fails.
+  await assert.rejects(
+    clients().customer.call("ekLab", "publishOffer", {
+      department: "ek-de", offerId: "ek-offer-coup", item: "BMA-WARTUNG@1", priceList: "ek-retail@2026-09", unitAmount: 1, currency: "EUR",
+    }),
+    /may not publish offer/,
+  );
+  // The root admin delegates freely.
+  await clients().admin.call("ekLab", "assignRole", { department: "ek-de", subject: stranger, role: "admin" });
+  const view = await clients().admin.call<DepartmentView & { assignments: { subject: string; role: string }[] }>(
+    "ekLab", "getDepartment", { department: "ek-de" });
+  assert.ok(view.assignments.some(entry => entry.subject === stranger && entry.role === "admin"));
+});
+
+test("concurrent admissions on one worker cannot oversell", async () => {
+  // 40 stocked − 23 admitted by the earlier tests: 17 available. Two 10-unit
+  // purchases race on the seller worker; exactly one may settle.
+  const arrivals = ["ek-order-race-a", "ek-order-race-b"].map(id =>
+    feedUntil(clients().seller, row => row.type === "EkOrder" && row.id === id, `seller sees ${id}`));
+  for (const id of ["ek-order-race-a", "ek-order-race-b"]) {
+    await clients().customer.call("ekLab", "placeOrder", {
+      department: "ek-de", offer: "ek-offer-1", quantity: 10, idempotencyKey: id,
+    });
+  }
+  await Promise.all(arrivals);
+  const results = await Promise.allSettled([
+    clients().seller.call("ekLab", "admitOrder", { department: "ek-de", idempotencyKey: "ek-order-race-a" }),
+    clients().seller.call("ekLab", "admitOrder", { department: "ek-de", idempotencyKey: "ek-order-race-b" }),
+  ]);
+  assert.equal(results[0].status, "fulfilled", "the first admission settles");
+  if (results[1].status !== "rejected") throw new Error("the racing admission succeeded; stock oversold");
+  assert.match(String(results[1].reason?.message ?? results[1].reason), /wants 10 units but only 7 are available/);
+  await feedUntil(clients().manager, admittedRow("ek-order-race-a"), "manager receives the winning admission");
+  const manager = await clients().manager.call<DepartmentView>("ekLab", "getDepartment", { department: "ek-de" });
+  assert.equal(manager.availability?.available, 7, "availability never goes negative");
+});
+
+test("concurrent admissions across workers settle exactly once", async () => {
+  // 7 available after the single-worker race. Two 4-unit purchases are
+  // admitted at once on different workers: each passes its local check, and
+  // every instance converges on one winner plus one oversold rejection.
+  const seesC = feedUntil(clients().seller, row => row.type === "EkOrder" && row.id === "ek-order-race-c", "seller sees race-c");
+  const seesD = feedUntil(clients().admin, row => row.type === "EkOrder" && row.id === "ek-order-race-d", "admin sees race-d");
+  for (const id of ["ek-order-race-c", "ek-order-race-d"]) {
+    await clients().customer.call("ekLab", "placeOrder", {
+      department: "ek-de", offer: "ek-offer-1", quantity: 4, idempotencyKey: id,
+    });
+  }
+  await seesC;
+  await seesD;
+  const results = await Promise.allSettled([
+    clients().seller.call("ekLab", "admitOrder", { department: "ek-de", idempotencyKey: "ek-order-race-c" }),
+    clients().admin.call("ekLab", "admitOrder", { department: "ek-de", idempotencyKey: "ek-order-race-d" }),
+  ]);
+  assert.ok(results.every(entry => entry.status === "fulfilled"), "each worker settles against its local balance");
+  type Settled = DepartmentView & {
+    orders: { idempotencyKey: string }[];
+    rejected: { type: string; id: string; reason: string }[];
+  };
+  const ids = ["ek-order-race-c", "ek-order-race-d"];
+  const deadline = Date.now() + 30_000;
+  for (;;) {
+    const admin = await clients().admin.call<Settled>("ekLab", "getDepartment", { department: "ek-de" });
+    const settled = ids.filter(id => admin.orders.some(entry => entry.idempotencyKey === id));
+    const refused = ids.filter(id => admin.rejected.some(entry => entry.id === id && entry.reason === "oversold"));
+    if (settled.length + refused.length === 2) {
+      assert.equal(settled.length, 1, "exactly one admission settles across workers");
+      assert.equal(refused.length, 1, "the other is rejected as oversold");
+      assert.equal(admin.availability?.available, 3, "availability never goes negative");
+      break;
+    }
+    if (Date.now() > deadline) throw new Error("workers never converged on one winner");
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+});
