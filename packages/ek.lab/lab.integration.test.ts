@@ -96,6 +96,16 @@ test("every worker is paired directly with every other", async () => {
   }
 });
 
+test("purchasing stocks the facility before anything is sold", async () => {
+  // No opening stock exists: the manager cannot show inventory the org
+  // never purchased. The admin (purchasing) receives the first goods.
+  await clients().admin.call("ekLab", "stockUp", { department: "ek-de", receiptId: "ek-stock-opening", quantity: 20 });
+  type Balance = DepartmentView & { availability: { stocked: number; available: number } };
+  const adminView = await clients().admin.call<Balance>("ekLab", "getDepartment", { department: "ek-de" });
+  assert.equal(adminView.availability.stocked, 20);
+  assert.equal(adminView.availability.available, 20);
+});
+
 test("a published offer reaches sellers through their manager, never customers", async () => {
   const arrivals = ["admin", "seller"].map(key =>
     feedUntil(clients()[key], row => row.type === "EkOffer" && row.id === "ek-offer-1", `${key} offer`));
@@ -170,7 +180,8 @@ test("a purchase exists only after the customer places and the seller admits", a
   const view = await clients().customer.call<DepartmentView>("ekLab", "getDepartment", { department: "ek-de" });
   assert.deepEqual(view.orders.map(entry => entry.idempotencyKey), ["ek-order-t1"]);
   assert.deepEqual(view.pendingOrders, [], "admitting clears the pending order");
-  assert.equal(view.availability.available, 8);
+  // 20 purchased − 2 admitted here.
+  assert.equal(view.availability.available, 18);
 });
 
 test("a seller cannot admit an order nobody placed", async () => {
@@ -226,19 +237,20 @@ test("a customer self-purchase feeds the admitted order back to staff", async ()
   }
   const manager = await clients().manager.call<DepartmentView>("ekLab", "getDepartment", { department: "ek-de" });
   assert.ok(manager.orders.some(entry => entry.idempotencyKey === id));
-  assert.equal(manager.availability.available, 6);
+  // 20 purchased − ek-order-t1 (2) − ek-order-once (1) − 1 here.
+  assert.equal(manager.availability.available, 16);
 });
 
 test("admitting more than the shared balance fails", async () => {
-  // ek-order-t1 (2) + ek-order-once (1) + the self-purchase (1) settled
-  // before, so 6 are available: an 11-unit purchase never settles.
+  // 20 purchased − 4 settled (t1, once, self-purchase), so 16 are available:
+  // a 17-unit purchase never settles.
   await clients().customer.call("ekLab", "placeOrder", {
-    department: "ek-de", offer: "ek-offer-1", quantity: 11, idempotencyKey: "ek-order-oversell",
+    department: "ek-de", offer: "ek-offer-1", quantity: 17, idempotencyKey: "ek-order-oversell",
   });
   await feedUntil(clients().seller, row => row.type === "EkOrder" && row.id === "ek-order-oversell", "seller sees oversell placement");
   await assert.rejects(
     clients().seller.call("ekLab", "admitOrder", { department: "ek-de", idempotencyKey: "ek-order-oversell" }),
-    /wants 11 units but only 6 are available/,
+    /wants 17 units but only 16 are available/,
   );
 });
 
@@ -258,15 +270,56 @@ test("only purchasing stocks up, and stocking funds later purchases", async () =
     availability: { stocked: number; available: number };
   };
   const customerView = await clients().customer.call<Balance>("ekLab", "getDepartment", { department: "ek-de" });
-  assert.equal(customerView.availability.stocked, 30, "receipts reach every member's balance");
+  assert.equal(customerView.availability.stocked, 40, "receipts reach every member's balance");
   const sellerView = await clients().seller.call<Balance>("ekLab", "getDepartment", { department: "ek-de" });
   const settled = sellerView.orders.reduce((sum, entry) => sum + entry.quantity, 0);
-  assert.equal(sellerView.availability.available, 30 - settled);
+  assert.equal(sellerView.availability.available, 40 - settled);
   // The previously impossible purchase now settles against the restocked balance.
   await clients().seller.call("ekLab", "admitOrder", { department: "ek-de", idempotencyKey: "ek-order-oversell" });
   const after = await clients().seller.call<Balance>("ekLab", "getDepartment", { department: "ek-de" });
   assert.ok(after.orders.some(entry => entry.idempotencyKey === "ek-order-oversell"));
-  assert.equal(after.availability.available, 30 - settled - 11);
+  assert.equal(after.availability.available, 40 - settled - 17);
+});
+
+test("admission accrues receivables and payables per role", async () => {
+  type Money = DepartmentView & {
+    orders: { idempotencyKey: string; quantity: number; unitAmount: number }[];
+    balances: { party: string; role: string; receivable: number; payable: number; currency: string }[];
+  };
+  // Every admitted order so far settled ek-offer-1 at 100.00€.
+  const sellerView = await clients().seller.call<Money>("ekLab", "getDepartment", { department: "ek-de" });
+  const expected = sellerView.orders.reduce((sum, entry) => sum + entry.quantity * entry.unitAmount, 0);
+  assert.ok(expected > 0, "purchases settled before");
+  const row = (party: string) => sellerView.balances.find(entry => entry.party === party);
+  assert.deepEqual(row(persons().customer),
+    { party: persons().customer, role: "customer", receivable: 0, payable: expected, currency: "EUR" });
+  assert.deepEqual(row(persons().seller),
+    { party: persons().seller, role: "seller", receivable: expected, payable: expected, currency: "EUR" });
+  const customerView = await clients().customer.call<Money>("ekLab", "getDepartment", { department: "ek-de" });
+  assert.deepEqual(customerView.balances.map(entry => entry.party), [persons().customer], "customers see only their own row");
+});
+
+test("admission settles the placement price, not a later offer price", async () => {
+  type Money = DepartmentView & {
+    orders: { idempotencyKey: string; quantity: number; unitAmount: number }[];
+    balances: { party: string; role: string; receivable: number; payable: number; currency: string }[];
+  };
+  const id = "ek-order-reprice";
+  await clients().customer.call("ekLab", "placeOrder", {
+    department: "ek-de", offer: "ek-offer-1", quantity: 1, idempotencyKey: id,
+  });
+  await feedUntil(clients().seller, row => row.type === "EkOrder" && row.id === id, "seller sees placement");
+  // The offer doubles after placement: admission still settles 100.00€.
+  await clients().manager.call("ekLab", "publishOffer", {
+    department: "ek-de", offerId: "ek-offer-1", item: "BMA-WARTUNG@1", priceList: "ek-retail@2026-09", unitAmount: 20000, currency: "EUR",
+  });
+  await clients().seller.call("ekLab", "admitOrder", { department: "ek-de", idempotencyKey: id });
+  const sellerView = await clients().seller.call<Money>("ekLab", "getDepartment", { department: "ek-de" });
+  const settled = sellerView.orders.find(entry => entry.idempotencyKey === id);
+  assert.equal(settled?.unitAmount, 10000, "the admitted order carries the placement price");
+  const customerRow = sellerView.balances.find(entry => entry.party === persons().customer);
+  const expected = sellerView.orders.reduce((sum, entry) => sum + entry.quantity * entry.unitAmount, 0);
+  assert.equal(customerRow?.payable, expected, "the balance settles the placement price");
 });
 
 test("a paused worker catches up after resume", async () => {
@@ -305,13 +358,13 @@ test("persisted workers feed an admitted purchase back after restart", async () 
   await Promise.all(arrivals);
   // A restarted worker may briefly skip rows whose version head is not yet
   // readable: poll until every settled purchase is projected, then the
-  // balance (10 opening + 20 stocked − 16 admitted) must agree.
-  const settledIds = ["ek-order-t1", "ek-order-once", "ek-order-customer-feedback", "ek-order-oversell", id];
+  // balance (40 stocked − 23 admitted) must agree.
+  const settledIds = ["ek-order-t1", "ek-order-once", "ek-order-customer-feedback", "ek-order-oversell", "ek-order-reprice", id];
   const deadline = Date.now() + 30_000;
   for (;;) {
     const manager = await clients().manager.call<DepartmentView>("ekLab", "getDepartment", { department: "ek-de" });
     if (settledIds.every(wanted => manager.orders.some(entry => entry.idempotencyKey === wanted))) {
-      assert.equal(manager.availability.available, 14);
+      assert.equal(manager.availability.available, 17);
       break;
     }
     if (Date.now() > deadline) throw new Error("manager never projected every settled purchase after restart");

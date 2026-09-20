@@ -284,7 +284,8 @@ export function createLabPlan({ connections, now = () => Date.now(), listenerUrl
       department: string; offer: string; quantity: number; idempotencyKey?: string;
     }): Promise<{ idHash: string }> {
       const state = await requireDepartment(department);
-      if (!state.offers.some(entry => entry.offerId === offer)) {
+      const offerRow = state.offers.find(entry => entry.offerId === offer);
+      if (!offerRow) {
         throw new Error(`Ek lab: offer ${offer} is not known in ${department}.`);
       }
       const roles = rolesOf({ department: state.department, assignments: state.assignments, subject: self(), atTime: now() });
@@ -297,7 +298,10 @@ export function createLabPlan({ connections, now = () => Date.now(), listenerUrl
       }
       const obj = createOrder({
         department: state.deptIdHash, idempotencyKey: key,
-        customer: self(), seller: self(), offer, quantity, lot: EK_STOCK.lot, facility: EK_STOCK.facility, admittedAt: 0,
+        customer: self(), seller: self(), offer, quantity, lot: EK_STOCK.lot, facility: EK_STOCK.facility,
+        // The price is agreed at placement: admission settles exactly this,
+        // never a later offer price.
+        currency: offerRow.currency, unitAmount: offerRow.unitAmount, admittedAt: 0,
       });
       return publish("order", state, obj, self());
     },
@@ -325,7 +329,7 @@ export function createLabPlan({ connections, now = () => Date.now(), listenerUrl
       // No oversell: the purchase settles against the same shared balance
       // every member projects — opening stock plus purchasing's receipts
       // minus everything already admitted.
-      const stocked = EK_STOCK.gross + state.stock.reduce((sum, entry) => sum + entry.quantity, 0);
+      const stocked = state.stock.reduce((sum, entry) => sum + entry.quantity, 0);
       const admitted = state.orders
         .filter(entry => entry.admittedAt > 0)
         .reduce((sum, entry) => sum + entry.quantity, 0);
@@ -337,7 +341,8 @@ export function createLabPlan({ connections, now = () => Date.now(), listenerUrl
       const obj = createOrder({
         department: state.deptIdHash, idempotencyKey: placed.idempotencyKey,
         customer: placed.customer, seller: self(), offer: placed.offer, quantity: placed.quantity,
-        lot: placed.lot, facility: placed.facility, admittedAt: now(),
+        lot: placed.lot, facility: placed.facility,
+        currency: placed.currency, unitAmount: placed.unitAmount, admittedAt: now(),
       });
       return publish("order", state, obj, placed.customer);
     },

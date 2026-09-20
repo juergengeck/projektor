@@ -31,7 +31,7 @@ export const EkLabRecipes: LabRecipe[] = [
   { $type$: "Recipe", name: "EkRoleAssignment", rule: [departmentRef, person("subject", true), text("role"), person("issuer"), integer("validFrom")] },
   { $type$: "Recipe", name: "EkContact", rule: [departmentRef, person("person", true), text("name"), text("role"), person("publishedBy"), integer("publishedAt")] },
   { $type$: "Recipe", name: "EkOffer", rule: [departmentRef, text("offerId", true), text("item"), text("priceList"), text("channel"), integer("unitAmount"), text("currency"), person("publishedBy")] },
-  { $type$: "Recipe", name: "EkOrder", rule: [departmentRef, text("idempotencyKey", true), person("customer"), person("seller"), text("offer"), integer("quantity"), text("lot"), text("facility"), integer("admittedAt")] },
+  { $type$: "Recipe", name: "EkOrder", rule: [departmentRef, text("idempotencyKey", true), person("customer"), person("seller"), text("offer"), integer("quantity"), text("lot"), text("facility"), text("currency"), integer("unitAmount"), integer("admittedAt")] },
   { $type$: "Recipe", name: "EkStockReceipt", rule: [departmentRef, text("receiptId", true), text("lot"), text("facility"), integer("quantity"), person("receivedBy"), integer("receivedAt")] },
 ];
 
@@ -105,6 +105,9 @@ export interface EkOrder {
   quantity: number;
   lot: string;
   facility: string;
+  /** Price agreed at placement, in minor units — admission settles exactly this, never the current offer price. */
+  currency: string;
+  unitAmount: number;
   admittedAt: number;
 }
 
@@ -175,14 +178,17 @@ export function createStockReceipt({ department, receiptId, lot, facility, quant
   };
 }
 
-export function createOrder({ department, idempotencyKey, customer, seller, offer, quantity, lot, facility, admittedAt }: {
+export function createOrder({ department, idempotencyKey, customer, seller, offer, quantity, lot, facility, currency, unitAmount, admittedAt }: {
   department?: unknown; idempotencyKey?: unknown; customer?: unknown; seller?: unknown; offer?: unknown;
-  quantity?: unknown; lot?: unknown; facility?: unknown; admittedAt?: unknown;
+  quantity?: unknown; lot?: unknown; facility?: unknown; currency?: unknown; unitAmount?: unknown; admittedAt?: unknown;
 } = {}): EkOrder {
   if (!Number.isSafeInteger(quantity) || (quantity as number) <= 0) fail("quantity must be a positive integer.");
+  if (!Number.isSafeInteger(unitAmount) || (unitAmount as number) <= 0) fail("unitAmount must be a positive integer (minor units).");
   return {
     $type$: "EkOrder", department: hash(department, "department"), idempotencyKey: nonEmpty(idempotencyKey, "idempotencyKey"),
     customer: hash(customer, "customer"), seller: hash(seller, "seller"), offer: nonEmpty(offer, "offer"), quantity: quantity as number,
-    lot: nonEmpty(lot, "lot"), facility: nonEmpty(facility, "facility"), admittedAt: timestamp(admittedAt, "admittedAt"),
+    lot: nonEmpty(lot, "lot"), facility: nonEmpty(facility, "facility"),
+    currency: nonEmpty(currency, "currency"), unitAmount: unitAmount as number,
+    admittedAt: timestamp(admittedAt, "admittedAt"),
   };
 }

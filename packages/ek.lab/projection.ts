@@ -14,7 +14,10 @@ import type {
   EkStockReceipt,
 } from "./recipes.ts";
 
-export const EK_STOCK = { lot: "ek-lot-a", facility: "ek-facility", gross: 10 };
+// The facility's stock identity. There is no opening stock: inventory exists
+// only once the org (purchasing) has received goods — the manager cannot
+// show inventory nobody purchased.
+export const EK_STOCK = { lot: "ek-lot-a", facility: "ek-facility" };
 
 export type PublishKind = "contact" | "offer" | "order" | "assignment" | "stock";
 export type AudienceKind = "department" | "assignment" | "contact" | "offer" | "order" | "stock";
@@ -130,8 +133,23 @@ export interface DepartmentProjection {
   orders: EkOrder[];
   /** Placed but unadmitted orders (`admittedAt === 0`), awaiting the seller. */
   pendingOrders: EkOrder[];
-  availability: { lot: string; facility: string; gross: number; stocked: number; available: number };
+  availability: { lot: string; facility: string; stocked: number; available: number };
+  /**
+   * Money positions in minor units. Consignment chain: admission accrues the
+   * customer's payable to the seller, the seller's receivable from customers
+   * and equal payable to the org, and the org's receivable from sellers.
+   * Placing alone moves no money.
+   */
+  balances: Balance[];
   rejected: Rejection[];
+}
+
+export interface Balance {
+  party: string;
+  role: "customer" | "seller" | "org";
+  receivable: number;
+  payable: number;
+  currency: string;
 }
 
 export function projectDepartment({ department, assignments, contacts, offers, orders, stock, viewer, atTime }: {
@@ -159,10 +177,27 @@ export function projectDepartment({ department, assignments, contacts, offers, o
   const pendingOrders = authorizedOrders.filter(entry => entry.admittedAt === 0);
   const scopeToViewer = (list: EkOrder[]): EkOrder[] =>
     customerOnly ? list.filter(entry => entry.customer === viewer) : list;
-  // One shared balance for every viewer: opening stock plus everything
-  // purchasing received, minus everything admitted. Never viewer-scoped —
-  // the meter must agree in every column.
-  const stocked = EK_STOCK.gross + stock.reduce((sum, entry) => sum + entry.quantity, 0);
+  // One shared balance for every viewer: everything purchasing received,
+  // minus everything admitted. Never viewer-scoped — the meter must agree
+  // in every column.
+  const stocked = stock.reduce((sum, entry) => sum + entry.quantity, 0);
+  const balancesByKey = new Map<string, Balance>();
+  const addBalance = (party: string, role: Balance["role"], receivable: number, payable: number, currency: string): void => {
+    const key = `${party}:${currency}`;
+    const entry = balancesByKey.get(key) ?? { party, role, receivable: 0, payable: 0, currency };
+    entry.receivable += receivable;
+    entry.payable += payable;
+    balancesByKey.set(key, entry);
+  };
+  for (const entry of admittedOrders) {
+    const value = entry.quantity * entry.unitAmount;
+    addBalance(entry.customer, "customer", 0, value, entry.currency);
+    addBalance(entry.seller, "seller", value, value, entry.currency);
+    addBalance(department.admin, "org", value, 0, entry.currency);
+  }
+  const balances = [...balancesByKey.values()]
+    .filter(entry => !customerOnly || entry.party === viewer)
+    .sort((a, b) => (a.party < b.party ? -1 : a.party > b.party ? 1 : 0));
   return {
     department: department.department,
     roles: [...viewerRoles].sort(),
@@ -176,6 +211,7 @@ export function projectDepartment({ department, assignments, contacts, offers, o
       stocked,
       available: stocked - admittedOrders.reduce((sum, entry) => sum + entry.quantity, 0),
     },
+    balances,
     rejected,
   };
 }
