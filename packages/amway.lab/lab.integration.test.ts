@@ -21,7 +21,7 @@ interface DepartmentView {
   orders: { idempotencyKey: string }[];
   pendingOrders: { idempotencyKey: string; offer: string; quantity: number }[];
   offers: { offerId: string }[];
-  availability: { available: number };
+  availability: { stocked: number; available: number } | null;
 }
 
 function spawnWorker(key: string) {
@@ -100,27 +100,48 @@ test("purchasing stocks the facility before anything is sold", async () => {
   // No opening stock exists: the manager cannot show inventory the org
   // never purchased. The admin (purchasing) receives the first goods.
   await clients().admin.call("amwayLab", "stockUp", { department: "demo-de", receiptId: "lab-stock-opening", quantity: 20 });
-  type Balance = DepartmentView & { availability: { stocked: number; available: number } };
-  const adminView = await clients().admin.call<Balance>("amwayLab", "getDepartment", { department: "demo-de" });
-  assert.equal(adminView.availability.stocked, 20);
-  assert.equal(adminView.availability.available, 20);
+  const adminView = await clients().admin.call<DepartmentView>("amwayLab", "getDepartment", { department: "demo-de" });
+  assert.equal(adminView.availability?.stocked, 20);
+  assert.equal(adminView.availability?.available, 20);
+  const customerOpening = await clients().customer.call<DepartmentView>("amwayLab", "getDepartment", { department: "demo-de" });
+  assert.equal(customerOpening.availability, null, "customers never see stock");
 });
 
-test("a published offer reaches sellers through their manager, never customers", async () => {
-  const arrivals = ["admin", "seller"].map(key =>
-    feedUntil(clients()[key], row => row.type === "AmwayOffer" && row.id === "lab-offer-1", `${key} offer`));
+test("a published offer reaches managers only, until shared down", async () => {
+  const arrival = feedUntil(clients().manager, row => row.type === "AmwayOffer" && row.id === "lab-offer-1", "manager offer");
   await clients().manager.call("amwayLab", "publishOffer", {
     department: "demo-de", offerId: "lab-offer-1", item: "GLISTER-100@1", priceList: "demo-retail@2026-09", unitAmount: 10000, currency: "EUR",
   });
-  const rows = await Promise.all(arrivals);
-  assert.equal(new Set(rows.map(row => row.hash)).size, 1, "staff hold the exact same version");
-  const seen = await clients().seller.call<DepartmentView>("amwayLab", "getDepartment", { department: "demo-de" });
-  assert.ok(seen.offers.some(entry => entry.offerId === "lab-offer-1"));
-  // The offer lane to the seller is proven above; disclose nothing further
-  // and the customer must still be empty — publishing skips no level.
+  await arrival;
+  // Publishing discloses nothing beyond staff: the appointed seller holds
+  // no offer rows (appointment alone delivers no inventory), and neither
+  // does the customer.
   await new Promise(resolve => setTimeout(resolve, 2000));
-  const unshared = await clients().customer.call<DepartmentView>("amwayLab", "getDepartment", { department: "demo-de" });
-  assert.deepEqual(unshared.offers, [], "publishing alone shares nothing with customers");
+  const sellerView = await clients().seller.call<DepartmentView>("amwayLab", "getDepartment", { department: "demo-de" });
+  assert.deepEqual(sellerView.offers, [], "publishing alone shares nothing with sellers");
+  const customerView = await clients().customer.call<DepartmentView>("amwayLab", "getDepartment", { department: "demo-de" });
+  assert.deepEqual(customerView.offers, [], "publishing alone shares nothing with customers");
+});
+
+test("a manager shares offers down with chosen sellers", async () => {
+  // lab-offer-1 was published in the earlier test and reached managers only.
+  await assert.rejects(
+    clients().seller.call("amwayLab", "shareOfferWithSeller", { department: "demo-de", offerId: "lab-offer-1", seller: persons().seller }),
+    /only the manager may share offers with sellers/,
+  );
+  await assert.rejects(
+    clients().manager.call("amwayLab", "shareOfferWithSeller", { department: "demo-de", offerId: "lab-offer-1", seller: persons().customer }),
+    /appointed sellers only/,
+  );
+  await assert.rejects(
+    clients().manager.call("amwayLab", "shareOfferWithSeller", { department: "demo-de", offerId: "nope", seller: persons().seller }),
+    /not known in demo-de/,
+  );
+  const shared = feedUntil(clients().seller, row => row.type === "AmwayOffer" && row.id === "lab-offer-1", "seller receives shared offer");
+  await clients().manager.call("amwayLab", "shareOfferWithSeller", { department: "demo-de", offerId: "lab-offer-1", seller: persons().seller });
+  await shared;
+  const seen = await clients().seller.call<DepartmentView>("amwayLab", "getDepartment", { department: "demo-de" });
+  assert.ok(seen.offers.some(entry => entry.offerId === "lab-offer-1"), "sharing delivers the offer to the chosen seller");
 });
 
 test("inventory reaches the customer only through the seller", async () => {
@@ -200,8 +221,11 @@ test("a purchase exists only after the customer places and the seller admits", a
   const view = await clients().customer.call<DepartmentView>("amwayLab", "getDepartment", { department: "demo-de" });
   assert.deepEqual(view.orders.map(entry => entry.idempotencyKey), ["lab-order-t1"]);
   assert.deepEqual(view.pendingOrders, [], "admitting clears the pending order");
-  // 20 purchased − 2 admitted here.
-  assert.equal(view.availability.available, 18);
+  assert.equal(view.availability, null, "customers never see stock");
+  // 20 purchased − 2 admitted here; the staff meter agrees.
+  await feedUntil(clients().manager, row => row.type === "AmwayOrder" && row.id === "lab-order-t1" && (row.obj?.admittedAt as number) > 0, "manager receives admission");
+  const staffView = await clients().manager.call<DepartmentView>("amwayLab", "getDepartment", { department: "demo-de" });
+  assert.equal(staffView.availability?.available, 18);
 });
 
 test("a seller cannot admit an order nobody placed", async () => {
@@ -283,22 +307,27 @@ test("only purchasing stocks up, and stocking funds later purchases", async () =
   // Re-recording the same receipt replaces it instead of counting twice.
   await clients().admin.call("amwayLab", "stockUp", { department: "demo-de", receiptId: "lab-stock-1", quantity: 20 });
   const receiptArrived = (row: FeedRow): boolean => row.type === "AmwayStockReceipt" && row.id === "lab-stock-1";
-  await feedUntil(clients().customer, receiptArrived, "customer receives receipt");
-  await feedUntil(clients().seller, receiptArrived, "seller receives receipt");
+  await feedUntil(clients().seller, receiptArrived, "seller replicates receipts");
+  await feedUntil(clients().manager, receiptArrived, "manager replicates receipts");
   type Balance = DepartmentView & {
     orders: { idempotencyKey: string; quantity: number }[];
-    availability: { stocked: number; available: number };
   };
+  // Receipts reach staff and sellers, never customers — and only staff
+  // project the meter.
   const customerView = await clients().customer.call<Balance>("amwayLab", "getDepartment", { department: "demo-de" });
-  assert.equal(customerView.availability.stocked, 40, "receipts reach every member's balance");
+  assert.equal(customerView.availability, null, "customers never see stock");
   const sellerView = await clients().seller.call<Balance>("amwayLab", "getDepartment", { department: "demo-de" });
-  const settled = sellerView.orders.reduce((sum, entry) => sum + entry.quantity, 0);
-  assert.equal(sellerView.availability.available, 40 - settled);
+  assert.equal(sellerView.availability, null, "sellers see shared offers, never the facility balance");
+  const adminView = await clients().admin.call<Balance>("amwayLab", "getDepartment", { department: "demo-de" });
+  assert.equal(adminView.availability?.stocked, 40);
+  const settled = adminView.orders.reduce((sum, entry) => sum + entry.quantity, 0);
+  assert.equal(adminView.availability?.available, 40 - settled);
   // The previously impossible purchase now settles against the restocked balance.
   await clients().seller.call("amwayLab", "admitOrder", { department: "demo-de", idempotencyKey: "lab-order-oversell" });
-  const after = await clients().seller.call<Balance>("amwayLab", "getDepartment", { department: "demo-de" });
+  await feedUntil(clients().admin, row => row.type === "AmwayOrder" && row.id === "lab-order-oversell" && (row.obj?.admittedAt as number) > 0, "admin receives admission");
+  const after = await clients().admin.call<Balance>("amwayLab", "getDepartment", { department: "demo-de" });
   assert.ok(after.orders.some(entry => entry.idempotencyKey === "lab-order-oversell"));
-  assert.equal(after.availability.available, 40 - settled - 17);
+  assert.equal(after.availability?.available, 40 - settled - 17);
 });
 
 test("admission accrues receivables and payables per role", async () => {
@@ -358,6 +387,8 @@ test("a paused worker catches up after resume", async () => {
   const unshared = await clients().customer.call<DepartmentView>("amwayLab", "getDepartment", { department: "demo-de" });
   assert.equal(unshared.offers.some(entry => entry.offerId === "lab-offer-2"), false);
   const caughtUp = feedUntil(clients().customer, row => row.type === "AmwayOffer" && row.id === "lab-offer-2", "customer catch-up");
+  await clients().manager.call("amwayLab", "shareOfferWithSeller", { department: "demo-de", offerId: "lab-offer-2", seller: persons().seller });
+  await feedUntil(clients().seller, row => row.type === "AmwayOffer" && row.id === "lab-offer-2", "seller receives offer-2");
   await clients().seller.call("amwayLab", "shareOffer", { department: "demo-de", offerId: "lab-offer-2", customer: persons().customer });
   await caughtUp;
 });

@@ -107,16 +107,23 @@ export function audience(kind: string, { department, assignments, row }: {
     }
     if ("customer" in row && typeof row.customer === "string") people.add(row.customer);
   } else if (kind === "offer") {
-    // Inventory flows down the chain: a published offer reaches sellers
-    // through their manager, never customers. Only the seller shares it
-    // further down (shareOffer).
+    // Publishing discloses nothing beyond staff: a published offer reaches
+    // the managers, never sellers or customers. The manager shares it down
+    // with chosen sellers (shareOfferWithSeller), the seller further down
+    // with customers (shareOffer). Appointment alone delivers no inventory.
+    for (const entry of assignments) {
+      if (entry.role === "manager") people.add(entry.subject);
+    }
+  } else if (["department", "assignment", "contact"].includes(kind)) {
+    for (const entry of assignments) people.add(entry.subject);
+  } else if (kind === "stock") {
+    // Sellers replicate receipts so their admissions settle against the
+    // shared balance; customers never hold inventory rows. Only staff
+    // project the meter (see projectDepartment) — sellers see what was
+    // shared down to them, customers their orders and balances.
     for (const entry of assignments) {
       if (entry.role === "manager" || entry.role === "seller") people.add(entry.subject);
     }
-  } else if (["department", "assignment", "contact", "stock"].includes(kind)) {
-    // Stock receipts reach every member: each worker projects the same
-    // shared balance from its local store, so the meter agrees per column.
-    for (const entry of assignments) people.add(entry.subject);
   } else {
     throw new Error(`Amway lab: unknown audience kind ${kind}.`);
   }
@@ -133,7 +140,8 @@ export interface DepartmentProjection {
   orders: AmwayOrder[];
   /** Placed but unadmitted orders (`admittedAt === 0`), awaiting the seller. */
   pendingOrders: AmwayOrder[];
-  availability: { lot: string; facility: string; stocked: number; available: number };
+  /** Facility balance, staff-only: sellers and customers project null and never see stock. */
+  availability: { lot: string; facility: string; stocked: number; available: number } | null;
   /**
    * Money positions in minor units. Consignment chain: admission accrues the
    * customer's payable to the seller, the seller's receivable from customers
@@ -181,6 +189,7 @@ export function projectDepartment({ department, assignments, contacts, offers, o
   // minus everything admitted. Never viewer-scoped — the meter must agree
   // in every column.
   const stocked = stock.reduce((sum, entry) => sum + entry.quantity, 0);
+  const staffViewer = viewerRoles.has("admin") || viewerRoles.has("manager");
   const balancesByKey = new Map<string, Balance>();
   const addBalance = (party: string, role: Balance["role"], receivable: number, payable: number, currency: string): void => {
     const key = `${party}:${currency}`;
@@ -206,11 +215,13 @@ export function projectDepartment({ department, assignments, contacts, offers, o
     offers: offers.filter(entry => admit("offer", "AmwayOffer", entry.offerId, entry.publishedBy)),
     orders: scopeToViewer(admittedOrders),
     pendingOrders: scopeToViewer(pendingOrders),
-    availability: {
-      ...LAB_STOCK,
-      stocked,
-      available: stocked - admittedOrders.reduce((sum, entry) => sum + entry.quantity, 0),
-    },
+    availability: staffViewer
+      ? {
+        ...LAB_STOCK,
+        stocked,
+        available: stocked - admittedOrders.reduce((sum, entry) => sum + entry.quantity, 0),
+      }
+      : null,
     balances,
     rejected,
   };
