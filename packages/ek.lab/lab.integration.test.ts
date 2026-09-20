@@ -489,3 +489,37 @@ test("concurrent admissions across workers settle exactly once", async () => {
     await new Promise(resolve => setTimeout(resolve, 250));
   }
 });
+
+test("seller and customer chat over the topic channel", async () => {
+  type Thread = { messages: { text: string; sender: string; sentAt: number }[] };
+  const readUntil = async (key: string, peer: string, text: string, label: string): Promise<Thread> => {
+    const deadline = Date.now() + 30_000;
+    for (;;) {
+      const thread = await clients()[key].call<Thread>("ekChat", "readChat", { peer });
+      if (thread.messages.some(entry => entry.text === text)) return thread;
+      if (Date.now() > deadline) throw new Error(`chat never delivered: ${label}`);
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
+  };
+  // Either side may open the deterministic 1:1 topic.
+  await clients().seller.call("ekChat", "openChat", { peer: persons().customer });
+  await clients().seller.call("ekChat", "sendChat", { peer: persons().customer, text: "Your maintenance is scheduled." });
+  const received = await readUntil("customer", persons().seller, "Your maintenance is scheduled.", "customer receives chat");
+  assert.equal(received.messages[0]?.sender, persons().seller, "the sender rides along");
+  await clients().customer.call("ekChat", "sendChat", { peer: persons().seller, text: "Thanks, see you Thursday." });
+  const reply = await readUntil("seller", persons().customer, "Thanks, see you Thursday.", "seller receives reply");
+  assert.deepEqual(reply.messages.map(entry => entry.text), ["Your maintenance is scheduled.", "Thanks, see you Thursday."]);
+  // Live notification: the worker reports the peer whose room changed.
+  const notified = feedUntil(clients().seller, row => row.type === "EkChat" && row.id === persons().customer, "seller notified of chat message");
+  await clients().customer.call("ekChat", "sendChat", { peer: persons().seller, text: "Ping for the feed." });
+  await notified;
+  await readUntil("seller", persons().customer, "Ping for the feed.", "seller receives feed ping");
+  await assert.rejects(
+    clients().seller.call("ekChat", "sendChat", { peer: persons().customer, text: "   " }),
+    /message text is required/,
+  );
+  await assert.rejects(
+    clients().seller.call("ekChat", "openChat", { peer: persons().seller }),
+    /cannot chat with yourself/,
+  );
+});
