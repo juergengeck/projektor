@@ -32,6 +32,9 @@ export async function runLaneCeremony(page, lane, expect) {
   await expect(seller.locator(".badge-info")).toBeVisible({ timeout: 60_000 });
 
   await seller.getByRole("button", { name: "Appoint Customer" }).click();
+  // No opening stock exists: purchasing (admin) receives goods before
+  // anything is offered, shared, or sold.
+  await admin.getByRole("button", { name: "Stock Up" }).click();
   await manager.getByRole("button", { name: "+ Offer (100.00€)" }).click();
   await seller.getByRole("button", { name: `Share ${lane.offerId} down` }).click();
   await customer.getByRole("button", { name: /Buy 1x/ }).click();
