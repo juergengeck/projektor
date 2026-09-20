@@ -1595,3 +1595,60 @@ details.settings-card > summary:hover {
 .lab-feed-item.lab-feed-AmwayOrder { border-left-color: var(--amway-info); }
 .lab-feed-item.lab-feed-AmwayContact { border-left-color: var(--amway-beauty); }
 .lab-feed-item.lab-feed-AmwayRoleAssignment { border-left-color: var(--amway-warning); }
+.lab-feed-item.lab-feed-AmwayChat { border-left-color: var(--amway-accent); }
+.lab-feed-item.lab-feed-EkChat { border-left-color: var(--amway-accent); }
+
+/* 1:1 chat below a directory contact. Plain thread + composer in lane tokens. */
+.lab-chat {
+  margin-top: 0.35rem;
+  padding: 0.5rem 0.6rem;
+  background: var(--amway-surface-subtle);
+  border: 1px solid var(--amway-border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.lab-chat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+}
+.lab-chat-status {
+  color: var(--amway-muted);
+  font-size: 0.72rem;
+}
+.lab-chat-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-height: 12rem;
+  overflow-y: auto;
+}
+.lab-chat-msg {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.3rem 0.5rem;
+  background: var(--amway-surface-sunken);
+  border-radius: var(--radius-xs);
+}
+.lab-chat-own {
+  background: var(--amway-neutral);
+}
+.lab-chat-text {
+  overflow-wrap: anywhere;
+}
+.lab-chat-time {
+  font-size: 0.65rem;
+  color: var(--amway-muted);
+  white-space: nowrap;
+}
+.lab-chat-composer {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}

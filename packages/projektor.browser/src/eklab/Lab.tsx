@@ -2,6 +2,7 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { bootJoinInstance, bootLab, LAB_KEYS, type FeedRow, type LabHandle, type LabKey } from "./transport";
+import type { PortApiClient } from "@projektor/ek.lab/port-ipc.ts";
 import { Badge, RoleBadge, StatusBadge } from "../components/ui";
 
 /** Best-effort role resolution for a pasted invite; the worker validates strictly on accept. */
@@ -165,6 +166,7 @@ export interface Column {
   notice: string;
   tab: TabKey;
   feedLog: FeedEntry[];
+  chatPeer: string | null;
 }
 
 type State = Record<LabKey, Column>;
@@ -175,7 +177,8 @@ type Action =
   | { kind: "online"; key: LabKey; online: boolean }
   | { kind: "tab"; key: LabKey; tab: TabKey }
   | { kind: "notice"; key: LabKey; notice: string }
-  | { kind: "clear_notice"; key: LabKey };
+  | { kind: "clear_notice"; key: LabKey }
+  | { kind: "chat"; key: LabKey; peer: string | null };
 
 const EMPTY_VIEW: View = {
   known: false,
@@ -247,6 +250,9 @@ function reduce(state: State, action: Action): State {
   }
   if (action.kind === "clear_notice") {
     return { ...state, [action.key]: { ...column, notice: "" } };
+  }
+  if (action.kind === "chat") {
+    return { ...state, [action.key]: { ...column, chatPeer: action.peer } };
   }
 
   const { row } = action;
@@ -330,9 +336,129 @@ function initial(): State {
         notice: "",
         tab: "overview" as TabKey,
         feedLog: [],
+        chatPeer: null as string | null,
       },
     ]),
   ) as unknown as State;
+}
+
+export interface ChatMsg {
+  text: string;
+  sender: string;
+  sentAt: number;
+}
+
+/** 1:1 chat with a directory contact over its topic channel. Opens the
+ * deterministic P2P topic, reads the thread, and re-reads whenever the
+ * worker reports a new message for this peer. */
+function ChatPanel({ client, me, peer, peerName, onClose }: {
+  client: PortApiClient | undefined;
+  me: string;
+  peer: string;
+  peerName: string;
+  onClose: () => void;
+}) {
+  const [thread, setThread] = useState<ChatMsg[]>([]);
+  const [draft, setDraft] = useState("");
+  const [status, setStatus] = useState("opening chat…");
+  useEffect(() => {
+    if (!client) {
+      setStatus("worker not ready");
+      return;
+    }
+    let cancelled = false;
+    const read = async () => {
+      try {
+        const result = await client.call<{ messages: ChatMsg[] }>("ekChat", "readChat", { peer });
+        if (!cancelled) {
+          setThread(result.messages);
+          setStatus("");
+        }
+      } catch (error) {
+        if (!cancelled) setStatus(error instanceof Error ? error.message : String(error));
+      }
+    };
+    void (async () => {
+      try {
+        await client.call("ekChat", "openChat", { peer });
+        if (!cancelled) await read();
+      } catch (error) {
+        if (!cancelled) setStatus(error instanceof Error ? error.message : String(error));
+      }
+    })();
+    const off = client.onFeed(row => {
+      if (row.type === "EkChat" && row.id === peer) void read();
+    });
+    return () => {
+      cancelled = true;
+      off();
+    };
+  }, [client, peer]);
+  const send = async () => {
+    if (!client) return;
+    const body = draft.trim();
+    if (!body) return;
+    setDraft("");
+    try {
+      await client.call("ekChat", "sendChat", { peer, text: body });
+      const result = await client.call<{ messages: ChatMsg[] }>("ekChat", "readChat", { peer });
+      setThread(result.messages);
+      setStatus("");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+      setDraft(body);
+    }
+  };
+  const fmtTime = (at: number) =>
+    at > 0
+      ? new Date(at).toLocaleTimeString([], { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })
+      : "";
+  return (
+    <div className="lab-chat" aria-label={`Chat with ${peerName}`}>
+      <div className="lab-chat-header">
+        <span>Chat with {peerName}</span>
+        <button type="button" className="lab-copy-btn" onClick={onClose} aria-label="Close chat">
+          ✕
+        </button>
+      </div>
+      {status !== "" && <div className="lab-chat-status">{status}</div>}
+      {status === "" && (
+        <div className="lab-chat-thread">
+          {thread.length === 0 ? (
+            <div className="state-empty" style={{ padding: "0.4rem", fontSize: "0.72rem" }}>
+              No messages yet.
+            </div>
+          ) : (
+            thread.map((message, index) => (
+              <div
+                key={`${message.sentAt}-${message.sender.slice(0, 8)}-${index}`}
+                className={`lab-chat-msg ${message.sender === me ? "lab-chat-own" : ""}`}
+              >
+                <span className="lab-chat-text">{message.text}</span>
+                <span className="lab-chat-time">{fmtTime(message.sentAt)}</span>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+      <div className="lab-chat-composer">
+        <input
+          value={draft}
+          onChange={event => setDraft(event.target.value)}
+          onKeyDown={event => {
+            if (event.key === "Enter") void send();
+          }}
+          placeholder={`Message ${peerName}`}
+          aria-label={`Message ${peerName}`}
+          maxLength={2000}
+          style={{ flex: 1, minWidth: 0, fontSize: "0.72rem" }}
+        />
+        <button type="button" className="secondary sm" disabled={draft.trim() === ""} onClick={() => void send()}>
+          Send
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export default function Lab() {
@@ -1256,18 +1382,42 @@ export default function Lab() {
                       ) : (
                         view.contacts.map(entry => {
                           const isFresh = Boolean(column.fresh[`EkContact:${entry.person}`]);
+                          const chatting = column.chatPeer === entry.person;
+                          const peerName = entry.name || `${entry.person.slice(0, 10)}…`;
                           return (
-                            <div
-                              key={`${entry.person}:${column.fresh[`EkContact:${entry.person}`] ?? ""}`}
-                              className={`lab-item-card ${isFresh ? "lab-fresh" : ""}`}
-                            >
-                              <div className="lab-item-main">
-                                <span className="lab-item-title">{entry.name}</span>
-                                <span className="lab-item-sub">
-                                  {entry.person.slice(0, 10)}…{entry.person.slice(-4)}
-                                </span>
+                            <div key={`${entry.person}:${column.fresh[`EkContact:${entry.person}`] ?? ""}`}>
+                              <div
+                                className={`lab-item-card ${isFresh ? "lab-fresh" : ""}`}
+                                role="button"
+                                tabIndex={0}
+                                title="Open chat"
+                                aria-label={`Chat with ${peerName}`}
+                                style={{ cursor: "pointer" }}
+                                onClick={() => dispatch({ kind: "chat", key, peer: chatting ? null : entry.person })}
+                                onKeyDown={event => {
+                                  if (event.key === "Enter" || event.key === " ") {
+                                    event.preventDefault();
+                                    dispatch({ kind: "chat", key, peer: chatting ? null : entry.person });
+                                  }
+                                }}
+                              >
+                                <div className="lab-item-main">
+                                  <span className="lab-item-title">{entry.name}</span>
+                                  <span className="lab-item-sub">
+                                    {entry.person.slice(0, 10)}…{entry.person.slice(-4)}
+                                  </span>
+                                </div>
+                                <RoleBadge role={entry.role} />
                               </div>
-                              <RoleBadge role={entry.role} />
+                              {chatting && (
+                                <ChatPanel
+                                  client={lab.current?.clients[key]}
+                                  me={personId}
+                                  peer={entry.person}
+                                  peerName={peerName}
+                                  onClose={() => dispatch({ kind: "chat", key, peer: null })}
+                                />
+                              )}
                             </div>
                           );
                         })
