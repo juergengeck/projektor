@@ -137,6 +137,18 @@ export function createLabPlan({ connections, now = () => Date.now(), listenerUrl
     return state as DepartmentState & { department: EkDepartment };
   }
 
+  async function offerIdHash(state: DepartmentState, offerId: string): Promise<string | undefined> {
+    for (const candidate of await getAllIdObjectEntries(idHashOf(state.deptIdHash), typeNameOf("EkOffer"))) {
+      try {
+        const obj = (await getObjectByIdHash(idHashOf(candidate))).obj as EkOffer;
+        if (obj.offerId === offerId) return candidate;
+      } catch (error) {
+        if (!isMissingVersionHeadError(error)) throw error;
+      }
+    }
+    return undefined;
+  }
+
   async function publish(kind: string, state: DepartmentState & { department: EkDepartment }, obj: EkLabObject, subject?: string): Promise<{ idHash: string }> {
     const author = self();
     if (!canPublish(kind, { department: state.department, assignments: state.assignments, author, subject, atTime: now() })) {
@@ -181,8 +193,19 @@ export function createLabPlan({ connections, now = () => Date.now(), listenerUrl
       // A membership change must never leak a level's rows to another level.
       const team = audience("assignment", { department: next.department, assignments: next.assignments, row: obj });
       await grant(next.deptIdHash, team);
-      for (const type of ["EkRoleAssignment", "EkContact", "EkStockReceipt"] as const) {
+      for (const type of ["EkRoleAssignment", "EkContact"] as const) {
         for (const idHash of await getAllIdObjectEntries(idHashOf(next.deptIdHash), typeNameOf(type))) await grant(idHash, team);
+      }
+      // Stock receipts follow the inventory audience, never the whole team:
+      // staff and sellers replicate them so admissions settle, customers
+      // never hold inventory rows. A newcomer starts with no shared offers.
+      const holders = new Set<string>([next.department.admin]);
+      for (const entry of next.assignments) {
+        const subjectRoles = rolesOf({ department: next.department, assignments: next.assignments, subject: entry.subject, atTime: now() });
+        if (subjectRoles.has("manager") || subjectRoles.has("seller")) holders.add(entry.subject);
+      }
+      for (const idHash of await getAllIdObjectEntries(idHashOf(next.deptIdHash), typeNameOf("EkStockReceipt"))) {
+        await grant(idHash, [...holders]);
       }
       for (const type of ["EkOffer", "EkOrder"] as const) {
         for (const idHash of await getAllIdObjectEntries(idHashOf(next.deptIdHash), typeNameOf(type))) {
@@ -258,20 +281,36 @@ export function createLabPlan({ connections, now = () => Date.now(), listenerUrl
       if (!state.offers.some(entry => entry.offerId === offerId)) {
         throw new Error(`Ek lab: offer ${offerId} is not known in ${department}.`);
       }
-      let idHash: string | undefined;
-      for (const candidate of await getAllIdObjectEntries(idHashOf(state.deptIdHash), typeNameOf("EkOffer"))) {
-        try {
-          const obj = (await getObjectByIdHash(idHashOf(candidate))).obj as EkOffer;
-          if (obj.offerId === offerId) {
-            idHash = candidate;
-            break;
-          }
-        } catch (error) {
-          if (!isMissingVersionHeadError(error)) throw error;
-        }
-      }
+      const idHash = await offerIdHash(state, offerId);
       if (!idHash) throw new Error(`Ek lab: offer ${offerId} has not reached this instance.`);
       await grant(idHash, [customer]);
+      return { idHash };
+    },
+
+    /**
+     * The manager shares a published offer down with a chosen seller.
+     * Publishing alone never reaches sellers: this explicit step is the
+     * only way inventory arrives at a seller, mirroring shareOffer.
+     * Pure disclosure, no new object; repeating it is harmless.
+     */
+    async shareOfferWithSeller({ department, offerId, seller }: {
+      department: string; offerId: string; seller: string;
+    }): Promise<{ idHash: string }> {
+      const state = await requireDepartment(department);
+      const roles = rolesOf({ department: state.department, assignments: state.assignments, subject: self(), atTime: now() });
+      if (!roles.has("manager") && self() !== state.department.admin) {
+        throw new Error("Ek lab: only the manager may share offers with sellers.");
+      }
+      const sellerRoles = rolesOf({ department: state.department, assignments: state.assignments, subject: seller, atTime: now() });
+      if (!sellerRoles.has("seller")) {
+        throw new Error("Ek lab: offers are shared with appointed sellers only.");
+      }
+      if (!state.offers.some(entry => entry.offerId === offerId)) {
+        throw new Error(`Ek lab: offer ${offerId} is not known in ${department}.`);
+      }
+      const idHash = await offerIdHash(state, offerId);
+      if (!idHash) throw new Error(`Ek lab: offer ${offerId} has not reached this instance.`);
+      await grant(idHash, [seller]);
       return { idHash };
     },
 

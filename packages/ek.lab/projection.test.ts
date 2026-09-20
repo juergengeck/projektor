@@ -56,9 +56,13 @@ test("orders reach staff and their customer only", () => {
     [ADMIN, SELLER, CUSTOMER].sort());
 });
 
-test("inventory stops at sellers until the seller shares it down", () => {
+test("publishing discloses offers to managers only, receipts to staff and sellers", () => {
   const offer: EkOffer = { $type$: "EkOffer", department: DEPT, offerId: "o1", item: "x", priceList: "p", channel: "facility", unitAmount: 1, currency: "EUR", publishedBy: MANAGER };
-  assert.deepEqual(audience("offer", { department, assignments, row: offer }), [ADMIN, MANAGER, SELLER].sort());
+  assert.deepEqual(audience("offer", { department, assignments, row: offer }), [ADMIN, MANAGER].sort(),
+    "appointment alone delivers no inventory");
+  const receipt = { department: DEPT, receiptId: "r1" };
+  assert.deepEqual(audience("stock", { department, assignments, row: receipt }), [ADMIN, MANAGER, SELLER].sort(),
+    "sellers replicate receipts so admissions settle; customers never hold inventory rows");
 });
 
 test("placed orders pend until the seller admits them", () => {
@@ -66,14 +70,18 @@ test("placed orders pend until the seller admits them", () => {
   const customerView = projectDepartment({ department, assignments, contacts: [], offers: [], orders: [placed], stock: [], viewer: CUSTOMER, atTime: 5 });
   assert.deepEqual(customerView.orders, [], "placing alone buys nothing");
   assert.deepEqual(customerView.pendingOrders.map(entry => entry.idempotencyKey), ["p1"]);
-  assert.equal(customerView.availability.available, 0, "unadmitted stock is untouched");
+  assert.equal(customerView.availability, null, "customers never see stock");
+  const managerEmpty = projectDepartment({ department, assignments, contacts: [], offers: [], orders: [placed], stock: [], viewer: MANAGER, atTime: 5 });
+  assert.equal(managerEmpty.availability?.available, 0, "unadmitted stock is untouched");
   const sellerView = projectDepartment({ department, assignments, contacts: [], offers: [], orders: [placed], stock: [], viewer: SELLER, atTime: 5 });
   assert.deepEqual(sellerView.pendingOrders.map(entry => entry.idempotencyKey), ["p1"], "the seller sees what to admit");
   const admitted: EkOrder = { ...placed, seller: SELLER, admittedAt: 9 };
   const after = projectDepartment({ department, assignments, contacts: [], offers: [], orders: [admitted], stock: [], viewer: CUSTOMER, atTime: 10 });
   assert.deepEqual(after.orders.map(entry => entry.idempotencyKey), ["p1"]);
   assert.deepEqual(after.pendingOrders, [], "admitting clears the pending order");
-  assert.equal(after.availability.available, -2);
+  assert.equal(after.availability, null, "customers never see stock");
+  const managerAfter = projectDepartment({ department, assignments, contacts: [], offers: [], orders: [admitted], stock: [], viewer: MANAGER, atTime: 10 });
+  assert.equal(managerAfter.availability?.available, -2);
 });
 
 test("admission accrues receivables and payables per role", () => {
@@ -100,7 +108,7 @@ test("projection rejects unauthorized rows and scopes customer reads", () => {
   assert.deepEqual(view.offers, []);
   assert.deepEqual(view.rejected, [{ type: "EkOffer", id: "bad", reason: "publisher-not-authorized" }]);
   assert.equal(view.orders.length, 1);
-  assert.equal(view.availability.available, -3);
+  assert.equal(view.availability, null, "customers never see stock");
   const stranger = projectDepartment({ department, assignments, contacts: [], offers: [], orders: [{ ...order, customer: P("f") }], stock: [], viewer: CUSTOMER, atTime: 5 });
   assert.deepEqual(stranger.orders, []);
 });
