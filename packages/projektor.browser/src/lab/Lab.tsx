@@ -1,20 +1,9 @@
 // packages/projektor.browser/src/lab/Lab.tsx
 import { useEffect, useReducer, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { bootJoinInstance, bootLab, LAB_KEYS, type FeedRow, type LabHandle, type LabKey } from "./transport";
+import { bootLab, LAB_KEYS, type FeedRow, type LabHandle, type LabKey } from "./transport";
 import type { PortApiClient } from "@projektor/amway.lab/port-ipc.ts";
 import { Badge, RoleBadge, StatusBadge } from "../components/ui";
-
-/** Best-effort role resolution for a pasted invite; the worker validates strictly on accept. */
-function roleKeyFromInvite(invitationUrl: string): LabKey | null {
-  try {
-    const email = new URL(invitationUrl.trim()).searchParams.get("fe") ?? "";
-    const prefix = email.split("@")[0];
-    return (LAB_KEYS as readonly string[]).includes(prefix) ? (prefix as LabKey) : null;
-  } catch {
-    return null;
-  }
-}
 
 function defaultRelayUrl(): string {
   const secure = window.location.protocol === "https:";
@@ -167,6 +156,9 @@ export interface Column {
   tab: TabKey;
   feedLog: FeedEntry[];
   chatPeer: string | null;
+  /** Unread chat messages per peer: bumped by chat feed rows while the
+   * peer's chat is closed, cleared when it opens. */
+  chatUnread: Record<string, number>;
 }
 
 type State = Record<LabKey, Column>;
@@ -252,7 +244,9 @@ function reduce(state: State, action: Action): State {
     return { ...state, [action.key]: { ...column, notice: "" } };
   }
   if (action.kind === "chat") {
-    return { ...state, [action.key]: { ...column, chatPeer: action.peer } };
+    const chatUnread = { ...column.chatUnread };
+    if (action.peer) delete chatUnread[action.peer];
+    return { ...state, [action.key]: { ...column, chatPeer: action.peer, chatUnread } };
   }
 
   const { row } = action;
@@ -322,7 +316,11 @@ function reduce(state: State, action: Action): State {
     };
   }
 
-  return { ...state, [action.key]: { ...column, fresh, feedLog } };
+  const chatUnread = { ...column.chatUnread };
+  if (row.type === "AmwayChat" && row.id !== column.chatPeer) {
+    chatUnread[row.id] = (chatUnread[row.id] ?? 0) + 1;
+  }
+  return { ...state, [action.key]: { ...column, fresh, feedLog, chatUnread } };
 }
 
 function initial(): State {
@@ -337,6 +335,7 @@ function initial(): State {
         tab: "overview" as TabKey,
         feedLog: [],
         chatPeer: null as string | null,
+        chatUnread: {},
       },
     ]),
   ) as unknown as State;
@@ -469,15 +468,6 @@ export default function Lab() {
   const lab = useRef<LabHandle | null>(null);
   const [relayUrl, setRelayUrl] = useState<string>(() => defaultRelayUrl());
   const [iomInvites, setIomInvites] = useState<Record<string, { url: string; status: string }>>({});
-  const [joinUrl, setJoinUrl] = useState("");
-  const [joinStatus, setJoinStatus] = useState("");
-  const joinHandle = useRef<LabHandle | null>(null);
-  const [joined, setJoined] = useState<null | {
-    key: LabKey;
-    person: string;
-    view: View;
-    feed: FeedEntry[];
-  }>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -521,6 +511,30 @@ export default function Lab() {
       lab.current = null;
     };
   }, []);
+
+  // Keep a 1:1 chat room open for every directory contact (except self) so
+  // incoming messages raise feed notifications — and the unread badge — even
+  // when that peer's chat panel is closed. Rooms are deterministic P2P
+  // topics: either side may create them, and reopening is a cache hit.
+  const openChats = useRef<Record<LabKey, Set<string>>>({
+    admin: new Set(), manager: new Set(), seller: new Set(), customer: new Set(),
+  });
+  useEffect(() => {
+    const handle = lab.current;
+    if (!handle || boot !== "live") return;
+    for (const key of LAB_KEYS) {
+      const me = handle.persons[key];
+      if (!me) continue;
+      const opened = openChats.current[key];
+      for (const contact of state[key].view.contacts) {
+        if (contact.person === me || opened.has(contact.person)) continue;
+        opened.add(contact.person);
+        handle.clients[key]
+          .call("amwayChat", "openChat", { peer: contact.person })
+          .catch(() => opened.delete(contact.person));
+      }
+    }
+  });
 
   async function run(key: LabKey, method: string, params: Record<string, unknown>) {
     const handle = lab.current;
@@ -609,65 +623,6 @@ export default function Lab() {
     }
   }
 
-  /** Join this lane as a second device of the invited person. */
-  async function joinWithInvite() {
-    const key = roleKeyFromInvite(joinUrl);
-    if (!key) {
-      setJoinStatus("That URL is not a lab device invitation.");
-      return;
-    }
-    if (joinHandle.current) {
-      setJoinStatus("A joined device is already active; leave it first.");
-      return;
-    }
-    setJoinStatus("booting device…");
-    setJoined(null);
-    try {
-      const handle = await bootJoinInstance(key);
-      joinHandle.current = handle;
-      const client = handle.clients[key];
-      // A freshly paired instance answers { known: false } without projection
-      // fields until the department replicates; keep the empty view instead
-      // of storing a shapeless answer that crashes role rendering.
-      const snapshotJoined = async () => {
-        const raw = await client.call("amwayLab", "getDepartment", { department: DEPARTMENT }) as View;
-        const view = raw.known ? raw : { ...EMPTY_VIEW };
-        setJoined(current => current ? { ...current, view } : current);
-      };
-      client.onFeed((row: FeedRow) => {
-        const entry: FeedEntry = {
-          at: new Date().toLocaleTimeString([], { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" }),
-          type: row.type,
-          id: row.id,
-          hash: row.hash,
-          label: formatFeedLabel(row),
-        };
-        setJoined(current => current ? { ...current, feed: [entry, ...current.feed].slice(0, 30) } : current);
-        if (row.type === "AmwayRoleAssignment" || row.type === "AmwayDepartment" || row.type === "AmwayOrder" || row.type === "AmwayStockReceipt") {
-          void snapshotJoined().catch(() => {});
-        }
-      });
-      const accepted = await client.call("amwayLab", "acceptIoMInvite", {
-        invitationUrl: joinUrl.trim(),
-      }) as { person: string };
-      setJoined({ key, person: accepted.person, view: { ...EMPTY_VIEW }, feed: [] });
-      await snapshotJoined().catch(() => {});
-      setJoinStatus("");
-    } catch (error) {
-      await joinHandle.current?.stop().catch(() => {});
-      joinHandle.current = null;
-      setJoined(null);
-      setJoinStatus(`join failed: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-
-  async function leaveJoined() {
-    await joinHandle.current?.stop().catch(() => {});
-    joinHandle.current = null;
-    setJoined(null);
-    setJoinStatus("");
-  }
-
   const allOnline = LAB_KEYS.every(k => state[k].online);
   const onlineCount = LAB_KEYS.filter(k => state[k].online).length;
 
@@ -712,6 +667,15 @@ export default function Lab() {
           <a href="#/overview" className="btn btn-secondary sm" style={{ textDecoration: "none" }}>
             ← Single-Instance App
           </a>
+          <label style={{ display: "flex", gap: "0.4rem", alignItems: "center", fontSize: "0.72rem", color: "var(--amway-muted)" }}>
+            Rendezvous
+            <input
+              value={relayUrl}
+              onChange={event => setRelayUrl(event.target.value)}
+              aria-label="Pairing rendezvous URL"
+              style={{ width: "14rem", fontSize: "0.72rem" }}
+            />
+          </label>
         </div>
       </header>
 
@@ -727,88 +691,6 @@ export default function Lab() {
           )}
         </div>
       )}
-
-      {/* Device pairing: second device joins as the same person (IoM) */}
-      <details className="card" style={{ marginBottom: "1.25rem", fontSize: "0.8rem" }}>
-        <summary style={{ cursor: "pointer", fontWeight: 600 }}>Device pairing</summary>
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.5rem" }}>
-          <label style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
-            <span style={{ color: "var(--amway-muted)" }}>Rendezvous</span>
-            <input
-              value={relayUrl}
-              onChange={event => setRelayUrl(event.target.value)}
-              aria-label="Pairing rendezvous URL"
-              style={{ flex: 1, minWidth: 0, fontSize: "0.72rem" }}
-            />
-          </label>
-          <label style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
-            <span style={{ color: "var(--amway-muted)" }}>Invitation</span>
-            <input
-              value={joinUrl}
-              onChange={event => setJoinUrl(event.target.value)}
-              placeholder="Paste a device invitation URL"
-              aria-label="Device invitation URL to join with"
-              style={{ flex: 1, minWidth: 0, fontSize: "0.72rem" }}
-            />
-            <button type="button" className="secondary sm" onClick={() => void joinWithInvite()}>
-              Join
-            </button>
-          </label>
-          {joinStatus && <div style={{ color: "var(--amway-muted)" }}>{joinStatus}</div>}
-          {joined && (
-            <div className="lab-column" style={{ marginTop: "0.25rem" }}>
-              <header className="lab-column-header">
-                <div className="lab-role-title">
-                  <span>{TITLES[joined.key].icon}</span>
-                  <span>{TITLES[joined.key].title} · second device</span>
-                </div>
-                <button type="button" className="secondary sm" onClick={() => void leaveJoined()}>
-                  Leave
-                </button>
-              </header>
-              <div style={{ fontSize: "0.72rem", display: "flex", flexDirection: "column", gap: "0.3rem" }}>
-                <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
-                  <span style={{ color: "var(--amway-muted)" }}>ID:</span>
-                  <span>{joined.person.slice(0, 10)}…{joined.person.slice(-4)}</span>
-                  <button
-                    type="button"
-                    className="secondary sm"
-                    onClick={() => void navigator.clipboard?.writeText(joined.person)}
-                  >
-                    Copy
-                  </button>
-                </div>
-                <div>
-                  <span style={{ color: "var(--amway-muted)" }}>Roles: </span>
-                  {joined.view.roles.length > 0
-                    ? joined.view.roles.map(role => <RoleBadge key={role} role={role} />)
-                    : "none yet — the department has not replicated"}
-                </div>
-                <div style={{ color: "var(--amway-muted)" }}>
-                  {joined.view.contacts.length} contacts · {joined.view.offers.length} offers ·{" "}
-                  {joined.view.orders.length} orders ·{" "}
-                  {joined.view.availability ? `${joined.view.availability.available} units` : "no stock projection"}
-                </div>
-                {joined.feed.length > 0 && (
-                  <div className="lab-feed-list">
-                    {joined.feed.map((item, index) => (
-                      <div key={`${item.hash}-${index}`} className={`lab-feed-item lab-feed-${item.type}`}>
-                        <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                          <span style={{ fontWeight: 600 }}>{item.label}</span>
-                          <span style={{ fontSize: "0.65rem", color: "var(--amway-muted)" }}>
-                            #{item.hash.slice(0, 12)}…
-                          </span>
-                        </div>
-                        <span style={{ fontSize: "0.65rem", color: "var(--amway-muted)" }}>{item.at}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      </details>
 
       {/* 4-Node Multi-Worker Grid */}
       <div className="lab-grid">
@@ -1076,15 +958,6 @@ export default function Lab() {
                       </button>
                     ))}
 
-                    <button
-                      type="button"
-                      className="secondary"
-                      disabled={boot !== "live"}
-                      onClick={() => void inviteDevice(key)}
-                    >
-                      Invite device
-                    </button>
-
                     {(staff || key === "manager") && (
                       <>
                         <button
@@ -1135,39 +1008,6 @@ export default function Lab() {
                       </button>
                     )}
                   </div>
-                  {iomInvites[key] && (iomInvites[key].url || iomInvites[key].status) && (
-                    <div style={{ marginTop: "0.5rem", fontSize: "0.72rem" }}>
-                      {iomInvites[key].url && (
-                        <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
-                          <input
-                            readOnly
-                            value={iomInvites[key].url}
-                            aria-label="Device invitation URL"
-                            style={{ flex: 1, minWidth: 0, fontSize: "0.68rem" }}
-                            onFocus={event => event.target.select()}
-                          />
-                          <button
-                            type="button"
-                            className="secondary sm"
-                            onClick={() => void navigator.clipboard?.writeText(iomInvites[key].url)}
-                          >
-                            Copy
-                          </button>
-                        </div>
-                      )}
-                      {iomInvites[key].url && (
-                        <div style={{ display: "flex", justifyContent: "center", marginTop: "0.4rem" }}>
-                          <QRCodeSVG
-                            value={iomInvites[key].url}
-                            size={112}
-                            role="img"
-                            aria-label={`Device invitation QR for ${key}`}
-                          />
-                        </div>
-                      )}
-                      <div style={{ color: "var(--amway-muted)", marginTop: "0.2rem" }}>{iomInvites[key].status}</div>
-                    </div>
-                  )}
                 </div>
 
                 {/* Admin holds no inventory of its own: network telemetry instead */}
@@ -1384,6 +1224,7 @@ export default function Lab() {
                           const isFresh = Boolean(column.fresh[`AmwayContact:${entry.person}`]);
                           const chatting = column.chatPeer === entry.person;
                           const peerName = entry.name || `${entry.person.slice(0, 10)}…`;
+                          const unread = column.chatUnread[entry.person] ?? 0;
                           return (
                             <div key={`${entry.person}:${column.fresh[`AmwayContact:${entry.person}`] ?? ""}`}>
                               <div
@@ -1408,6 +1249,25 @@ export default function Lab() {
                                   </span>
                                 </div>
                                 <RoleBadge role={entry.role} />
+                                {entry.person !== personId && (
+                                  <button
+                                    type="button"
+                                    className="lab-copy-btn lab-chat-icon"
+                                    title="Open chat"
+                                    aria-label={`Open chat with ${peerName}`}
+                                    onClick={event => {
+                                      event.stopPropagation();
+                                      dispatch({ kind: "chat", key, peer: chatting ? null : entry.person });
+                                    }}
+                                  >
+                                    💬
+                                    {unread > 0 && (
+                                      <span className="lab-chat-badge" aria-label={`${unread} unread`}>
+                                        {unread > 9 ? "9+" : unread}
+                                      </span>
+                                    )}
+                                  </button>
+                                )}
                               </div>
                               {chatting && (
                                 <ChatPanel
@@ -1474,6 +1334,54 @@ export default function Lab() {
                     </div>
                   </details>
                 )}
+
+                {/* Second device (IoM): invitation QR under every app */}
+                <div className="lab-section" aria-label="Second device invitation">
+                  <div className="lab-section-title">
+                    <span>Second device</span>
+                    <button
+                      type="button"
+                      className="secondary sm"
+                      disabled={boot !== "live"}
+                      onClick={() => void inviteDevice(key)}
+                    >
+                      Invite device
+                    </button>
+                  </div>
+                  {iomInvites[key] && iomInvites[key].url ? (
+                    <div style={{ display: "flex", gap: "0.6rem", alignItems: "center" }}>
+                      <QRCodeSVG
+                        value={iomInvites[key].url}
+                        size={112}
+                        role="img"
+                        aria-label={`Device invitation QR for ${key}`}
+                      />
+                      <div style={{ flex: 1, minWidth: 0, fontSize: "0.72rem" }}>
+                        <input
+                          readOnly
+                          value={iomInvites[key].url}
+                          aria-label="Device invitation URL"
+                          style={{ width: "100%", fontSize: "0.68rem" }}
+                          onFocus={event => event.target.select()}
+                        />
+                        <div style={{ display: "flex", gap: "0.4rem", marginTop: "0.3rem", alignItems: "center" }}>
+                          <button
+                            type="button"
+                            className="secondary sm"
+                            onClick={() => void navigator.clipboard?.writeText(iomInvites[key].url)}
+                          >
+                            Copy
+                          </button>
+                          <span style={{ color: "var(--amway-muted)" }}>{iomInvites[key].status}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="state-empty" style={{ padding: "0.6rem", fontSize: "0.72rem" }}>
+                      {iomInvites[key]?.status || (boot === "live" ? "No invitation yet." : "Waiting for boot…")}
+                    </div>
+                  )}
+                </div>
               </div>
             </section>
           );

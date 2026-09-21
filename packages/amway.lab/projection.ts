@@ -117,7 +117,21 @@ export function audience(kind: string, { department, assignments, row }: {
     for (const entry of assignments) {
       if (entry.role === "manager") people.add(entry.subject);
     }
-  } else if (["department", "assignment", "contact"].includes(kind)) {
+  } else if (kind === "contact") {
+    // A customer address book stays with its seller: a customer contact
+    // replicates only to the customer and the party that appointed them —
+    // never to staff or the wider team. Every other contact still reaches
+    // the whole appointed team.
+    const contact = row as { role?: unknown; person?: unknown };
+    if (contact.role === "customer" && typeof contact.person === "string") {
+      const holders = new Set<string>([contact.person]);
+      for (const entry of assignments) {
+        if (entry.role === "customer" && entry.subject === contact.person) holders.add(entry.issuer);
+      }
+      return [...holders].sort();
+    }
+    for (const entry of assignments) people.add(entry.subject);
+  } else if (["department", "assignment"].includes(kind)) {
     for (const entry of assignments) people.add(entry.subject);
   } else if (kind === "stock") {
     // Sellers replicate receipts so their admissions settle against the
@@ -186,6 +200,15 @@ export function projectDepartment({ department, assignments, contacts, offers, o
   };
   const validAssignments = assignments.filter(entry =>
     rolesOf({ department, assignments, subject: entry.subject, atTime }).has(entry.role));
+  // Customer address books stay with their seller: map every appointed
+  // customer to the parties that appointed them.
+  const customerAppointers = new Map<string, Set<string>>();
+  for (const entry of validAssignments) {
+    if (entry.role !== "customer") continue;
+    const issuers = customerAppointers.get(entry.subject) ?? new Set<string>();
+    issuers.add(entry.issuer);
+    customerAppointers.set(entry.subject, issuers);
+  }
   const viewerRoles = rolesOf({ department, assignments, subject: viewer, atTime });
   const customerOnly = viewerRoles.size === 1 && viewerRoles.has("customer");
   const authorizedOrders = orders.filter(entry => admit("order", "AmwayOrder", entry.idempotencyKey, entry.seller, entry.customer));
@@ -241,7 +264,14 @@ export function projectDepartment({ department, assignments, contacts, offers, o
     department: department.department,
     roles: [...viewerRoles].sort(),
     assignments: validAssignments,
-    contacts: contacts.filter(entry => admit("contact", "AmwayContact", entry.person, entry.publishedBy, entry.person)),
+    contacts: contacts.filter(entry => {
+      if (!admit("contact", "AmwayContact", entry.person, entry.publishedBy, entry.person)) return false;
+      // Anyone else — staff included — never sees a customer contact: only
+      // the customer and the party that appointed them do.
+      if (entry.role !== "customer") return true;
+      if (viewer === entry.person) return true;
+      return customerAppointers.get(entry.person)?.has(viewer) ?? false;
+    }),
     offers: offers.filter(entry => admit("offer", "AmwayOffer", entry.offerId, entry.publishedBy)),
     orders: listedOrders,
     pendingOrders: scopeToViewer(pendingOrders),

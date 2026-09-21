@@ -1225,6 +1225,9 @@ details.settings-card > summary:hover {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  /* Fixed app size like the flexibel lane frame: the column keeps its height
+   * and the body scrolls vertically instead of growing the page. */
+  height: 720px;
   transition: border-color var(--transition-normal), box-shadow var(--transition-normal);
 }
 
@@ -1329,6 +1332,9 @@ details.settings-card > summary:hover {
   display: flex;
   flex-direction: column;
   gap: 0.9rem;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .lab-metrics-strip {
@@ -1651,4 +1657,26 @@ details.settings-card > summary:hover {
   display: flex;
   gap: 0.4rem;
   align-items: center;
+}
+/* Chat-open icon on a directory contact with its unread notification badge. */
+.lab-chat-icon {
+  position: relative;
+}
+.lab-chat-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 1.1rem;
+  height: 1.1rem;
+  padding: 0 0.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--amway-danger);
+  color: #ffffff;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
 }

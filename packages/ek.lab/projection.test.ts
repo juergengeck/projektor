@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { audience, canPublish, projectDepartment, rolesOf } from "./projection.ts";
-import type { EkDepartment, EkOffer, EkOrder, EkRoleAssignment, EkStockReceipt } from "./recipes.ts";
+import type { EkContact, EkDepartment, EkOffer, EkOrder, EkRoleAssignment, EkStockReceipt } from "./recipes.ts";
 
 const P = (ch: string): string => ch.repeat(64);
 const ADMIN = P("a"), MANAGER = P("b"), SELLER = P("c"), CUSTOMER = P("d"), DEPT = P("e");
@@ -155,6 +155,23 @@ test("concurrent admissions settle deterministically, never negative", () => {
     { party: SELLER, role: "seller", receivable: 10000, payable: 10000, currency: "EUR" },
     { party: CUSTOMER, role: "customer", receivable: 0, payable: 10000, currency: "EUR" },
   ], "only the settled purchase accrues money");
+});
+
+test("customer contacts stay with their seller", () => {
+  const sellerContact: EkContact = { $type$: "EkContact", department: DEPT, person: SELLER, name: "Seller", role: "seller", publishedBy: SELLER, publishedAt: 2 };
+  const customerContact: EkContact = { $type$: "EkContact", department: DEPT, person: CUSTOMER, name: "Customer", role: "customer", publishedBy: CUSTOMER, publishedAt: 2 };
+  const contacts = [sellerContact, customerContact];
+  const names = (viewer: string): string[] =>
+    projectDepartment({ department, assignments, contacts, offers: [], orders: [], stock: [], viewer, atTime: 5 })
+      .contacts.map(entry => entry.name);
+  assert.deepEqual(names(SELLER), ["Seller", "Customer"], "the appointing seller keeps the address book");
+  assert.deepEqual(names(CUSTOMER), ["Seller", "Customer"], "customers see team contacts and their own");
+  assert.deepEqual(names(MANAGER), ["Seller"], "managers never see customer contacts");
+  assert.deepEqual(names(ADMIN), ["Seller"], "even the org admin never sees customer contacts");
+  assert.deepEqual(audience("contact", { department, assignments, row: customerContact }), [CUSTOMER, SELLER].sort(),
+    "customer contacts replicate only to the customer and their seller");
+  assert.deepEqual(audience("contact", { department, assignments, row: sellerContact }),
+    [ADMIN, MANAGER, SELLER, CUSTOMER].sort(), "other contacts still reach the whole team");
 });
 
 test("customers project their own admissions without the receipts", () => {
