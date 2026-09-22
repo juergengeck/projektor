@@ -30,6 +30,9 @@ const brand = testBrand();
 const COMM_SERVER_PORT = commServerPortFor(brand);
 const laneEntry = brand.id === "amway" ? "/browser/lab/" : "/browser/eklab/";
 
+/** Fixed lane logins: the same email always reproduces the same Person. */
+const loginFor = (key: string) => ({ email: `${key}@${brand.emailDomain}`, secret: `lab-${key}`, instanceName: key });
+
 let root = "";
 let commServerUrl = "";
 
@@ -51,12 +54,13 @@ function spawnInstance(key: string, directory: string) {
     close() {},
   };
   const client = new PortApiClient(port);
-  const ready = new Promise<string>((resolve, reject) => {
+  // Shells post `ready` unbooted; sign-in runs through the session plan below.
+  const ready = new Promise<void>((resolve, reject) => {
     const off = client.onControl(message => {
-      const msg = message as { kind?: string; person?: string };
-      if (msg?.kind === "ready" && typeof msg.person === "string") {
+      const msg = message as { kind?: string };
+      if (msg?.kind === "ready") {
         off();
-        resolve(msg.person);
+        resolve();
       }
     });
     worker.on("error", reject);
@@ -99,7 +103,12 @@ test("same-person second instance pairs over the commserver and projects the dep
     await commserver.stop();
     await removeTree(root);
   });
-  const [personA, personB] = await Promise.all([deviceA.ready, deviceB.ready]);
+  await Promise.all([deviceA.ready, deviceB.ready]);
+  const setupA = await deviceA.client.call<{ readyState: { ownerId: string | null } }>("session", "registerAndSetup", loginFor("seller"));
+  const setupB = await deviceB.client.call<{ readyState: { ownerId: string | null } }>("session", "registerAndSetup", loginFor("seller"));
+  const personA = setupA.readyState.ownerId;
+  const personB = setupB.readyState.ownerId;
+  assert.ok(personA && personB, "both devices boot with an owner");
   assert.equal(personB, personA, "same email reproduces the same Person on the second device");
 
   await deviceA.client.call("lab", "createDepartment", { department: brand.department.id, name: brand.department.name });
@@ -208,6 +217,8 @@ test("a different person is refused before any network traffic", async (t) => {
     await removeTree(localRoot);
   });
   await Promise.all([deviceA.ready, stranger.ready]);
+  await deviceA.client.call("session", "registerAndSetup", loginFor("seller"));
+  await stranger.client.call("session", "registerAndSetup", loginFor("customer"));
 
   const invite = await deviceA.client.call("lab", "createIoMInvite", {}) as { invitationUrl: string };
   await assert.rejects(

@@ -10,12 +10,12 @@ const data = workerData as { brand: string; key: string; directory: string; comm
 
 try {
   const brand = brandById(String(data.brand));
+  // No credentials: the shell waits for session.registerAndSetup through
+  // the registry, which is how invite seeding boots roles one by one.
   await startLabInstance({
     brand,
     port,
     key: data.key,
-    email: `${data.key}@${brand.emailDomain}`,
-    secret: `lab-${data.key}`,
     directory: data.directory,
     createMessageChannel: () => new MessageChannel(),
     commServerUrl: data.commServerUrl,

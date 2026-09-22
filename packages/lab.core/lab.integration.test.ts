@@ -7,12 +7,17 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { testBrand } from "./test/brand.ts";
 import { labTypes } from "./recipes.ts";
+import { encodeMeshInviteUrl } from "./invite-url.ts";
+import { labUrl } from "./worker/lab-instance.ts";
 import { startLabHost } from "./worker/host-switch.ts";
 import type { LabHost } from "./worker/host-switch.ts";
 import type { FeedRow, PortApiClient } from "./port-ipc.ts";
 
 const brand = testBrand();
 const types = labTypes(brand);
+
+/** Fixed lane logins: the same email always reproduces the same Person. */
+const loginFor = (key: string) => ({ email: `${key}@${brand.emailDomain}`, secret: `lab-${key}`, instanceName: key });
 
 const KEYS = ["admin", "manager", "seller", "customer"];
 let root = "";
@@ -71,7 +76,54 @@ before(async () => {
     keys: KEYS,
     spawn: spawnWorker,
   });
-  await host?.pairAll();
+  // D3 invite seeding over the lab:// switch: the admin boots first, then
+  // each role joins through an admin-issued invite in appointment order. The
+  // mesh pairs below keep pairAll's handshake (invitation parts over the
+  // control port, dial to lab://), only the order changed.
+  const adminSetup = await clients().admin.call<{ readyState: { ownerId: string | null } }>("session", "registerAndSetup", loginFor("admin"));
+  assert.ok(adminSetup.readyState.ownerId, "admin boots with an owner");
+  for (const key of ["manager", "seller", "customer"]) {
+    const email = `${key}@${brand.emailDomain}`;
+    const invite = await clients().admin.call<{ url: string; publicKey: string; token: string; pairingMode: "primed" }>(
+      "connection", "createInvite", { mode: "primed" });
+    assert.equal(invite.pairingMode, "primed", "mesh invites stay primed");
+    const url = encodeMeshInviteUrl({
+      appBaseUrl: "http://127.0.0.1/",
+      email,
+      token: invite.token,
+      url: labUrl("admin"),
+      publicKey: invite.publicKey,
+      pairingMode: "primed",
+    });
+    await clients()[key].call("ui", "loadPendingInvitation", { url });
+    const accepted = await clients()[key].call<{ ownerId: string }>("ui", "acceptPendingInvitation", {
+      secret: `lab-${key}`, displayName: key, expectedEmail: email,
+    });
+    // The pairing introduces exactly the invited person: the admin observes
+    // the joiner's own owner id on the new mesh connection.
+    const seenDeadline = Date.now() + 30_000;
+    for (;;) {
+      const connections = await clients().admin.call<{ remotePersonId?: string }[]>("connection", "listConnections", {});
+      if (connections.some(entry => entry.remotePersonId === accepted.ownerId)) break;
+      if (Date.now() > seenDeadline) throw new Error(`${key} never appeared on the admin mesh`);
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
+  }
+  for (const [a, b] of [["manager", "seller"], ["manager", "customer"], ["seller", "customer"]] as const) {
+    const invite = await clients()[a].call<{ url: string; publicKey: string; token: string; pairingMode?: string }>(
+      "connection", "createInvite", { mode: "primed" });
+    await clients()[b].call("connection", "connectWithInvite", {
+      url: labUrl(a), publicKey: invite.publicKey, token: invite.token, pairingMode: invite.pairingMode,
+    });
+  }
+  // Persons arrive on the booted `ready` messages racing the plan calls
+  // above; the department seed below needs them synchronously.
+  const personDeadline = Date.now() + 30_000;
+  for (;;) {
+    if (KEYS.every(key => typeof persons()[key] === "string")) break;
+    if (Date.now() > personDeadline) throw new Error("lane persons never arrived");
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
   const { admin, manager } = clients();
   // Disclosure follows authority: the manager receives the department with
   // its own assignment; seller and customer only once the manager assigns them.
@@ -401,6 +453,9 @@ test("a paused worker catches up after resume", async () => {
 test("persisted workers feed an admitted purchase back after restart", async () => {
   await host.stop();
   host = await startLabHost({ keys: KEYS, spawn: spawnWorker });
+  // Respawned shells boot lazily like the first boot: same fixed logins on
+  // the persisted directories reproduce the same Persons and routes.
+  await Promise.all(KEYS.map(key => clients()[key].call("session", "registerAndSetup", loginFor(key))));
   const restored = await Promise.all(KEYS.map(key => clients()[key].call<ConnectionStatus>("connection", "getStatus", {})));
   assert.deepEqual(restored.map(status => status.totalConnections), [3, 3, 3, 3], "persisted mesh is connected");
   const id = "lab-order-after-restart";

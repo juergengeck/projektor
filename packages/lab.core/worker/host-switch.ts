@@ -66,8 +66,10 @@ export async function startLabHost<K extends string>({ keys, spawn }: {
         routable.set(key, true);
         flushDials(key);
       } else if (msg?.kind === "ready") {
-        if (typeof msg.person !== "string") return;
-        persons[key] = msg.person;
+        // Lazy shells post `ready` unbooted (no person yet) and again after
+        // boot; eager workers only post it booted. Either way the shell is
+        // alive for plan calls once `ready` arrives.
+        if (typeof msg.person === "string") persons[key] = msg.person;
         resolve();
       } else if (msg?.kind === "boot-failed") {
         reject(new Error(`Lab ${key} failed to boot: ${msg.error}`));
