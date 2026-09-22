@@ -1,0 +1,10 @@
+{
+  "name": "@projektor/lab.core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Lab lanes: brand-parameterized department model, plans and ONE instance",
+  "scripts": {
+    "test": "LAB_BRAND=amway node --test --test-concurrency=1 *.test.ts && LAB_BRAND=ek node --test --test-concurrency=1 *.test.ts"
+  }
+}
