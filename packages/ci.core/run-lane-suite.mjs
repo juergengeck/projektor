@@ -16,7 +16,10 @@ try {
   process.exit(2);
 }
 console.log(`ci.core: lane ${lane.id} suite (${lane.packageDir})`);
-const child = spawn(process.execPath, ["--test", "--test-concurrency=1", `./${lane.packageDir}/*.test.ts`], { stdio: "inherit" });
+const child = spawn(process.execPath, ["--test", "--test-concurrency=1", `./${lane.packageDir}/*.test.ts`], {
+  stdio: "inherit",
+  env: { ...process.env, LAB_BRAND: lane.id },
+});
 child.on("error", error => {
   console.error(`ci.core: lane ${lane.id} failed to start: ${error.message}`);
   process.exit(2);

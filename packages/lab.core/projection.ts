@@ -143,7 +143,7 @@ function canPublish(kind: string, { department, assignments, author, subject, at
 function audience(kind: string, { department, assignments, row }: {
   department: LabDepartment;
   assignments: LabRoleAssignment[];
-  row: LabLabObject;
+  row: LabObject;
 }): string[] {
   const people = new Set<string>([department.admin]);
   if (kind === "order") {
