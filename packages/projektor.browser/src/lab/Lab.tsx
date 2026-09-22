@@ -2,8 +2,9 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import amwayLogo from "../../../amway.app/assets/amway-logo-black.svg";
 import { LabDeviceInvite } from "../components/LabDeviceInvite";
-import { bootJoinInstance, bootLab, LAB_KEYS, type FeedRow, type LabHandle, type LabKey } from "./transport";
-import type { PortApiClient } from "@projektor/amway.lab/port-ipc.ts";
+import { bootJoinInstance, bootLab, LAB_KEYS, type FeedRow, type LabHandle, type LabKey } from "../lab-engine/transport";
+import { AMWAY } from "@projektor/lab.core/brand.ts";
+import type { PortApiClient } from "@projektor/lab.core/port-ipc.ts";
 import { Badge, RoleBadge, StatusBadge } from "../components/ui";
 
 /**
@@ -380,7 +381,7 @@ function ChatPanel({ client, me, peer, peerName, onClose }: {
     let cancelled = false;
     const read = async () => {
       try {
-        const result = await client.call<{ messages: ChatMsg[] }>("amwayChat", "readChat", { peer });
+        const result = await client.call<{ messages: ChatMsg[] }>("chat", "readChat", { peer });
         if (!cancelled) {
           setThread(result.messages);
           setStatus("");
@@ -391,7 +392,7 @@ function ChatPanel({ client, me, peer, peerName, onClose }: {
     };
     void (async () => {
       try {
-        await client.call("amwayChat", "openChat", { peer });
+        await client.call("chat", "openChat", { peer });
         if (!cancelled) await read();
       } catch (error) {
         if (!cancelled) setStatus(error instanceof Error ? error.message : String(error));
@@ -411,8 +412,8 @@ function ChatPanel({ client, me, peer, peerName, onClose }: {
     if (!body) return;
     setDraft("");
     try {
-      await client.call("amwayChat", "sendChat", { peer, text: body });
-      const result = await client.call<{ messages: ChatMsg[] }>("amwayChat", "readChat", { peer });
+      await client.call("chat", "sendChat", { peer, text: body });
+      const result = await client.call<{ messages: ChatMsg[] }>("chat", "readChat", { peer });
       setThread(result.messages);
       setStatus("");
     } catch (error) {
@@ -499,7 +500,7 @@ export default function Lab() {
       };
     }
 
-    bootLab(setBootStage)
+    bootLab(AMWAY, setBootStage)
       .then(async handle => {
         if (cancelled) {
           await handle.stop();
@@ -512,7 +513,7 @@ export default function Lab() {
             dispatch({
               kind: "snapshot",
               key,
-              view: await client.call("amwayLab", "getDepartment", { department: DEPARTMENT }),
+              view: await client.call("lab", "getDepartment", { department: DEPARTMENT }),
             });
 
           offs.push(
@@ -556,7 +557,7 @@ export default function Lab() {
         if (contact.person === me || opened.has(contact.person)) continue;
         opened.add(contact.person);
         handle.clients[key]
-          .call("amwayChat", "openChat", { peer: contact.person })
+          .call("chat", "openChat", { peer: contact.person })
           .catch(() => opened.delete(contact.person));
       }
     }
@@ -566,7 +567,7 @@ export default function Lab() {
     const handle = lab.current;
     if (!handle) return;
     try {
-      await handle.clients[key].call("amwayLab", method, { department: DEPARTMENT, ...params });
+      await handle.clients[key].call("lab", method, { department: DEPARTMENT, ...params });
     } catch (error) {
       dispatch({ kind: "notice", key, notice: error instanceof Error ? error.message : String(error) });
     }
@@ -610,11 +611,11 @@ export default function Lab() {
     setJoinStatus("booting device…");
     setJoined(null);
     try {
-      const handle = await bootJoinInstance(key);
+      const handle = await bootJoinInstance(AMWAY, key);
       joinHandle.current = handle;
       const client = handle.clients[key];
       const snapshotJoined = async () => {
-        const raw = await client.call("amwayLab", "getDepartment", { department: DEPARTMENT }) as View;
+        const raw = await client.call("lab", "getDepartment", { department: DEPARTMENT }) as View;
         const view = raw.known ? raw : { ...EMPTY_VIEW };
         setJoined(current => current ? { ...current, view } : current);
       };
@@ -623,7 +624,7 @@ export default function Lab() {
           void snapshotJoined().catch(() => {});
         }
       });
-      const accepted = await client.call("amwayLab", "acceptIoMInvite", {
+      const accepted = await client.call("lab", "acceptIoMInvite", {
         invitationUrl,
       }) as { person: string };
       setJoined({ key, person: accepted.person, view: { ...EMPTY_VIEW } });
@@ -1351,7 +1352,7 @@ export default function Lab() {
             </section>
             <LabDeviceInvite
               client={boot === "live" ? lab.current?.clients[key] : undefined}
-              plan="amwayLab"
+              plan="lab"
               deviceKey={key}
             />
             </div>

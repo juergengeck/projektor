@@ -74,8 +74,9 @@ export function createProjection(brand: LabBrand) {
   const types = labTypes(brand);
   // The facility's stock identity. There is no opening stock: inventory exists
   // only once the org (purchasing) has received goods — the manager cannot
-  // show inventory nobody purchased.
-  const stock = brand.stock;
+  // show inventory nobody purchased. Named apart from projectDepartment's
+  // `stock` receipts parameter, which shadows this scope.
+  const stockIdentity = brand.stock;
   interface AuthorityContext {
   department: LabDepartment;
   assignments: LabRoleAssignment[];
@@ -338,11 +339,11 @@ function projectDepartment({ department, assignments, contacts, offers, orders, 
     pendingOrders: scopeToViewer(pendingOrders),
     purchaseFailures,
     availability: staffViewer
-      ? { ...stock, stocked, available: stocked - settledQuantity }
+      ? { ...stockIdentity, stocked, available: stocked - settledQuantity }
       : null,
     balances,
     rejected,
   };
 }
-  return { stock, rolesOf, canPublish, audience, projectDepartment };
+  return { stock: stockIdentity, rolesOf, canPublish, audience, projectDepartment };
 }

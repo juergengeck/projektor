@@ -13,8 +13,7 @@
     "paths": {
       "@/*": ["src/*"],
       "@projektor/amway/*": ["../amway.app/*"],
-      "@projektor/amway.lab/*": ["../amway.lab/*"],
-      "@projektor/ek.lab/*": ["../ek.lab/*"],
+      "@projektor/lab.core/*": ["../lab.core/*"],
       "@refinio/api/*": ["../../../one/packages/refinio.api/dist/src/*"],
       "@refinio/connection.core": ["../../../one/packages/connection.core/dist/esm/index.js"],
       "@refinio/connection.core/*": ["../../../one/packages/connection.core/dist/esm/*"],

@@ -89,6 +89,8 @@ test("placed orders pend until the seller admits them", () => {
   assert.equal(after.availability, null, "customers never see stock");
   const managerAfter = projectDepartment({ department, assignments, contacts: [], offers: [], orders: [admitted], stock: stocked, viewer: MANAGER, atTime: 10 });
   assert.equal(managerAfter.availability?.available, 0, "a fitting admission settles against the receipts");
+  assert.equal(managerAfter.availability?.lot, brand.stock.lot, "availability carries the brand lot, not receipt indices");
+  assert.equal(managerAfter.availability?.facility, brand.stock.facility, "availability carries the brand facility");
   // Nothing was ever stocked: the same admission settles nothing and is
   // rejected instead of driving availability to −2.
   const unstocked = projectDepartment({ department, assignments, contacts: [], offers: [], orders: [admitted], stock: [], viewer: MANAGER, atTime: 10 });

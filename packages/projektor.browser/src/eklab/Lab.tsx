@@ -1,8 +1,9 @@
 // packages/projektor.browser/src/lab/Lab.tsx
 import { useEffect, useReducer, useRef, useState } from "react";
 import { LabDeviceInvite } from "../components/LabDeviceInvite";
-import { bootJoinInstance, bootLab, LAB_KEYS, type FeedRow, type LabHandle, type LabKey } from "./transport";
-import type { PortApiClient } from "@projektor/ek.lab/port-ipc.ts";
+import { bootJoinInstance, bootLab, LAB_KEYS, type FeedRow, type LabHandle, type LabKey } from "../lab-engine/transport";
+import { EK } from "@projektor/lab.core/brand.ts";
+import type { PortApiClient } from "@projektor/lab.core/port-ipc.ts";
 import { Badge, RoleBadge } from "../components/ui";
 import ekLogo from "./assets/elektro-klein-logo.jpg";
 import omniturm from "./assets/omniturm.jpg";
@@ -338,7 +339,7 @@ function reduce(state: State, action: Action): State {
   }
 
   const chatUnread = { ...column.chatUnread };
-  if (row.type === "EkChat" && row.id !== column.chatPeer) {
+  if (row.type === "EkChat" && row.obj?.incoming === true && row.id !== column.chatPeer) {
     chatUnread[row.id] = (chatUnread[row.id] ?? 0) + 1;
   }
   return { ...state, [action.key]: { ...column, fresh, feedLog, chatUnread } };
@@ -389,7 +390,7 @@ function ChatPanel({ client, me, peer, peerName, onClose }: {
     let cancelled = false;
     const read = async () => {
       try {
-        const result = await client.call<{ messages: ChatMsg[] }>("ekChat", "readChat", { peer });
+        const result = await client.call<{ messages: ChatMsg[] }>("chat", "readChat", { peer });
         if (!cancelled) {
           setThread(result.messages);
           setStatus("");
@@ -400,7 +401,7 @@ function ChatPanel({ client, me, peer, peerName, onClose }: {
     };
     void (async () => {
       try {
-        await client.call("ekChat", "openChat", { peer });
+        await client.call("chat", "openChat", { peer });
         if (!cancelled) await read();
       } catch (error) {
         if (!cancelled) setStatus(error instanceof Error ? error.message : String(error));
@@ -420,8 +421,8 @@ function ChatPanel({ client, me, peer, peerName, onClose }: {
     if (!body) return;
     setDraft("");
     try {
-      await client.call("ekChat", "sendChat", { peer, text: body });
-      const result = await client.call<{ messages: ChatMsg[] }>("ekChat", "readChat", { peer });
+      await client.call("chat", "sendChat", { peer, text: body });
+      const result = await client.call<{ messages: ChatMsg[] }>("chat", "readChat", { peer });
       setThread(result.messages);
       setStatus("");
     } catch (error) {
@@ -508,7 +509,7 @@ export default function Lab() {
       };
     }
 
-    bootLab(setBootStage)
+    bootLab(EK, setBootStage)
       .then(async handle => {
         if (cancelled) {
           await handle.stop();
@@ -521,7 +522,7 @@ export default function Lab() {
             dispatch({
               kind: "snapshot",
               key,
-              view: await client.call("ekLab", "getDepartment", { department: DEPARTMENT }),
+              view: await client.call("lab", "getDepartment", { department: DEPARTMENT }),
             });
 
           offs.push(
@@ -565,7 +566,7 @@ export default function Lab() {
         if (contact.person === me || opened.has(contact.person)) continue;
         opened.add(contact.person);
         handle.clients[key]
-          .call("ekChat", "openChat", { peer: contact.person })
+          .call("chat", "openChat", { peer: contact.person })
           .catch(() => opened.delete(contact.person));
       }
     }
@@ -575,7 +576,7 @@ export default function Lab() {
     const handle = lab.current;
     if (!handle) return;
     try {
-      await handle.clients[key].call("ekLab", method, { department: DEPARTMENT, ...params });
+      await handle.clients[key].call("lab", method, { department: DEPARTMENT, ...params });
     } catch (error) {
       dispatch({ kind: "notice", key, notice: error instanceof Error ? error.message : String(error) });
     }
@@ -616,11 +617,11 @@ export default function Lab() {
     setJoinStatus("booting device…");
     setJoined(null);
     try {
-      const handle = await bootJoinInstance(key);
+      const handle = await bootJoinInstance(EK, key);
       joinHandle.current = handle;
       const client = handle.clients[key];
       const snapshotJoined = async () => {
-        const raw = await client.call("ekLab", "getDepartment", { department: DEPARTMENT }) as View;
+        const raw = await client.call("lab", "getDepartment", { department: DEPARTMENT }) as View;
         const view = raw.known ? raw : { ...EMPTY_VIEW };
         setJoined(current => current ? { ...current, view } : current);
       };
@@ -629,7 +630,7 @@ export default function Lab() {
           void snapshotJoined().catch(() => {});
         }
       });
-      const accepted = await client.call("ekLab", "acceptIoMInvite", {
+      const accepted = await client.call("lab", "acceptIoMInvite", {
         invitationUrl,
       }) as { person: string };
       setJoined({ key, person: accepted.person, view: { ...EMPTY_VIEW } });
@@ -1366,7 +1367,7 @@ export default function Lab() {
             </section>
             <LabDeviceInvite
               client={boot === "live" ? lab.current?.clients[key] : undefined}
-              plan="ekLab"
+              plan="lab"
               deviceKey={meta.title}
             />
             </div>

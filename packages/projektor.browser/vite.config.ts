@@ -32,8 +32,7 @@ export default defineConfig({
       { find: /^@vger\/vger\.core$/, replacement: `${ONE}/vger.core/dist/index.js` },
       // Amway domain modules (plain JS, same-origin ops).
       { find: /^@projektor\/amway\/(.*)$/, replacement: "/Users/gecko/src/projektor/packages/amway.app/$1" },
-      { find: /^@projektor\/amway\.lab\/(.*)$/, replacement: "/Users/gecko/src/projektor/packages/amway.lab/$1" },
-      { find: /^@projektor\/ek\.lab\/(.*)$/, replacement: "/Users/gecko/src/projektor/packages/ek.lab/$1" },
+      { find: /^@projektor\/lab\.core\/(.*)$/, replacement: path.resolve(HERE, "../lab.core/$1") },
       { find: /^@refinio\/api\/(.*)$/, replacement: `${ONE}/refinio.api/dist/src/$1` },
       { find: "@", replacement: path.join(HERE, "src") },
     ],

@@ -85,7 +85,7 @@ export function createLabPlan({ brand, connections, iomConnections, now = () => 
   const fail = (message: string): never => { throw new Error(`${brand.label}: ${message}`); };
   const self = (): string => {
     const owner = getInstanceOwnerIdHash();
-    if (!owner) fail("instance has no owner.");
+    if (!owner) throw new Error(`${brand.label}: instance has no owner.`);
     return owner;
   };
 
@@ -202,7 +202,7 @@ export function createLabPlan({ brand, connections, iomConnections, now = () => 
     allowExisting: boolean;
   }): Promise<{ idHash: string; idempotencyKey: string; order: LabOrder }> {
     const offerRow = state.offers.find(entry => entry.offerId === offer);
-    if (!offerRow) fail(`offer ${offer} is not known in ${state.department.department}.`);
+    if (!offerRow) throw new Error(`${brand.label}: offer ${offer} is not known in ${state.department.department}.`);
     const roles = rolesOf({ department: state.department, assignments: state.assignments, subject: self(), atTime: now() });
     if (!roles.has("customer")) fail("only a customer may place an order.");
     const key = idempotencyKey ?? `${brand.orderKeyPrefix}-${now()}`;
@@ -443,7 +443,7 @@ export function createLabPlan({ brand, connections, iomConnections, now = () => 
         fail(`offer ${offerId} is not known in ${department}.`);
       }
       const idHash = await offerIdHash(state, offerId);
-      if (!idHash) fail(`offer ${offerId} has not reached this instance.`);
+      if (!idHash) throw new Error(`${brand.label}: offer ${offerId} has not reached this instance.`);
       await grant(idHash, [customer]);
       return { idHash };
     },
@@ -470,7 +470,7 @@ export function createLabPlan({ brand, connections, iomConnections, now = () => 
         fail(`offer ${offerId} is not known in ${department}.`);
       }
       const idHash = await offerIdHash(state, offerId);
-      if (!idHash) fail(`offer ${offerId} has not reached this instance.`);
+      if (!idHash) throw new Error(`${brand.label}: offer ${offerId} has not reached this instance.`);
       await grant(idHash, [seller]);
       return { idHash };
     },
@@ -546,7 +546,7 @@ export function createLabPlan({ brand, connections, iomConnections, now = () => 
         }
         const placed = state.orders.find(entry => entry.idempotencyKey === idempotencyKey);
         if (!placed) {
-          fail(`order ${idempotencyKey} was never placed by a customer.`);
+          throw new Error(`${brand.label}: order ${idempotencyKey} was never placed by a customer.`);
         }
         if (placed.admittedAt !== 0) {
           fail(`order ${idempotencyKey} is already admitted.`);

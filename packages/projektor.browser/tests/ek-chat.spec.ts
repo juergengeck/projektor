@@ -94,13 +94,25 @@ test("ek lane contact chat icon opens 1:1 chat", async ({ page }) => {
   await expect(sellerChat.getByText("icon hello")).toBeVisible({ timeout: 30_000 });
 
   // The customer's closed chat raises an unread notification badge …
-  await expect(customer.locator(".lab-chat-badge").first()).toBeVisible({ timeout: 60_000 });
+  await expect(customer.locator(".lab-chat-badge")).toHaveText("1", { timeout: 60_000 });
+
+  // Repeated text is a separate message; one send must add exactly one unread.
+  await sellerChat.getByLabel("Message Customer One").fill("icon hello");
+  await sellerChat.getByRole("button", { name: "Send" }).click();
+  await expect(sellerChat.getByText("icon hello", { exact: true })).toHaveCount(2);
+  await expect(customer.locator(".lab-chat-badge")).toHaveText("2", { timeout: 60_000 });
+  await expect(seller.locator(".lab-chat-badge")).toHaveCount(0);
 
   await customer.getByRole("button", { name: "Open chat with Seller One" }).click();
   const customerChat = customer.locator('.lab-chat[aria-label="Chat with Seller One"]');
   // … which clears the moment the chat opens.
   await expect(customer.locator(".lab-chat-badge")).toHaveCount(0, { timeout: 30_000 });
-  await expect(customerChat.getByText("icon hello")).toBeVisible({ timeout: 90_000 });
+  await expect(customerChat.getByText("icon hello", { exact: true })).toHaveCount(2, { timeout: 90_000 });
+
+  await customerChat.getByRole("button", { name: "Close chat" }).click();
+  await sellerChat.getByLabel("Message Customer One").fill("one more");
+  await sellerChat.getByRole("button", { name: "Send" }).click();
+  await expect(customer.locator(".lab-chat-badge")).toHaveText("1", { timeout: 60_000 });
 
   // The seller's address book stays with the seller: staff never sees it,
   // even after a full chat round-trip synced across the mesh.

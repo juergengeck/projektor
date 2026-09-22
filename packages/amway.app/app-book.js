@@ -187,15 +187,15 @@ The proving scenario is: admin appoints manager, manager appoints seller, seller
 
 Deterministic reset, the shared propagation timeline and the complete denial/non-disclosure presentation remain specified. The last available unit still needs concurrency protection. Four columns backed by one server state or one shared store still do not satisfy the contract.`,
     sourceRefs: [DOC, ONE_INSTANCE, UI_TRANSPORT, BROWSER_API, AMWAY_SERVER, CHAT,
-      "repo://projektor/packages/amway.lab/lab-instance.ts",
-      "repo://projektor/packages/amway.lab/lab-plan.ts",
-      "repo://projektor/packages/amway.lab/projection.ts",
-      "repo://projektor/packages/amway.lab/iom.ts",
-      "repo://projektor/packages/amway.lab/lab.integration.test.ts",
-      "repo://projektor/packages/amway.lab/iom.test.ts",
-      "repo://projektor/packages/amway.lab/projection.test.ts",
+      "repo://projektor/packages/lab.core/worker/lab-instance.ts",
+      "repo://projektor/packages/lab.core/lab-plan.ts",
+      "repo://projektor/packages/lab.core/projection.ts",
+      "repo://projektor/packages/lab.core/iom.ts",
+      "repo://projektor/packages/lab.core/lab.integration.test.ts",
+      "repo://projektor/packages/lab.core/iom.test.ts",
+      "repo://projektor/packages/lab.core/projection.test.ts",
       "repo://projektor/packages/projektor.browser/src/lab/Lab.tsx",
-      "repo://projektor/packages/projektor.browser/src/lab/transport.ts",
+      "repo://projektor/packages/projektor.browser/src/lab-engine/transport.ts",
       "repo://projektor/packages/projektor.browser/src/components/LabDeviceInvite.tsx",
       "repo://projektor/scripts/amway-server.mjs"],
   },
@@ -212,19 +212,19 @@ Open inputs: deployable brand asset/font packaging; initial department/facility 
   {
     name: "ek.four-instance-browser-lab",
     title: "Elektro Klein lane: the same four-instance contract, second department",
-    body: `Provide a second lane at /ek/lab, distinguished by lane and deliberately unlinked from every page, that runs the exact four-instance contract of the Amway lane for Elektro Klein AG (Elektroinstallationen, Brandmeldeanlagen, Gebäudeautomation): country-organisation admin, department manager, seller and customer columns in one browser window, each backed by its own ONE runtime in a dedicated module Web Worker (packages/ek.lab, a department copy of the Amway lane with ek-de scope, @ek.local lane accounts, eklab:// mesh endpoints and a BMA service catalog).
+    body: `Provide a second lane at /ek/lab, distinguished by lane and deliberately unlinked from every page, that runs the exact four-instance contract of the Amway lane for Elektro Klein AG (Elektroinstallationen, Brandmeldeanlagen, Gebäudeautomation): country-organisation admin, department manager, seller and customer columns in one browser window, each backed by its own ONE runtime in a dedicated module Web Worker (packages/lab.core, brand-parameterized for both lanes with ek-de scope, @ek.local lane accounts, lab:// mesh endpoints and a BMA service catalog).
 
-The lane reuses the contract unchanged: the appointment chain admin appoints managers, managers appoint sellers, sellers appoint customers; cascade disclosure with the same who-sees-what table (published offers reach sellers through their manager only, the seller shares inventory down with shareOffer, placed orders stay between the parties, admitted purchases are shared down and reported up); automatic seller-worker purchase approval with identical stock checks and failure modes; same-person invitations with per-column QR over the Glue commserver; and lane buttons that stay disabled until the worker's own projection shows the action can succeed. Lane copies must not drift from this contract: any behavior change lands in both lanes or is an explicit, documented delta below. Both demo Buy actions automatically confirm purchases in the owning seller worker; rejected requests remain failed after restocking. The low-level placeOrder/admitOrder operations remain available for protocol tests.
+The lane reuses the contract unchanged: the appointment chain admin appoints managers, managers appoint sellers, sellers appoint customers; cascade disclosure with the same who-sees-what table (published offers reach sellers through their manager only, the seller shares inventory down with shareOffer, placed orders stay between the parties, admitted purchases are shared down and reported up); automatic seller-worker purchase approval with identical stock checks and failure modes; same-person invitations with per-column QR over the Glue commserver; and lane buttons that stay disabled until the worker's own projection shows the action can succeed. Both lanes run the one brand-parameterized lab.core code path, so behavior cannot drift; brand differences are the documented LabBrand config only. Both demo Buy actions automatically confirm purchases in the owning seller worker; rejected requests remain failed after restocking. The low-level placeOrder/admitOrder operations remain available for protocol tests.
 
-Verification is the department copy of the Amway lane suite (packages/ek.lab, serial files) plus the EK smoke coverage: pairing mesh, cascade disclosure, appointment chain, purchase ceremony, pause/resume catch-up and restart persistence.`,
+Verification is the shared lab.core lane suite (LAB_BRAND=ek, serial files) plus the EK smoke coverage: pairing mesh, cascade disclosure, appointment chain, purchase ceremony, pause/resume catch-up and restart persistence.`,
     sourceRefs: [DOC,
-      "repo://projektor/packages/ek.lab/lab-instance.ts",
-      "repo://projektor/packages/ek.lab/lab-plan.ts",
-      "repo://projektor/packages/ek.lab/projection.ts",
-      "repo://projektor/packages/ek.lab/iom.ts",
-      "repo://projektor/packages/ek.lab/lab.integration.test.ts",
+      "repo://projektor/packages/lab.core/worker/lab-instance.ts",
+      "repo://projektor/packages/lab.core/lab-plan.ts",
+      "repo://projektor/packages/lab.core/projection.ts",
+      "repo://projektor/packages/lab.core/iom.ts",
+      "repo://projektor/packages/lab.core/lab.integration.test.ts",
       "repo://projektor/packages/projektor.browser/src/eklab/Lab.tsx",
-      "repo://projektor/packages/projektor.browser/src/eklab/transport.ts",
+      "repo://projektor/packages/projektor.browser/src/lab-engine/transport.ts",
       "repo://projektor/scripts/amway-server.mjs",
       "repo://projektor/packages/amway.app/app-book.js"],
   },

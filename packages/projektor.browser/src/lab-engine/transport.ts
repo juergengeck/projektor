@@ -1,15 +1,16 @@
-// packages/projektor.browser/src/lab/transport.ts
+// packages/projektor.browser/src/lab-engine/transport.ts
 /**
  * Web host side of the lab: spawns one Worker per role, switches `lab:` dials
- * between them, and hands the UI a refinio.api client per worker. Amway data
+ * between them, and hands the UI a refinio.api client per worker. Lab data
  * never passes through here; only CHUM ports and IPC calls do.
  */
-import { startLabHost } from "@projektor/amway.lab/host-switch.ts";
-import type { PortApiClient } from "@projektor/amway.lab/port-ipc.ts";
+import { startLabHost } from "@projektor/lab.core/worker/host-switch.ts";
+import type { PortApiClient } from "@projektor/lab.core/port-ipc.ts";
+import type { LabBrand } from "@projektor/lab.core/brand.ts";
 
 export const LAB_KEYS = ["admin", "manager", "seller", "customer"] as const;
 export type LabKey = (typeof LAB_KEYS)[number];
-export type { FeedRow } from "@projektor/amway.lab/port-ipc.ts";
+export type { FeedRow } from "@projektor/lab.core/port-ipc.ts";
 
 export interface LabHandle {
   clients: Record<LabKey, PortApiClient>;
@@ -32,18 +33,18 @@ function laneCommServer(): string | undefined {
 }
 
 /** Lane entry URL prefix the QR-encoded IoM invitation links back to. */
-function laneAppBase(): string {
+function laneAppBase(brand: LabBrand): string {
   const url = new URL(window.location.pathname, window.location.origin);
   // The invitation payload replaces the hash; retain the workspace's lane
-  // selection in the query so #/lab invitations still open the join page.
-  url.searchParams.set("lane", "amway");
+  // selection in the query so lane invitations still open the join page.
+  url.searchParams.set("lane", brand.lane);
   return url.toString();
 }
 
-function spawnWorker(key: LabKey, session: string, prune: boolean) {
-  // Inline `new URL` so Vite emits a worker chunk; the key follows as the first message.
+function spawnWorker(brand: LabBrand, key: LabKey, session: string, prune: boolean) {
+  // Inline `new URL` so Vite emits a worker chunk; brand and key follow as the first message.
   const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
-  worker.postMessage({ kind: "lab-key", key, session, prune, commServer: laneCommServer(), appBase: laneAppBase() });
+  worker.postMessage({ kind: "lab-key", brand: brand.id, key, session, prune, commServer: laneCommServer(), appBase: laneAppBase(brand) });
   return {
     port: worker,
     terminate: async () => worker.terminate(),
@@ -51,7 +52,7 @@ function spawnWorker(key: LabKey, session: string, prune: boolean) {
   };
 }
 
-export async function bootLab(onStage: (stage: string) => void = () => {}): Promise<LabHandle> {
+export async function bootLab(brand: LabBrand, onStage: (stage: string) => void = () => {}): Promise<LabHandle> {
   const stage = (text: string) => {
     console.info(`[lab boot] ${text}`);
     onStage(text);
@@ -62,7 +63,7 @@ export async function bootLab(onStage: (stage: string) => void = () => {}): Prom
   // startLabHost is untyped JS; the shape below is its documented contract.
   const host = (await startLabHost({
     keys: [...LAB_KEYS],
-    spawn: (key: LabKey) => spawnWorker(key, session, true),
+    spawn: (key: LabKey) => spawnWorker(brand, key, session, true),
   })) as unknown as LabHandle & { pairAll(): Promise<void> };
   const { admin } = host.clients;
   stage("workers ready");
@@ -70,12 +71,12 @@ export async function bootLab(onStage: (stage: string) => void = () => {}): Prom
   // Role appointments are deliberately NOT seeded: the admin appoints the
   // manager and the manager appoints the team through the lab buttons, so
   // every capability visibly unlocks through the appointment ceremony.
-  const status = await admin.call<{ known: boolean }>("amwayLab", "getDepartment", { department: "demo-de" });
+  const status = await admin.call<{ known: boolean }>("lab", "getDepartment", { department: brand.department.id });
   if (!status.known) {
     stage("pairing 6 lanes");
     await host.pairAll();
     stage("paired, creating department");
-    await admin.call("amwayLab", "createDepartment", { department: "demo-de", name: "Demo DE" });
+    await admin.call("lab", "createDepartment", { department: brand.department.id, name: brand.department.name });
     stage("department ready, appointments are manual");
   } else {
     stage("department known, skipping seed");
@@ -90,6 +91,7 @@ export async function bootLab(onStage: (stage: string) => void = () => {}): Prom
  * instance with its counterpart through the commserver.
  */
 export async function bootJoinInstance(
+  brand: LabBrand,
   key: LabKey,
   onStage: (stage: string) => void = () => {},
 ): Promise<LabHandle> {
@@ -104,7 +106,7 @@ export async function bootJoinInstance(
     // No pruning: sibling mesh workers in this profile hold live databases
     // under the same key prefix; deleting them wedges their connections.
     // Stale join sessions are swept by the next full mesh boot instead.
-    spawn: (spawned: LabKey) => spawnWorker(spawned, session, false),
+    spawn: (spawned: LabKey) => spawnWorker(brand, spawned, session, false),
   })) as unknown as LabHandle;
   stage("join worker ready");
   return host;

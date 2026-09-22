@@ -1,15 +1,16 @@
-// packages/projektor.browser/src/lab/worker.ts
+// packages/projektor.browser/src/lab-engine/worker.ts
 /**
- * Browser Web Worker entry for one lab instance. The platform import must run
- * before anything touches one.core storage.
+ * Browser Web Worker entry for one lab instance of either brand. The
+ * platform import must run before anything touches one.core storage.
  *
  * Vite only emits this file as a separate worker chunk when it is the direct
  * argument of `new Worker(new URL(...))` in transport.ts, so the role key
  * cannot travel in a URL query: it arrives as the first message instead.
  */
 import "@refinio/one.core/system/load-browser.js";
-import { startLabInstance } from "@projektor/amway.lab/lab-instance.ts";
-import type { LabPort } from "@projektor/amway.lab/port-ipc.ts";
+import { brandById } from "@projektor/lab.core/brand.ts";
+import { startLabInstance } from "@projektor/lab.core/worker/lab-instance.ts";
+import type { LabPort } from "@projektor/lab.core/port-ipc.ts";
 
 const scope = self as unknown as DedicatedWorkerGlobalScope & {
   postMessage(message: unknown): void;
@@ -34,9 +35,10 @@ const port: LabPort = {
 };
 
 scope.onmessage = (event: MessageEvent) => {
-  const message = event.data as { kind?: string; key?: string; session?: string; prune?: boolean; commServer?: string; appBase?: string };
+  const message = event.data as { kind?: string; brand?: string; key?: string; session?: string; prune?: boolean; commServer?: string; appBase?: string };
   if (message?.kind !== "lab-key" || typeof message.key !== "string") return;
   scope.onmessage = null;
+  const brand = brandById(message.brand ?? "");
   const key = message.key;
   // Session-scoped storage: every page load is a fresh boot. Reloading into
   // persisted worker state wedges CHUM (paired and connected, but nothing
@@ -44,14 +46,15 @@ scope.onmessage = (event: MessageEvent) => {
   // fresh instance — so each load gets its own directory and converges down
   // the same pairAll-plus-seed path the integration test proves.
   const session = typeof message.session === "string" && message.session !== "" ? message.session : "default";
-  const directory = `amway-lab-${key}-${session}`;
+  const directory = `${brand.storagePrefix}-${key}-${session}`;
   // Join workers share the key prefix with live mesh workers in this
   // profile; pruning here would delete their databases mid-handshake.
-  if (message.prune !== false) void pruneOldSessions(key, directory);
+  if (message.prune !== false) void pruneOldSessions(brand.storagePrefix, key, directory);
   startLabInstance({
+    brand,
     port,
     key,
-    email: `${key}@lab.local`,
+    email: `${key}@${brand.emailDomain}`,
     secret: `lab-${key}`,
     directory,
     createMessageChannel: () => new MessageChannel(),
@@ -63,11 +66,11 @@ scope.onmessage = (event: MessageEvent) => {
 };
 
 /** Best-effort cleanup of previous loads' directories. Never blocks boot. */
-async function pruneOldSessions(key: string, keep: string): Promise<void> {
+async function pruneOldSessions(storagePrefix: string, key: string, keep: string): Promise<void> {
   try {
     const databases = await indexedDB.databases?.();
     if (!Array.isArray(databases)) return;
-    const prefix = `amway-lab-${key}-`;
+    const prefix = `${storagePrefix}-${key}-`;
     await Promise.all(
       databases
         .map(entry => entry.name ?? "")

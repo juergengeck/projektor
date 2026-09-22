@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import type { PortApiClient } from "@projektor/amway.lab/port-ipc.ts";
+import type { PortApiClient } from "@projektor/lab.core/port-ipc.ts";
 import "./LabDeviceInvite.css";
 
 /** The device invitation belongs below the app frame, independent of its tabs. */
