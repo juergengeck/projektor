@@ -21,3 +21,14 @@ test("replaces the lane path and query instead of appending", () => {
     "https://example.com/browser/app/?lane=amway&labInstance=manager&labSession=mid99",
   );
 });
+
+test("forwards a commserver override to the iframe, rejecting non-ws values", () => {
+  assert.equal(
+    labAppUrl("https://example.com/browser/lab/?commServer=ws%3A%2F%2F127.0.0.1%3A4001", AMWAY, "admin", "abc12345"),
+    "https://example.com/browser/app/?lane=amway&labInstance=admin&labSession=abc12345&commServer=ws%3A%2F%2F127.0.0.1%3A4001",
+  );
+  assert.equal(
+    labAppUrl("https://example.com/browser/lab/?commServer=https%3A%2F%2Fexample.com", AMWAY, "admin", "abc12345"),
+    "https://example.com/browser/app/?lane=amway&labInstance=admin&labSession=abc12345",
+  );
+});

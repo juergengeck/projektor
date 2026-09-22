@@ -43,8 +43,9 @@ import { createPortIpcMain, postFeed } from "../port-ipc.ts";
 import type { LabPort } from "../port-ipc.ts";
 import type { LabBrand } from "../brand.ts";
 import type { Recipe } from "../../../../one/packages/one.core/lib/recipes.js";
+import { labUrl } from "../invite-url.ts";
 
-export const labUrl = (key: string): string => `lab://${key}`;
+export { labUrl };
 
 // Framework reverse-map tables are keyed by its closed type-name unions;
 // lab tables add custom names. Merging is key-wise disjoint in practice,

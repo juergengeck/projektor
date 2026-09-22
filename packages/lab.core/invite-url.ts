@@ -27,6 +27,9 @@ export interface MeshInvite {
 
 const TOKEN_PATTERN = /^[0-9a-zA-Z_-]{16,128}$/;
 
+/** One role's rendezvous endpoint on the host lab:// switch. */
+export const labUrl = (key: string): string => `lab://${key}`;
+
 function reject(reason: string, label: string): never {
   throw new Error(`${label}: not a lab mesh invitation (${reason}).`);
 }

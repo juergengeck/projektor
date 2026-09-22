@@ -1,7 +1,7 @@
 // packages/lab.core/invite-url.test.ts
 import test from "node:test";
 import assert from "node:assert/strict";
-import { decodeMeshInvite, encodeMeshInviteUrl, inviteMode } from "./invite-url.ts";
+import { decodeMeshInvite, encodeMeshInviteUrl, inviteMode, labUrl } from "./invite-url.ts";
 import { testBrand } from "./test/brand.ts";
 import { PAIRING_PROTOCOL_VERSION } from "../../../one/packages/one.models/lib/misc/ConnectionEstablishment/PairingManager.js";
 
@@ -62,4 +62,9 @@ test("mesh invitation URLs validate strictly", () => {
   for (const [name, url] of cases) {
     assert.throws(() => decodeMeshInvite(url, brand), /not a lab mesh invitation/, name);
   }
+});
+
+test("role rendezvous stays on the lab scheme", () => {
+  assert.equal(labUrl("admin"), "lab://admin");
+  assert.equal(new URL(labUrl("seller")).protocol, "lab:");
 });
