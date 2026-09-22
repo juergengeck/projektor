@@ -1,0 +1,169 @@
+/* Amway lab presentation, scoped to the Amway lane. The shared application
+ * stylesheet remains the source of component layout and behavior. */
+html:root:has(.amway-lane) {
+  --amway-blue: #38539a;
+  --amway-blue-deep: #213366;
+  --amway-blue-soft: #ebf0fa;
+  --amway-surface: #fff;
+  --amway-surface-elevated: #fff;
+  --amway-surface-subtle: #f8f9fa;
+  --amway-surface-sunken: #f1f3f5;
+  --amway-neutral: #e9ecef;
+  --amway-border: #dde2e5;
+  --amway-border-subtle: #e9ecef;
+  --amway-border-focus: var(--amway-blue);
+  --amway-ink: #212529;
+  --amway-ink-secondary: #495057;
+  --amway-muted: #6c757d;
+  --amway-subtle: #868e96;
+  --amway-accent: var(--amway-blue);
+  --amway-accent-hover: #2b4280;
+  --amway-accent-active: var(--amway-blue-deep);
+  --amway-accent-light: var(--amway-blue-soft);
+  --amway-accent-subtle: #f3f6fd;
+}
+
+html[data-theme="dark"]:root:has(.amway-lane) {
+  --amway-blue: #8ba3d9;
+  --amway-blue-deep: #c1d0f5;
+  --amway-blue-soft: #1d2942;
+  --amway-surface: #121417;
+  --amway-surface-elevated: #1b1e24;
+  --amway-surface-subtle: #232730;
+  --amway-surface-sunken: #0c0e10;
+  --amway-neutral: #2d333f;
+  --amway-border: #333a48;
+  --amway-border-subtle: #262c38;
+  --amway-border-focus: var(--amway-blue);
+  --amway-ink: #f1f3f5;
+  --amway-ink-secondary: #ced4da;
+  --amway-muted: #9aa2b1;
+  --amway-subtle: #6c757d;
+  --amway-accent: var(--amway-blue);
+  --amway-accent-hover: #a5bae8;
+  --amway-accent-active: var(--amway-blue-deep);
+  --amway-accent-light: var(--amway-blue-soft);
+  --amway-accent-subtle: #162033;
+}
+
+.amway-lane a {
+  color: var(--amway-accent);
+}
+
+.amway-lane a:hover {
+  color: var(--amway-accent-hover);
+}
+
+.amway-lane .lab-header {
+  position: relative;
+  overflow: hidden;
+  padding: 1.5rem 2rem;
+  gap: 1rem 2rem;
+  border-top: 4px solid var(--amway-blue);
+}
+
+.amway-brand-heading {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  gap: 2rem;
+  min-width: 0;
+}
+
+.amway-logo {
+  display: block;
+  flex: 0 0 auto;
+  width: 142px;
+  height: auto;
+}
+
+html[data-theme="dark"] .amway-logo {
+  filter: invert(1) brightness(1.2);
+}
+
+.amway-lane .lab-title-group h1 {
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
+.amway-lane .lab-title-group {
+  min-width: 0;
+}
+
+.amway-lane .lab-header-actions {
+  margin-left: auto;
+  justify-content: flex-end;
+  max-width: 100%;
+}
+
+.amway-lane .lab-actions-heading {
+  gap: 0.5rem;
+}
+
+.amway-lane .lab-actions-heading button {
+  margin-left: auto;
+  font-size: 0.75rem;
+  padding: 0.35rem 0.65rem;
+  white-space: nowrap;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.amway-lane .lab-purchase-card {
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.amway-lane .lab-purchase-card .lab-item-main {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.amway-lane .lab-column-header::before {
+  background: var(--amway-blue);
+}
+
+.amway-lane .lab-role-admin .lab-column-header::before {
+  background: var(--amway-blue-deep);
+}
+
+.amway-lane .lab-role-seller .lab-column-header::before {
+  background: var(--amway-home);
+}
+
+.amway-lane .lab-role-customer .lab-column-header::before {
+  background: var(--amway-nutrition);
+}
+
+.amway-lane .lab-feed-AmwayOffer,
+.amway-lane .lab-feed-AmwayRoleAssignment {
+  border-left-color: var(--amway-blue);
+}
+
+@media (max-width: 700px) {
+  .amway-lane {
+    padding: 0.75rem;
+  }
+
+  .amway-brand-heading {
+    gap: 1rem;
+    min-width: 100%;
+  }
+
+  .amway-lane .lab-header {
+    padding: 1.25rem;
+  }
+
+  .amway-logo {
+    width: 106px;
+  }
+
+  .amway-lane .lab-title-group h1 {
+    font-size: 1.5rem;
+  }
+
+  .amway-lane .lab-header-actions {
+    gap: 0.5rem;
+  }
+}

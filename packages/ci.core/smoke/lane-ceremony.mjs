@@ -2,7 +2,7 @@
 /**
  * The shared smoke ceremony for every browser lane: boot the four-column
  * mesh through the lane entry with a silent console, walk the appointment
- * chain, publish, share down, buy, admit, and hold the purchase. Throws a
+ * chain, publish, share down, buy, and hold the confirmed purchase. Throws a
  * lane-tagged error on the first deviation.
  */
 export async function runLaneCeremony(page, lane, expect) {
@@ -21,32 +21,30 @@ export async function runLaneCeremony(page, lane, expect) {
   const [admin, manager, seller, customer] = [0, 1, 2, 3].map(n => columns.nth(n));
 
   await expect(manager.locator(".badge-accent")).toHaveCount(0);
-  await expect(manager.getByRole("button", { name: "Appoint Seller" })).toBeDisabled();
+  await expect(manager.getByRole("button", { name: `Appoint ${lane.roleLabels.seller}` })).toBeDisabled();
   await expect(manager.getByRole("button", { name: "+ Offer (100.00€)" })).toBeDisabled();
 
-  await admin.getByRole("button", { name: "Appoint Manager" }).click();
+  await admin.getByRole("button", { name: `Appoint ${lane.roleLabels.manager}` }).click();
   await expect(manager.locator(".badge-accent")).toBeVisible({ timeout: 60_000 });
-  await expect(manager.getByRole("button", { name: "Appoint Seller" })).toBeEnabled();
+  await expect(manager.getByRole("button", { name: `Appoint ${lane.roleLabels.seller}` })).toBeEnabled();
 
-  await manager.getByRole("button", { name: "Appoint Seller" }).click();
+  await manager.getByRole("button", { name: `Appoint ${lane.roleLabels.seller}` }).click();
   await expect(seller.locator(".badge-info")).toBeVisible({ timeout: 60_000 });
 
-  await seller.getByRole("button", { name: "Appoint Customer" }).click();
+  await seller.getByRole("button", { name: `Appoint ${lane.roleLabels.customer}` }).click();
   // No opening stock exists: purchasing (admin) receives goods before
   // anything is offered, shared, or sold.
   await admin.getByRole("button", { name: "Stock Up" }).click();
   await manager.getByRole("button", { name: "+ Offer (100.00€)" }).click();
   // Publishing discloses nothing: the manager shares the offer down with
   // the chosen seller first, the seller then with the customer.
-  await manager.getByRole("button", { name: `Share ${lane.offerId} with seller` }).click();
+  await manager.getByRole("button", { name: `Share ${lane.offerId} with ${lane.shareRecipient}` }).click();
   await seller.getByRole("button", { name: `Share ${lane.offerId} down` }).click();
   await customer.getByRole("button", { name: /Buy 1x/ }).click();
 
-  // The seller admits nothing invented: the button exists only for the placed order.
-  const admit = seller.getByRole("button", { name: new RegExp(`Admit ${lane.offerId}`) });
-  await admit.waitFor({ timeout: 60_000 });
-  await admit.click();
-  await expect(customer.getByRole("button", { name: "Orders (1)" })).toBeVisible({ timeout: 60_000 });
+  await expect(customer.getByRole("button", { name: `${lane.ordersTab} (1)` })).toBeVisible({ timeout: 60_000 });
+  await expect(customer.getByRole("region", { name: "Purchase history" }).getByText("Confirmed", { exact: true }))
+    .toBeVisible({ timeout: 60_000 });
 
   if (errors.length) {
     throw new Error(`${tag}: console/page errors:\n${errors.slice(0, 5).map(line => `  ${line.slice(0, 250)}`).join("\n")}`);

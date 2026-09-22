@@ -6,6 +6,7 @@
  */
 import { PortApiClient } from "./port-ipc.ts";
 import type { LabPort } from "./port-ipc.ts";
+import { labUrl } from "./lab-instance.ts";
 
 export interface SpawnedWorker {
   port: LabPort;
@@ -134,9 +135,12 @@ export async function startLabHost<K extends string>({ keys, spawn }: {
           // of closing it and dialing a second connection. The mode lives on
           // the invitation: createInvite sets it, and the acceptor hands the
           // invitation through unchanged — no second knob to disagree.
+          // The mesh stays on the local lab:// switch (hermetic and
+          // offline-capable): worker invitations now carry the commserver URL
+          // for IoM, so pairAll redials them at the lab:// listener instead.
           const invite = await clients[keys[i]].call<{ url: string; publicKey: string; token: string; pairingMode?: string }>("connection", "createInvite", { mode: "primed" });
           await clients[keys[j]].call("connection", "connectWithInvite", {
-            url: invite.url, publicKey: invite.publicKey, token: invite.token, pairingMode: invite.pairingMode,
+            url: labUrl(keys[i]), publicKey: invite.publicKey, token: invite.token, pairingMode: invite.pairingMode,
           });
         }
       }

@@ -4,6 +4,7 @@ import { applyTheme, setLanguage, t, useLang } from "./i18n";
 import Auth from "./screens/Auth";
 import Lab from "./lab/Lab";
 import EkLab from "./eklab/Lab";
+import ekFavicon from "./eklab/assets/favicon.png";
 import Chat from "./screens/Chat";
 import { Earnings, Returns } from "./screens/Finance";
 import Inventory from "./screens/Inventory";
@@ -24,11 +25,16 @@ function screenFromHash(): Screen {
 }
 
 function isLabHash(): boolean {
-  return window.location.hash.replace(/^#\/?/, "").startsWith("lab");
+  return window.location.hash.replace(/^#\/?/, "").startsWith("lab") || isLaneInvite("amway");
 }
 
 function isEkLabHash(): boolean {
-  return window.location.hash.replace(/^#\/?/, "").startsWith("eklab");
+  return window.location.hash.replace(/^#\/?/, "").startsWith("eklab") || isLaneInvite("ek");
+}
+
+function isLaneInvite(lane: string): boolean {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("invited") === "true" && params.get("lane") === lane && window.location.hash.length > 1;
 }
 
 function ScopeBanner({ department, onScope }: { department: string; onScope: (dept: string) => void }) {
@@ -125,7 +131,16 @@ export default function App() {
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
-  useEffect(() => { document.title = t("app.title"); });
+  useEffect(() => { document.title = isEkLab ? "Elektro Klein AG · EK Lab" : isLab ? "Amway · Demo workspace" : t("app.title"); });
+
+  useEffect(() => {
+    if (!isEkLab) return;
+    const icon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    if (!icon) return;
+    const previous = icon.href;
+    icon.href = ekFavicon;
+    return () => { icon.href = previous; };
+  }, [isEkLab]);
 
   // The lab is a separate shell: each column carries its own worker-owned
   // session, so the global single-instance login must not gate or leak into it.

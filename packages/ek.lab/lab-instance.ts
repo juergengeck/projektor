@@ -29,6 +29,7 @@ import { AccessRightsRecipes } from "../../../one/packages/refinio.api/dist/src/
 import { EkLabRecipes, EkLabReverseMapsForIdObjects } from "./recipes.ts";
 import { createLabPlan } from "./lab-plan.ts";
 import { createChatPlan } from "./chat-plan.ts";
+import { DEFAULT_COMM_SERVER_URL } from "./iom.ts";
 import { createPortIpcMain, postFeed } from "./port-ipc.ts";
 import type { LabPort } from "./port-ipc.ts";
 import type { Recipe } from "../../../one/packages/one.core/lib/recipes.js";
@@ -53,6 +54,10 @@ export interface LabInstanceOptions {
   secret: string;
   directory: string;
   createMessageChannel: () => MessageChannel;
+  /** Commserver carrying IoM discovery and pairing; defaults to the glue service. */
+  commServerUrl?: string;
+  /** Lane entry URL prefix the QR-encoded IoM invitation links back to. */
+  appBaseUrl?: string;
 }
 
 interface AcceptMessage {
@@ -61,7 +66,7 @@ interface AcceptMessage {
   port?: unknown;
 }
 
-export async function startLabInstance({ port, key, email, secret, directory, createMessageChannel }: LabInstanceOptions): Promise<{ shutdown(): Promise<void> }> {
+export async function startLabInstance({ port, key, email, secret, directory, createMessageChannel, commServerUrl, appBaseUrl }: LabInstanceOptions): Promise<{ shutdown(): Promise<void> }> {
   const url = labUrl(key);
   const multiUser = new MultiUser({
     directory,
@@ -113,6 +118,34 @@ export async function startLabInstance({ port, key, email, secret, directory, cr
   pairing.connectUsingInvitation = (invitation: Record<string, unknown>, ...rest: unknown[]) =>
     connectUsingInvitation({ pairingProtocolVersion: PAIRING_PROTOCOL_VERSION, ...invitation }, ...rest);
 
+  // IoM discovery and pairing ride a commserver (browsers cannot listen and
+  // the mesh eklab:// endpoints are unreachable across devices) through a
+  // dedicated connections model whose pairing listener lives there. The mesh
+  // above stays on the local eklab:// switch: hermetic, offline-capable, fast.
+  // Initialized eagerly like the mesh model; init registers no routes and
+  // dials nothing — the commserver socket opens on first pairing use.
+  const iomCommServer = commServerUrl ?? DEFAULT_COMM_SERVER_URL;
+  const iomConnections = new ConnectionsModel(leuteModel, {
+    commServerUrl: iomCommServer,
+    publicCommServerUrl: iomCommServer,
+    acceptIncomingConnections: true,
+    acceptUnknownInstances: false,
+    acceptUnknownPersons: false,
+    allowPairing: true,
+    allowDebugRequests: false,
+    pairingTokenExpirationDuration: 600_000,
+    establishOutgoingConnections: true,
+    noImport: false,
+    noExport: false,
+  });
+  await iomConnections.init();
+  const iomPairing = iomConnections.pairing as unknown as {
+    connectUsingInvitation(invitation: Record<string, unknown>, ...rest: unknown[]): Promise<unknown>;
+  };
+  const iomConnectUsingInvitation = iomPairing.connectUsingInvitation.bind(iomPairing);
+  iomPairing.connectUsingInvitation = (invitation: Record<string, unknown>, ...rest: unknown[]) =>
+    iomConnectUsingInvitation({ pairingProtocolVersion: PAIRING_PROTOCOL_VERSION, ...invitation }, ...rest);
+
   const unregisterDialer = registerConnectionDialer("eklab:", (target: string) => {
     const { port1, port2 } = createMessageChannel();
     port.postMessage({ kind: "chum-dial", from: key, url: target, port: port2 }, [port2]);
@@ -152,7 +185,12 @@ export async function startLabInstance({ port, key, email, secret, directory, cr
     [...persistedPeerIds].map(personId => connections.enableConnectionsToPerson(personId)),
   );
 
-  const plan = createLabPlan({ connections, listenerUrl: url, email });
+  const plan = createLabPlan({
+    connections,
+    iomConnections,
+    email,
+    appBaseUrl: appBaseUrl ?? "http://localhost/",
+  });
   // Chat rides the commserver channel stack every ONE app uses: 1:1 topics
   // between lane persons, synced over the mesh connections.
   const topicModel = new TopicModel(channelManager, leuteModel);
@@ -170,7 +208,7 @@ export async function startLabInstance({ port, key, email, secret, directory, cr
   const registry = new OperationRegistry();
   registry.register("ekLab", plan, {
     description: "Ek lab department operations over ONE storage",
-    methods: ["whoAmI", "createDepartment", "assignRole", "publishContact", "publishOffer", "stockUp", "shareOffer", "shareOfferWithSeller", "placeOrder", "admitOrder", "getDepartment", "setOnline", "createIoMInvite", "awaitIoMInvite", "acceptIoMInvite"]
+    methods: ["whoAmI", "createDepartment", "assignRole", "publishContact", "publishOffer", "stockUp", "shareOffer", "shareOfferWithSeller", "placeOrder", "buy", "admitOrder", "getDepartment", "setOnline", "createIoMInvite", "awaitIoMInvite", "acceptIoMInvite"]
       .map(name => ({ name, description: `ekLab.${name}` })),
   });
   registry.register("ekChat", chatPlan, {
@@ -178,7 +216,28 @@ export async function startLabInstance({ port, key, email, secret, directory, cr
     methods: ["openChat", "sendChat", "readChat"]
       .map(name => ({ name, description: `ekChat.${name}` })),
   });
-  registry.register("connection", new OneConnectionPlan(leuteModel, connections, channelManager), {
+  // The lane pairs over two transports: the local eklab:// mesh above and the
+  // commserver for IoM below. The status surface covers both, so the IoM
+  // link is visible next to the mesh lanes.
+  const connectionPlan = new OneConnectionPlan(leuteModel, connections, channelManager);
+  const meshListConnections = connectionPlan.listConnections.bind(connectionPlan);
+  connectionPlan.listConnections = () => [
+    ...meshListConnections(),
+    ...(iomConnections.connectionsInfo() as unknown as {
+      id: string;
+      remotePersonId: string;
+      remoteInstanceId: string;
+      isOnline: boolean;
+      established: string;
+    }[]).map(conn => ({
+      connectionId: conn.id,
+      remotePersonId: conn.remotePersonId,
+      remoteInstanceId: conn.remoteInstanceId,
+      isOnline: conn.isOnline,
+      established: conn.established,
+    })),
+  ];
+  registry.register("connection", connectionPlan, {
     description: "Pairing and connection status",
     methods: ["createInvite", "connectWithInvite", "listConnections", "getStatus"].map(name => ({ name, description: `connection.${name}` })),
   });
@@ -191,7 +250,14 @@ export async function startLabInstance({ port, key, email, secret, directory, cr
   const stopFeed = onVersionedObj.addListener(result => {
     const row = plan.feedRow(result);
     if (row) postFeed(port, row);
+    void plan.processAutomaticPurchase(result).catch(error => {
+      console.error("Ek lab: automatic purchase processing failed.", error);
+    });
   });
+  // Semantic object events are live-only. Replay the seller's typed request
+  // roots once after attaching the listener so a crash between request
+  // persistence and admission cannot leave a purchase pending forever.
+  await plan.recoverAutomaticPurchases();
 
   port.postMessage({ kind: "ready", key, person: getInstanceOwnerIdHash() });
 
@@ -200,6 +266,7 @@ export async function startLabInstance({ port, key, email, secret, directory, cr
       stopFeed();
       unregisterDialer();
       await topicModel.shutdown();
+      await iomConnections.shutdown();
       await connections.shutdown();
       await channelManager.shutdown();
       await leuteModel.shutdown();

@@ -1,0 +1,83 @@
+.lab-device {
+  min-width: 0;
+}
+
+.lab-device-invite {
+  margin-top: 0.75rem;
+  padding: 1rem;
+  background: var(--amway-surface);
+  color: var(--amway-ink);
+  border: 1px solid var(--amway-border);
+  border-radius: var(--radius-lg);
+}
+
+.lab-device-invite-content {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.lab-device-qr {
+  flex: none;
+  padding: 0;
+  background: #fff;
+  border: 1px solid var(--amway-border);
+  border-radius: var(--radius-sm);
+  cursor: zoom-in;
+}
+
+.lab-device-qr svg {
+  display: block;
+}
+
+.lab-device-invite-link {
+  flex: 1;
+  min-width: 7rem;
+  font-size: 0.72rem;
+}
+
+.lab-device-invite-link input {
+  width: 100%;
+  margin: 0.3rem 0 0.5rem;
+  font-size: 0.68rem;
+}
+
+.lab-device-invite-link [role="status"] {
+  display: block;
+  margin-top: 0.3rem;
+}
+
+.lab-device-invite-status {
+  margin: 0.6rem 0 0;
+  font-size: 0.72rem;
+  color: var(--amway-muted);
+  overflow-wrap: anywhere;
+}
+
+.lab-device-qr-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  margin: auto;
+  padding: 1rem;
+  width: min(34rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow: auto;
+  background: var(--amway-surface);
+  color: var(--amway-ink);
+  border: 1px solid var(--amway-border);
+  border-radius: var(--radius-lg);
+  text-align: center;
+}
+
+.lab-device-qr-dialog::backdrop {
+  background: #0009;
+}
+
+.lab-device-qr-dialog svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-top: 1rem;
+}

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   EK_LAB_TYPES, EkLabRecipes, EkLabReverseMapsForIdObjects,
-  createContact, createDepartment, createOffer, createOrder, createRoleAssignment,
+  createContact, createDepartment, createOffer, createOrder, createPurchaseDecision, createPurchaseRequest, createRoleAssignment,
 } from "./recipes.ts";
 
 const HASH = "a".repeat(64);
@@ -16,7 +16,7 @@ test("every lab type has exactly one recipe", () => {
 test("every department-scoped type is reverse-mapped on department", () => {
   const mapped = new Map(EkLabReverseMapsForIdObjects);
   for (const type of EK_LAB_TYPES.filter(name => name !== "EkDepartment")) {
-    assert.deepEqual([...mapped.get(type)], ["department"]);
+    assert.deepEqual([...mapped.get(type)], type === "EkPurchaseRequest" ? ["department", "seller"] : ["department"]);
   }
 });
 
@@ -27,10 +27,13 @@ test("constructors produce typed objects", () => {
   assert.equal(createContact({ department: HASH, person: PERSON, name: "Eva", role: "seller", publishedBy: PERSON, publishedAt: 1 }).name, "Eva");
   assert.equal(createOffer({ department: HASH, offerId: "o1", item: "BMA-WARTUNG@1", priceList: "ek-retail@2026-09", channel: "facility", unitAmount: 10000, currency: "EUR", publishedBy: PERSON }).unitAmount, 10000);
   assert.equal(createOrder({ department: HASH, idempotencyKey: "k1", customer: PERSON, seller: PERSON, offer: "o1", quantity: 2, lot: "ek-lot-a", facility: "ek-facility", currency: "EUR", unitAmount: 10000, admittedAt: 1 }).quantity, 2);
+  assert.equal(createPurchaseRequest({ department: HASH, idempotencyKey: "k1", customer: PERSON, seller: PERSON, requestedAt: 1 }).requestedAt, 1);
+  assert.equal(createPurchaseDecision({ department: HASH, idempotencyKey: "k1", customer: PERSON, seller: PERSON, outcome: "rejected", reason: "out-of-stock", decidedAt: 2 }).reason, "out-of-stock");
 });
 
 test("constructors fail fast on invalid input", () => {
   assert.throws(() => createRoleAssignment({ department: HASH, subject: PERSON, role: "boss", issuer: PERSON, validFrom: 1 }), /role/);
   assert.throws(() => createOrder({ department: HASH, idempotencyKey: "k1", customer: PERSON, seller: PERSON, offer: "o1", quantity: 0, lot: "l", facility: "f", currency: "EUR", unitAmount: 10000, admittedAt: 1 }), /quantity/);
   assert.throws(() => createContact({ department: "not-a-hash", person: PERSON, name: "Eva", role: "seller", publishedBy: PERSON, publishedAt: 1 }), /department/);
+  assert.throws(() => createPurchaseDecision({ department: HASH, idempotencyKey: "k1", customer: PERSON, seller: PERSON, outcome: "accepted", reason: "out-of-stock", decidedAt: 2 }), /outcome/);
 });

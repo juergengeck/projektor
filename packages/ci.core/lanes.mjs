@@ -1,7 +1,7 @@
 // packages/ci.core/lanes.mjs
 /**
  * The browser lanes and how verification reaches them. Every lane runs the
- * same contract (appointment chain, cascade disclosure, place-then-admit
+ * same contract (appointment chain, cascade disclosure, automatic purchase
  * ceremony, IoM pairing); only identity and entry points differ. Both the
  * node suite runner and the smoke ceremony driver read this registry, so a
  * new lane is added here once and verified everywhere.
@@ -14,7 +14,10 @@ export const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url
 export const LANES = [
   {
     id: "amway",
-    title: "Amway lab",
+    roleLabels: { manager: "Manager", seller: "Seller", customer: "Customer" },
+    shareRecipient: "seller",
+    title: "Demo workspace",
+    ordersTab: "Purchase history",
     packageDir: "packages/amway.lab",
     route: "/amway/lab",
     entry: "/browser/lab/",
@@ -23,7 +26,10 @@ export const LANES = [
   },
   {
     id: "ek",
+    roleLabels: { manager: "Bauleiter", seller: "Vorarbeiter", customer: "Werker" },
+    shareRecipient: "Vorarbeiter",
     title: "EK lab",
+    ordersTab: "Purchase history",
     packageDir: "packages/ek.lab",
     route: "/ek/lab",
     entry: "/browser/eklab/",

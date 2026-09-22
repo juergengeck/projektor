@@ -33,13 +33,13 @@ export function StatusBadge({ status }: { status: string }) {
   return <Badge text={label} variant={variant} dot={variant === "success"} />;
 }
 
-export function RoleBadge({ role }: { role: string }) {
+export function RoleBadge({ role, label = role }: { role: string; label?: string }) {
   let variant = "neutral";
   if (role === "manager") variant = "accent";
   else if (role === "seller") variant = "info";
   else if (role === "admin") variant = "neutral";
   else if (role === "customer") variant = "success";
-  return <Badge text={role} variant={variant} />;
+  return <Badge text={label} variant={variant} />;
 }
 
 export function CategoryBadge({ category }: { category?: string | null }) {

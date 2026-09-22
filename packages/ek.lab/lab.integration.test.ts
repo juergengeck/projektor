@@ -490,6 +490,88 @@ test("concurrent admissions across workers settle exactly once", async () => {
   }
 });
 
+test("buy automatically settles twice, rejects the exhausted third purchase, and is idempotent", async () => {
+  type PurchaseView = DepartmentView & {
+    orders: { idempotencyKey: string; quantity: number }[];
+    purchaseFailures: { idempotencyKey: string; reason: string }[];
+  };
+  const buyAndAwait = async (idempotencyKey: string, quantity: number): Promise<void> => {
+    const arrivals = ["customer", "admin", "manager"].map(key =>
+      feedUntil(clients()[key], admittedRow(idempotencyKey), `${key} receives automatic ${idempotencyKey}`));
+    await clients().customer.call("ekLab", "buy", {
+      department: "ek-de", offer: "ek-offer-1", quantity, idempotencyKey,
+    });
+    await Promise.all(arrivals);
+  };
+
+  await buyAndAwait("ek-buy-auto-a", 2);
+  let manager = await clients().manager.call<PurchaseView>("ekLab", "getDepartment", { department: "ek-de" });
+  assert.equal(manager.availability?.available, 1);
+  await buyAndAwait("ek-buy-auto-b", 1);
+  manager = await clients().manager.call<PurchaseView>("ekLab", "getDepartment", { department: "ek-de" });
+  assert.equal(manager.availability?.available, 0);
+
+  await clients().customer.call("ekLab", "buy", {
+    department: "ek-de", offer: "ek-offer-1", quantity: 2, idempotencyKey: "ek-buy-auto-a",
+  });
+  manager = await clients().manager.call<PurchaseView>("ekLab", "getDepartment", { department: "ek-de" });
+  assert.equal(manager.availability?.available, 0);
+  assert.equal(manager.orders.filter(entry => entry.idempotencyKey === "ek-buy-auto-a").length, 1);
+
+  const failed = feedUntil(clients().customer, row =>
+    row.type === "EkPurchaseDecision" && row.id === "ek-buy-auto-c", "customer receives out-of-stock decision");
+  await clients().customer.call("ekLab", "buy", {
+    department: "ek-de", offer: "ek-offer-1", quantity: 1, idempotencyKey: "ek-buy-auto-c",
+  });
+  await failed;
+  const customer = await clients().customer.call<PurchaseView>("ekLab", "getDepartment", { department: "ek-de" });
+  assert.ok(customer.purchaseFailures.some(entry => entry.idempotencyKey === "ek-buy-auto-c" && entry.reason === "out-of-stock"));
+  assert.ok(!customer.pendingOrders.some(entry => entry.idempotencyKey === "ek-buy-auto-c"));
+  assert.ok(!customer.orders.some(entry => entry.idempotencyKey === "ek-buy-auto-c"));
+  await assert.rejects(
+    clients().seller.call("ekLab", "admitOrder", { department: "ek-de", idempotencyKey: "ek-buy-auto-c" }),
+    /owned by the automatic purchase processor/,
+  );
+});
+
+test("buy with no stock receipts terminates as out of stock", async () => {
+  const managerAppointed = feedUntil(clients().manager, row =>
+    row.type === "EkRoleAssignment" && row.obj?.department !== undefined && row.id === persons().manager,
+  "manager receives empty department appointment");
+  await clients().admin.call("ekLab", "createDepartment", { department: "empty-ek", name: "Empty EK" });
+  await clients().admin.call("ekLab", "assignRole", { department: "empty-ek", subject: persons().manager, role: "manager" });
+  await managerAppointed;
+  const sellerAppointed = feedUntil(clients().seller, row => row.type === "EkRoleAssignment" && row.id === persons().seller,
+    "seller receives empty department appointment");
+  await clients().manager.call("ekLab", "assignRole", { department: "empty-ek", subject: persons().seller, role: "seller" });
+  await sellerAppointed;
+  const customerAppointed = feedUntil(clients().customer, row => row.type === "EkRoleAssignment" && row.id === persons().customer,
+    "customer receives empty department appointment");
+  await clients().seller.call("ekLab", "assignRole", { department: "empty-ek", subject: persons().customer, role: "customer" });
+  await customerAppointed;
+  await clients().manager.call("ekLab", "publishOffer", {
+    department: "empty-ek", offerId: "empty-ek-offer", item: "EMPTY@1", priceList: "demo", unitAmount: 100, currency: "EUR",
+  });
+  await clients().manager.call("ekLab", "shareOfferWithSeller", {
+    department: "empty-ek", offerId: "empty-ek-offer", seller: persons().seller,
+  });
+  await feedUntil(clients().seller, row => row.type === "EkOffer" && row.id === "empty-ek-offer", "seller receives empty offer");
+  await clients().seller.call("ekLab", "shareOffer", {
+    department: "empty-ek", offerId: "empty-ek-offer", customer: persons().customer,
+  });
+  await feedUntil(clients().customer, row => row.type === "EkOffer" && row.id === "empty-ek-offer", "customer receives empty offer");
+  const failed = feedUntil(clients().customer, row =>
+    row.type === "EkPurchaseDecision" && row.id === "empty-ek-buy", "no-receipt rejection reaches customer");
+  await clients().customer.call("ekLab", "buy", {
+    department: "empty-ek", offer: "empty-ek-offer", quantity: 1, idempotencyKey: "empty-ek-buy",
+  });
+  await failed;
+  const view = await clients().customer.call<DepartmentView & { purchaseFailures: { idempotencyKey: string }[] }>(
+    "ekLab", "getDepartment", { department: "empty-ek" });
+  assert.deepEqual(view.pendingOrders, []);
+  assert.deepEqual(view.purchaseFailures.map(entry => entry.idempotencyKey), ["empty-ek-buy"]);
+});
+
 test("seller and customer chat over the topic channel", async () => {
   type Thread = { messages: { text: string; sender: string; sentAt: number }[] };
   const readUntil = async (key: string, peer: string, text: string, label: string): Promise<Thread> => {

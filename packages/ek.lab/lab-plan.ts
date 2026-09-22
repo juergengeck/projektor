@@ -27,6 +27,8 @@ import {
   createDepartment,
   createOffer,
   createOrder,
+  createPurchaseDecision,
+  createPurchaseRequest,
   createRoleAssignment,
   createStockReceipt,
 } from "./recipes.ts";
@@ -36,6 +38,8 @@ import type {
   EkLabObject,
   EkOffer,
   EkOrder,
+  EkPurchaseDecision,
+  EkPurchaseRequest,
   EkRoleAssignment,
   EkStockReceipt,
 } from "./recipes.ts";
@@ -43,8 +47,8 @@ import { EK_STOCK, audience, canPublish, projectDepartment, rolesOf } from "./pr
 import type { DepartmentProjection } from "./projection.ts";
 import { createIoMOps } from "./iom.ts";
 
-const KIND_OF_TYPE: Record<string, string> = { EkDepartment: "department", EkRoleAssignment: "assignment", EkContact: "contact", EkOffer: "offer", EkOrder: "order", EkStockReceipt: "stock" };
-const ID_FIELD: Record<string, string> = { EkDepartment: "department", EkRoleAssignment: "subject", EkContact: "person", EkOffer: "offerId", EkOrder: "idempotencyKey", EkStockReceipt: "receiptId" };
+const KIND_OF_TYPE: Record<string, string> = { EkDepartment: "department", EkRoleAssignment: "assignment", EkContact: "contact", EkOffer: "offer", EkOrder: "order", EkPurchaseRequest: "purchase-request", EkPurchaseDecision: "purchase-decision", EkStockReceipt: "stock" };
+const ID_FIELD: Record<string, string> = { EkDepartment: "department", EkRoleAssignment: "subject", EkContact: "person", EkOffer: "offerId", EkOrder: "idempotencyKey", EkPurchaseRequest: "idempotencyKey", EkPurchaseDecision: "idempotencyKey", EkStockReceipt: "receiptId" };
 
 const versioned = (obj: EkLabObject): never => obj as never;
 
@@ -55,6 +59,8 @@ interface DepartmentState {
   contacts: EkContact[];
   offers: EkOffer[];
   orders: EkOrder[];
+  purchaseRequests: EkPurchaseRequest[];
+  purchaseDecisions: EkPurchaseDecision[];
   stock: EkStockReceipt[];
 }
 
@@ -64,13 +70,15 @@ export interface FeedRowInput {
   hash: string;
 }
 
-export function createLabPlan({ connections, now = () => Date.now(), listenerUrl, email }: {
+export function createLabPlan({ connections, iomConnections, now = () => Date.now(), email, appBaseUrl }: {
   connections: ConnectionsModel;
+  /** IoM-dedicated connections: pairing listener homed on the commserver. */
+  iomConnections: ConnectionsModel;
   now?: () => number;
-  /** Pairing listener id carrying the registered credential (eklab:// url). */
-  listenerUrl: string;
   /** Instance owner email; IoM invitations name it as the identity hint. */
   email: string;
+  /** Lane entry URL prefix the QR-encoded IoM invitation links back to. */
+  appBaseUrl: string;
 }) {
   const self = (): string => {
     const owner = getInstanceOwnerIdHash();
@@ -115,13 +123,14 @@ export function createLabPlan({ connections, now = () => Date.now(), listenerUrl
     return objs;
   }
 
-  async function load(department: string): Promise<DepartmentState> {
-    const deptIdHash = await departmentIdHash(department);
-    const [assignments, contacts, offers, orders, stock] = await Promise.all([
+  async function loadByIdHash(deptIdHash: string): Promise<DepartmentState> {
+    const [assignments, contacts, offers, orders, purchaseRequests, purchaseDecisions, stock] = await Promise.all([
       latest<EkRoleAssignment>(await getAllIdObjectEntries(idHashOf(deptIdHash), typeNameOf("EkRoleAssignment"))),
       latest<EkContact>(await getAllIdObjectEntries(idHashOf(deptIdHash), typeNameOf("EkContact"))),
       latest<EkOffer>(await getAllIdObjectEntries(idHashOf(deptIdHash), typeNameOf("EkOffer"))),
       latest<EkOrder>(await getAllIdObjectEntries(idHashOf(deptIdHash), typeNameOf("EkOrder"))),
+      latest<EkPurchaseRequest>(await getAllIdObjectEntries(idHashOf(deptIdHash), typeNameOf("EkPurchaseRequest"))),
+      latest<EkPurchaseDecision>(await getAllIdObjectEntries(idHashOf(deptIdHash), typeNameOf("EkPurchaseDecision"))),
       latest<EkStockReceipt>(await getAllIdObjectEntries(idHashOf(deptIdHash), typeNameOf("EkStockReceipt"))),
     ]);
     // Not yet replicated is a normal state, asked explicitly — no error swallowing.
@@ -136,9 +145,13 @@ export function createLabPlan({ connections, now = () => Date.now(), listenerUrl
       }
     }
     if (!departmentObj) {
-      return { deptIdHash, department: null, assignments, contacts, offers, orders, stock };
+      return { deptIdHash, department: null, assignments, contacts, offers, orders, purchaseRequests, purchaseDecisions, stock };
     }
-    return { deptIdHash, department: departmentObj, assignments, contacts, offers, orders, stock };
+    return { deptIdHash, department: departmentObj, assignments, contacts, offers, orders, purchaseRequests, purchaseDecisions, stock };
+  }
+
+  async function load(department: string): Promise<DepartmentState> {
+    return loadByIdHash(await departmentIdHash(department));
   }
 
   async function grant(idHash: string, people: string[]): Promise<void> {
@@ -178,7 +191,123 @@ export function createLabPlan({ connections, now = () => Date.now(), listenerUrl
     return { idHash: stored.idHash };
   }
 
-  return {
+  async function placeOrderRecord({ state, offer, quantity, idempotencyKey, allowExisting }: {
+    state: DepartmentState & { department: EkDepartment };
+    offer: string;
+    quantity: number;
+    idempotencyKey?: string;
+    allowExisting: boolean;
+  }): Promise<{ idHash: string; idempotencyKey: string; order: EkOrder }> {
+    const offerRow = state.offers.find(entry => entry.offerId === offer);
+    if (!offerRow) throw new Error(`Ek lab: offer ${offer} is not known in ${state.department.department}.`);
+    const roles = rolesOf({ department: state.department, assignments: state.assignments, subject: self(), atTime: now() });
+    if (!roles.has("customer")) throw new Error("Ek lab: only a customer may place an order.");
+    const key = idempotencyKey ?? `ek-order-${now()}`;
+    const existing = state.orders.find(entry => entry.idempotencyKey === key);
+    if (existing) {
+      if (!allowExisting) throw new Error(`Ek lab: order ${key} is already placed.`);
+      if (existing.customer !== self() || existing.offer !== offer || existing.quantity !== quantity) {
+        throw new Error(`Ek lab: purchase retry ${key} does not match the original order.`);
+      }
+      const idHash = await calculateIdHashOfObj(versioned(existing));
+      await grant(idHash, audience("order", { department: state.department, assignments: state.assignments, row: existing }));
+      return { idHash, idempotencyKey: key, order: existing };
+    }
+    const order = createOrder({
+      department: state.deptIdHash, idempotencyKey: key,
+      customer: self(), seller: self(), offer, quantity, lot: EK_STOCK.lot, facility: EK_STOCK.facility,
+      currency: offerRow.currency, unitAmount: offerRow.unitAmount, admittedAt: 0,
+    });
+    const result = await publish("order", state, order, self());
+    return { ...result, idempotencyKey: key, order };
+  }
+
+  function settledQuantity(state: DepartmentState): number {
+    const stocked = state.stock.reduce((sum, entry) => sum + entry.quantity, 0);
+    let settled = 0;
+    for (const entry of state.orders
+      .filter(order => order.admittedAt > 0)
+      .sort((a, b) => a.admittedAt - b.admittedAt ||
+        (a.idempotencyKey < b.idempotencyKey ? -1 : a.idempotencyKey > b.idempotencyKey ? 1 : 0))) {
+      if (settled + entry.quantity <= stocked) settled += entry.quantity;
+    }
+    return settled;
+  }
+
+  async function admitPlacedOrder(state: DepartmentState & { department: EkDepartment }, placed: EkOrder): Promise<{ idHash: string }> {
+    const stocked = state.stock.reduce((sum, entry) => sum + entry.quantity, 0);
+    const settled = settledQuantity(state);
+    if (placed.quantity > stocked - settled) {
+      throw new Error(`Ek lab: order ${placed.idempotencyKey} wants ${placed.quantity} units but only ${stocked - settled} are available.`);
+    }
+    const obj = createOrder({
+      department: state.deptIdHash, idempotencyKey: placed.idempotencyKey,
+      customer: placed.customer, seller: self(), offer: placed.offer, quantity: placed.quantity,
+      lot: placed.lot, facility: placed.facility,
+      currency: placed.currency, unitAmount: placed.unitAmount, admittedAt: now(),
+    });
+    return publish("order", state, obj, placed.customer);
+  }
+
+  async function processAutomaticPurchase(result: FeedRowInput): Promise<void> {
+    const type = result.obj.$type$;
+    if (!["EkRoleAssignment", "EkOrder", "EkPurchaseRequest", "EkStockReceipt"].includes(type as string)) return;
+    const department = result.obj.department;
+    if (typeof department !== "string") return;
+    await serializedAdmit(async () => {
+      const state = await loadByIdHash(department);
+      if (!state.department) return;
+      const readyState = state as DepartmentState & { department: EkDepartment };
+      const eventKey = type === "EkOrder" || type === "EkPurchaseRequest" ? result.obj.idempotencyKey : undefined;
+      const requests = typeof eventKey === "string"
+        ? state.purchaseRequests.filter(entry => entry.idempotencyKey === eventKey)
+        : state.purchaseRequests;
+      for (const request of requests) {
+        const decision = state.purchaseDecisions.find(entry => entry.idempotencyKey === request.idempotencyKey);
+        const placed = state.orders.find(entry => entry.idempotencyKey === request.idempotencyKey);
+        if (!placed || placed.customer !== request.customer) continue;
+        const customerRoles = rolesOf({ department: state.department, assignments: state.assignments, subject: request.customer, atTime: now() });
+        const ownsCustomer = request.seller === self() && state.assignments.some(entry =>
+          entry.role === "customer" && entry.subject === request.customer && entry.issuer === request.seller && entry.validFrom <= now());
+        const sellerRoles = rolesOf({ department: state.department, assignments: state.assignments, subject: self(), atTime: now() });
+        if (!customerRoles.has("customer") || !sellerRoles.has("seller") || !ownsCustomer) continue;
+        if (decision) {
+          const decisionIdHash = await calculateIdHashOfObj(versioned(decision));
+          await grant(decisionIdHash, audience("purchase-decision", {
+            department: state.department, assignments: state.assignments, row: decision,
+          }));
+          continue;
+        }
+        if (placed.admittedAt > 0) {
+          const admittedIdHash = await calculateIdHashOfObj(versioned(placed));
+          await grant(admittedIdHash, audience("order", {
+            department: state.department, assignments: state.assignments, row: placed,
+          }));
+          continue;
+        }
+        const stocked = state.stock.reduce((sum, entry) => sum + entry.quantity, 0);
+        const settled = settledQuantity(state);
+        if (placed.quantity > stocked - settled) {
+          await publish("purchase-decision", readyState, createPurchaseDecision({
+            department: state.deptIdHash, idempotencyKey: placed.idempotencyKey,
+            customer: placed.customer, seller: self(), outcome: "rejected", reason: "out-of-stock", decidedAt: now(),
+          }), placed.customer);
+          continue;
+        }
+        await admitPlacedOrder(readyState, placed);
+        state.orders = (await loadByIdHash(department)).orders;
+      }
+    });
+  }
+
+  async function recoverAutomaticPurchases(): Promise<void> {
+    const requestIds = await getAllIdObjectEntries(idHashOf(self()), typeNameOf("EkPurchaseRequest"));
+    for (const request of await latest<EkPurchaseRequest>(requestIds)) {
+      await processAutomaticPurchase({ obj: request as unknown as Record<string, unknown>, idHash: "", hash: "" });
+    }
+  }
+
+  const plan = {
     whoAmI(): { person: string } {
       return { person: self() };
     },
@@ -230,7 +359,7 @@ export function createLabPlan({ connections, now = () => Date.now(), listenerUrl
       for (const idHash of await getAllIdObjectEntries(idHashOf(next.deptIdHash), typeNameOf("EkStockReceipt"))) {
         await grant(idHash, [...holders]);
       }
-      for (const type of ["EkOffer", "EkOrder"] as const) {
+      for (const type of ["EkOffer", "EkOrder", "EkPurchaseRequest", "EkPurchaseDecision"] as const) {
         for (const idHash of await getAllIdObjectEntries(idHashOf(next.deptIdHash), typeNameOf(type))) {
           let row: EkLabObject;
           try {
@@ -241,7 +370,7 @@ export function createLabPlan({ connections, now = () => Date.now(), listenerUrl
             if (!isMissingVersionHeadError(error)) throw error;
             continue;
           }
-          const kind = type === "EkOffer" ? "offer" : "order";
+          const kind = KIND_OF_TYPE[type];
           await grant(idHash, audience(kind, { department: next.department, assignments: next.assignments, row }));
         }
       }
@@ -346,26 +475,41 @@ export function createLabPlan({ connections, now = () => Date.now(), listenerUrl
       department: string; offer: string; quantity: number; idempotencyKey?: string;
     }): Promise<{ idHash: string }> {
       const state = await requireDepartment(department);
-      const offerRow = state.offers.find(entry => entry.offerId === offer);
-      if (!offerRow) {
-        throw new Error(`Ek lab: offer ${offer} is not known in ${department}.`);
+      return placeOrderRecord({ state, offer, quantity, idempotencyKey, allowExisting: false });
+    },
+
+    async buy({ department, offer, quantity, idempotencyKey }: {
+      department: string; offer: string; quantity: number; idempotencyKey?: string;
+    }): Promise<{ idHash: string; requestIdHash: string; idempotencyKey: string }> {
+      let state = await requireDepartment(department);
+      const owningSellers = state.assignments
+        .filter(entry => entry.role === "customer" && entry.subject === self() && entry.validFrom <= now())
+        .map(entry => entry.issuer)
+        .filter(seller => rolesOf({ department: state.department, assignments: state.assignments, subject: seller, atTime: now() }).has("seller"));
+      if (owningSellers.length !== 1) {
+        throw new Error(`Ek lab: customer must have exactly one owning seller, found ${owningSellers.length}.`);
       }
-      const roles = rolesOf({ department: state.department, assignments: state.assignments, subject: self(), atTime: now() });
-      if (!roles.has("customer")) {
-        throw new Error("Ek lab: only a customer may place an order.");
+      const seller = owningSellers[0];
+      const placed = await placeOrderRecord({ state, offer, quantity, idempotencyKey, allowExisting: true });
+      state = await requireDepartment(department);
+      const existingRequest = state.purchaseRequests.find(entry => entry.idempotencyKey === placed.idempotencyKey);
+      if (existingRequest) {
+        if (existingRequest.customer !== self() || existingRequest.seller !== seller) {
+          throw new Error(`Ek lab: purchase retry ${placed.idempotencyKey} belongs to another customer.`);
+        }
+        const retried = createPurchaseRequest({
+          department: state.deptIdHash, idempotencyKey: placed.idempotencyKey,
+          customer: self(), seller, requestedAt: Math.max(now(), existingRequest.requestedAt + 1),
+        });
+        const retry = await publish("purchase-request", state, retried, self());
+        return { idHash: placed.idHash, requestIdHash: retry.idHash, idempotencyKey: placed.idempotencyKey };
       }
-      const key = idempotencyKey ?? `ek-order-${now()}`;
-      if (state.orders.some(entry => entry.idempotencyKey === key)) {
-        throw new Error(`Ek lab: order ${key} is already placed.`);
-      }
-      const obj = createOrder({
-        department: state.deptIdHash, idempotencyKey: key,
-        customer: self(), seller: self(), offer, quantity, lot: EK_STOCK.lot, facility: EK_STOCK.facility,
-        // The price is agreed at placement: admission settles exactly this,
-        // never a later offer price.
-        currency: offerRow.currency, unitAmount: offerRow.unitAmount, admittedAt: 0,
+      const request = createPurchaseRequest({
+        department: state.deptIdHash, idempotencyKey: placed.idempotencyKey,
+        customer: self(), seller, requestedAt: now(),
       });
-      return publish("order", state, obj, self());
+      const published = await publish("purchase-request", state, request, self());
+      return { idHash: placed.idHash, requestIdHash: published.idHash, idempotencyKey: placed.idempotencyKey };
     },
 
     /**
@@ -389,27 +533,13 @@ export function createLabPlan({ connections, now = () => Date.now(), listenerUrl
         if (placed.admittedAt !== 0) {
           throw new Error(`Ek lab: order ${idempotencyKey} is already admitted.`);
         }
-        // No oversell: the purchase settles against the same shared balance
-        // every member projects — purchasing's receipts minus everything
-        // already admitted. Serialized above, this check sees every earlier
-        // admission on this instance; admissions racing in from other
-        // workers converge through deterministic settlement in projection.
-        const stocked = state.stock.reduce((sum, entry) => sum + entry.quantity, 0);
-        const admitted = state.orders
-          .filter(entry => entry.admittedAt > 0)
-          .reduce((sum, entry) => sum + entry.quantity, 0);
-        if (placed.quantity > stocked - admitted) {
-          throw new Error(
-            `Ek lab: order ${idempotencyKey} wants ${placed.quantity} units but only ${stocked - admitted} are available.`,
-          );
+        if (state.purchaseRequests.some(entry => entry.idempotencyKey === idempotencyKey)) {
+          throw new Error(`Ek lab: order ${idempotencyKey} is owned by the automatic purchase processor.`);
         }
-        const obj = createOrder({
-          department: state.deptIdHash, idempotencyKey: placed.idempotencyKey,
-          customer: placed.customer, seller: self(), offer: placed.offer, quantity: placed.quantity,
-          lot: placed.lot, facility: placed.facility,
-          currency: placed.currency, unitAmount: placed.unitAmount, admittedAt: now(),
-        });
-        return publish("order", state, obj, placed.customer);
+        if (state.purchaseDecisions.some(entry => entry.idempotencyKey === idempotencyKey)) {
+          throw new Error(`Ek lab: order ${idempotencyKey} has a terminal purchase decision.`);
+        }
+        return admitPlacedOrder(state, placed);
       });
     },
 
@@ -427,14 +557,18 @@ export function createLabPlan({ connections, now = () => Date.now(), listenerUrl
       return { type, kind: KIND_OF_TYPE[type], id: result.obj[ID_FIELD[type]] as string, department: result.obj.department, idHash: result.idHash, hash: result.hash, obj: result.obj };
     },
 
+    processAutomaticPurchase,
+    recoverAutomaticPurchases,
+
     async setOnline({ online }: { online: boolean }): Promise<{ online: boolean }> {
       if (online) await connections.enableAllConnections();
       else await connections.disableAllConnections();
       return { online };
     },
 
-    ...createIoMOps({ connections, self, listenerUrl, email }),
+    ...createIoMOps({ connections: iomConnections, self, email, appBaseUrl }),
   };
+  return plan;
 }
 
 export type LabPlan = ReturnType<typeof createLabPlan>;

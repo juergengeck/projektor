@@ -10,6 +10,8 @@ import type {
   AmwayLabObject,
   AmwayOffer,
   AmwayOrder,
+  AmwayPurchaseDecision,
+  AmwayPurchaseRequest,
   AmwayRoleAssignment,
   AmwayStockReceipt,
 } from "./recipes.ts";
@@ -19,8 +21,8 @@ import type {
 // show inventory nobody purchased.
 export const LAB_STOCK = { lot: "demo-lot-a", facility: "demo-facility" };
 
-export type PublishKind = "contact" | "offer" | "order" | "assignment" | "stock";
-export type AudienceKind = "department" | "assignment" | "contact" | "offer" | "order" | "stock";
+export type PublishKind = "contact" | "offer" | "order" | "purchase-request" | "purchase-decision" | "assignment" | "stock";
+export type AudienceKind = "department" | "assignment" | "contact" | "offer" | "order" | "purchase-request" | "purchase-decision" | "stock";
 
 export interface Rejection {
   type: string;
@@ -79,6 +81,8 @@ export function canPublish(kind: string, { department, assignments, author, subj
   // Stocking up is purchasing's job: the department admin — and only the
   // admin — receives goods into inventory.
   if (kind === "stock") return roles.has("admin");
+  if (kind === "purchase-request") return roles.has("customer") && author === subject;
+  if (kind === "purchase-decision") return roles.has("seller");
   if (kind === "order") {
     if (staff || roles.has("seller")) return true;
     // Preferred-customer self-service: a customer may buy for themselves only.
@@ -109,6 +113,16 @@ export function audience(kind: string, { department, assignments, row }: {
       }
     }
     if ("customer" in row && typeof row.customer === "string") people.add(row.customer);
+  } else if (kind === "purchase-request" || kind === "purchase-decision") {
+    // Every party that can hold/admit the pending order also receives its
+    // automatic terminal state. Only the customer's appointing seller acts
+    // on the request, but nobody can mistake a rejected request for pending.
+    if ("customer" in row && typeof row.customer === "string") {
+      people.add(row.customer);
+      for (const entry of assignments) {
+        if (entry.role === "seller") people.add(entry.subject);
+      }
+    }
   } else if (kind === "offer") {
     // Publishing discloses nothing beyond staff: a published offer reaches
     // the managers, never sellers or customers. The manager shares it down
@@ -162,6 +176,8 @@ export interface DepartmentProjection {
   orders: AmwayOrder[];
   /** Placed but unadmitted orders (`admittedAt === 0`), awaiting the seller. */
   pendingOrders: AmwayOrder[];
+  /** Terminal automatic-purchase failures. Failed requests are no longer pending. */
+  purchaseFailures: PurchaseFailure[];
   /** Facility balance, staff-only: sellers and customers project null and never see stock. */
   availability: { lot: string; facility: string; stocked: number; available: number } | null;
   /**
@@ -174,6 +190,14 @@ export interface DepartmentProjection {
   rejected: Rejection[];
 }
 
+export interface PurchaseFailure {
+  idempotencyKey: string;
+  offer: string;
+  quantity: number;
+  reason: "out-of-stock";
+  decidedAt: number;
+}
+
 export interface Balance {
   party: string;
   role: "customer" | "seller" | "org";
@@ -182,12 +206,14 @@ export interface Balance {
   currency: string;
 }
 
-export function projectDepartment({ department, assignments, contacts, offers, orders, stock, viewer, atTime }: {
+export function projectDepartment({ department, assignments, contacts, offers, orders, purchaseRequests = [], purchaseDecisions = [], stock, viewer, atTime }: {
   department: AmwayDepartment;
   assignments: AmwayRoleAssignment[];
   contacts: AmwayContact[];
   offers: AmwayOffer[];
   orders: AmwayOrder[];
+  purchaseRequests?: AmwayPurchaseRequest[];
+  purchaseDecisions?: AmwayPurchaseDecision[];
   stock: AmwayStockReceipt[];
   viewer: string;
   atTime: number;
@@ -212,7 +238,27 @@ export function projectDepartment({ department, assignments, contacts, offers, o
   const viewerRoles = rolesOf({ department, assignments, subject: viewer, atTime });
   const customerOnly = viewerRoles.size === 1 && viewerRoles.has("customer");
   const authorizedOrders = orders.filter(entry => admit("order", "AmwayOrder", entry.idempotencyKey, entry.seller, entry.customer));
-  const pendingOrders = authorizedOrders.filter(entry => entry.admittedAt === 0);
+  const authorizedRequests = purchaseRequests.filter(entry => {
+    const matchingOrder = authorizedOrders.find(order =>
+      order.idempotencyKey === entry.idempotencyKey && order.customer === entry.customer);
+    const ownsCustomer = assignments.some(assignment => assignment.role === "customer" &&
+      assignment.subject === entry.customer && assignment.issuer === entry.seller) &&
+      rolesOf({ department, assignments, subject: entry.seller, atTime }).has("seller");
+    return Boolean(matchingOrder) && ownsCustomer &&
+      admit("purchase-request", "AmwayPurchaseRequest", entry.idempotencyKey, entry.customer, entry.customer);
+  });
+  const authorizedDecisions = purchaseDecisions.filter(entry => {
+    const matchingRequest = authorizedRequests.find(request =>
+      request.idempotencyKey === entry.idempotencyKey && request.customer === entry.customer && request.seller === entry.seller);
+    const ownsCustomer = assignments.some(assignment =>
+      assignment.role === "customer" && assignment.subject === entry.customer && assignment.issuer === entry.seller) &&
+      rolesOf({ department, assignments, subject: entry.seller, atTime }).has("seller");
+    if (matchingRequest && ownsCustomer) return true;
+    rejected.push({ type: "AmwayPurchaseDecision", id: entry.idempotencyKey, reason: "publisher-not-authorized" });
+    return false;
+  });
+  const rejectedPurchaseKeys = new Set(authorizedDecisions.map(entry => entry.idempotencyKey));
+  const pendingOrders = authorizedOrders.filter(entry => entry.admittedAt === 0 && !rejectedPurchaseKeys.has(entry.idempotencyKey));
   const scopeToViewer = (list: AmwayOrder[]): AmwayOrder[] =>
     customerOnly ? list.filter(entry => entry.customer === viewer) : list;
   // One shared balance for every viewer: everything purchasing received,
@@ -242,6 +288,19 @@ export function projectDepartment({ department, assignments, contacts, offers, o
     }
   }
   const listedOrders = customerOnly ? scopeToViewer(admittedAll) : settledOrders;
+  const purchaseFailures = authorizedDecisions
+    .flatMap(decision => {
+      const order = authorizedOrders.find(entry => entry.idempotencyKey === decision.idempotencyKey && entry.customer === decision.customer);
+      if (!order || order.admittedAt > 0 || (customerOnly && order.customer !== viewer)) return [];
+      return [{
+        idempotencyKey: decision.idempotencyKey,
+        offer: order.offer,
+        quantity: order.quantity,
+        reason: decision.reason,
+        decidedAt: decision.decidedAt,
+      } satisfies PurchaseFailure];
+    })
+    .sort((a, b) => a.decidedAt - b.decidedAt || (a.idempotencyKey < b.idempotencyKey ? -1 : 1));
   const staffViewer = viewerRoles.has("admin") || viewerRoles.has("manager");
   const balancesByKey = new Map<string, Balance>();
   const addBalance = (party: string, role: Balance["role"], receivable: number, payable: number, currency: string): void => {
@@ -275,6 +334,7 @@ export function projectDepartment({ department, assignments, contacts, offers, o
     offers: offers.filter(entry => admit("offer", "AmwayOffer", entry.offerId, entry.publishedBy)),
     orders: listedOrders,
     pendingOrders: scopeToViewer(pendingOrders),
+    purchaseFailures,
     availability: staffViewer
       ? { ...LAB_STOCK, stocked, available: stocked - settledQuantity }
       : null,

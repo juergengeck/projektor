@@ -6,7 +6,7 @@
 
 export const LAB_ROLES = ["admin", "manager", "seller", "customer"] as const;
 export type LabRole = (typeof LAB_ROLES)[number];
-export const AMWAY_LAB_TYPES = ["AmwayDepartment", "AmwayRoleAssignment", "AmwayContact", "AmwayOffer", "AmwayOrder", "AmwayStockReceipt"] as const;
+export const AMWAY_LAB_TYPES = ["AmwayDepartment", "AmwayRoleAssignment", "AmwayContact", "AmwayOffer", "AmwayOrder", "AmwayPurchaseRequest", "AmwayPurchaseDecision", "AmwayStockReceipt"] as const;
 export type AmwayLabType = (typeof AMWAY_LAB_TYPES)[number];
 
 interface RecipeRule {
@@ -32,12 +32,14 @@ export const AmwayLabRecipes: LabRecipe[] = [
   { $type$: "Recipe", name: "AmwayContact", rule: [departmentRef, person("person", true), text("name"), text("role"), person("publishedBy"), integer("publishedAt")] },
   { $type$: "Recipe", name: "AmwayOffer", rule: [departmentRef, text("offerId", true), text("item"), text("priceList"), text("channel"), integer("unitAmount"), text("currency"), person("publishedBy")] },
   { $type$: "Recipe", name: "AmwayOrder", rule: [departmentRef, text("idempotencyKey", true), person("customer"), person("seller"), text("offer"), integer("quantity"), text("lot"), text("facility"), text("currency"), integer("unitAmount"), integer("admittedAt")] },
+  { $type$: "Recipe", name: "AmwayPurchaseRequest", rule: [departmentRef, text("idempotencyKey", true), person("customer"), person("seller", true), integer("requestedAt")] },
+  { $type$: "Recipe", name: "AmwayPurchaseDecision", rule: [departmentRef, text("idempotencyKey", true), person("customer"), person("seller"), text("outcome"), text("reason"), integer("decidedAt")] },
   { $type$: "Recipe", name: "AmwayStockReceipt", rule: [departmentRef, text("receiptId", true), text("lot"), text("facility"), integer("quantity"), person("receivedBy"), integer("receivedAt")] },
 ];
 
 export const AmwayLabReverseMapsForIdObjects: [string, Set<string>][] = AMWAY_LAB_TYPES
   .filter(type => type !== "AmwayDepartment")
-  .map(type => [type, new Set(["department"])]);
+  .map(type => [type, new Set(type === "AmwayPurchaseRequest" ? ["department", "seller"] : ["department"])]);
 
 const HASH = /^[0-9a-f]{64}$/;
 
@@ -122,7 +124,27 @@ export interface AmwayStockReceipt {
   receivedAt: number;
 }
 
-export type AmwayLabObject = AmwayDepartment | AmwayRoleAssignment | AmwayContact | AmwayOffer | AmwayOrder | AmwayStockReceipt;
+export interface AmwayPurchaseRequest {
+  $type$: "AmwayPurchaseRequest";
+  department: string;
+  idempotencyKey: string;
+  customer: string;
+  seller: string;
+  requestedAt: number;
+}
+
+export interface AmwayPurchaseDecision {
+  $type$: "AmwayPurchaseDecision";
+  department: string;
+  idempotencyKey: string;
+  customer: string;
+  seller: string;
+  outcome: "rejected";
+  reason: "out-of-stock";
+  decidedAt: number;
+}
+
+export type AmwayLabObject = AmwayDepartment | AmwayRoleAssignment | AmwayContact | AmwayOffer | AmwayOrder | AmwayPurchaseRequest | AmwayPurchaseDecision | AmwayStockReceipt;
 
 function isRole(role: unknown): role is LabRole {
   return typeof role === "string" && (LAB_ROLES as readonly string[]).includes(role);
@@ -190,5 +212,28 @@ export function createOrder({ department, idempotencyKey, customer, seller, offe
     lot: nonEmpty(lot, "lot"), facility: nonEmpty(facility, "facility"),
     currency: nonEmpty(currency, "currency"), unitAmount: unitAmount as number,
     admittedAt: timestamp(admittedAt, "admittedAt"),
+  };
+}
+
+export function createPurchaseRequest({ department, idempotencyKey, customer, seller, requestedAt }: {
+  department?: unknown; idempotencyKey?: unknown; customer?: unknown; seller?: unknown; requestedAt?: unknown;
+} = {}): AmwayPurchaseRequest {
+  return {
+    $type$: "AmwayPurchaseRequest", department: hash(department, "department"),
+    idempotencyKey: nonEmpty(idempotencyKey, "idempotencyKey"), customer: hash(customer, "customer"),
+    seller: hash(seller, "seller"), requestedAt: timestamp(requestedAt, "requestedAt"),
+  };
+}
+
+export function createPurchaseDecision({ department, idempotencyKey, customer, seller, outcome, reason, decidedAt }: {
+  department?: unknown; idempotencyKey?: unknown; customer?: unknown; seller?: unknown;
+  outcome?: unknown; reason?: unknown; decidedAt?: unknown;
+} = {}): AmwayPurchaseDecision {
+  if (outcome !== "rejected") fail("purchase outcome must be rejected.");
+  if (reason !== "out-of-stock") fail("purchase reason must be out-of-stock.");
+  return {
+    $type$: "AmwayPurchaseDecision", department: hash(department, "department"),
+    idempotencyKey: nonEmpty(idempotencyKey, "idempotencyKey"), customer: hash(customer, "customer"),
+    seller: hash(seller, "seller"), outcome, reason, decidedAt: timestamp(decidedAt, "decidedAt"),
   };
 }

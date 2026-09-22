@@ -84,7 +84,7 @@ test("Lab entry is served same-origin when built", async (t) => {
   t.after(() => close(server));
   const html = await (await fetch(`${base}/amway/lab/`)).text();
   assert.match(html, /<div id="lab-root"><\/div>/);
-  assert.match(html, /Amway · Lab/);
+  assert.match(html, /Amway · Demo workspace/);
   assert.match(html, /\/browser\/assets\//);
   for (const unadvertised of [`${base}/lab/`, `${base}/browser/lab/`]) {
     const body = await (await fetch(unadvertised)).text();
@@ -97,7 +97,7 @@ test("EK lane entry is served same-origin when built", async (t) => {
   t.after(() => close(server));
   const html = await (await fetch(`${base}/ek/lab/`)).text();
   assert.match(html, /<div id="eklab-root"><\/div>/);
-  assert.match(html, /EK · Lab/);
+  assert.match(html, /Elektro Klein AG · EK Lab/);
   assert.match(html, /\/browser\/assets\//);
   for (const unadvertised of [`${base}/eklab/`, `${base}/browser/eklab/`]) {
     const body = await (await fetch(unadvertised)).text();
@@ -105,25 +105,13 @@ test("EK lane entry is served same-origin when built", async (t) => {
   }
 });
 
-test("Lab IoM relay pipes device sockets through the server", async (t) => {
+test("Lab pairing is not served by a Projektor relay", async (t) => {
   const { server, base } = await started();
-  const relay = (token, side) => {
-    const socket = new WebSocket(`${base.replace("http", "ws")}/lab/relay?token=${token}&side=${side}`);
-    socket.binaryType = "arraybuffer";
-    return socket;
-  };
-  const token = `d${"4".repeat(15)}e`;
-  const host = relay(token, "host");
-  const joiner = relay(token, "join");
-  t.after(async () => {
-    host.close();
-    joiner.close();
-    await close(server);
-  });
-  await Promise.all([once(host, "open"), once(joiner, "open")]);
-  host.send("relay alive");
-  const [event] = await once(joiner, "message");
-  assert.equal(event.data, "relay alive");
+  t.after(() => close(server));
+  const socket = new WebSocket(`${base.replace("http", "ws")}/lab/relay?token=obsolete&side=host`);
+  t.after(() => socket.close());
+  await once(socket, "error");
+  assert.notEqual(socket.readyState, WebSocket.OPEN);
 });
 
 test("one instance unlocks, gates scope, and refuses a second unlock", async (t) => {

@@ -1,4 +1,35 @@
+import { spawn, type ChildProcess } from "node:child_process";
+import { connect } from "node:net";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { test, expect } from "@playwright/test";
+
+const COMM_SERVER_PORT = 18341;
+let commserver: ChildProcess | undefined;
+
+test.beforeAll(async () => {
+  if (process.env.AMWAY_DEMO_URL) return;
+  const bundle = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "../../../../one/packages/one.models/comm_server.bundle.js",
+  );
+  commserver = spawn(process.execPath, [bundle, "-h", "127.0.0.1", "-p", String(COMM_SERVER_PORT)], { stdio: "ignore" });
+  const deadline = Date.now() + 30_000;
+  for (;;) {
+    const reachable = await new Promise<boolean>(resolve => {
+      const socket = connect(COMM_SERVER_PORT, "127.0.0.1");
+      socket.on("connect", () => { socket.end(); resolve(true); });
+      socket.on("error", () => resolve(false));
+    });
+    if (reachable) break;
+    if (Date.now() > deadline) throw new Error("local commserver never came up");
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+});
+
+test.afterAll(() => {
+  commserver?.kill();
+});
 
 /**
  * Amway lane contact chat icon: every third-party directory contact carries
@@ -13,11 +44,16 @@ test("amway lane contact chat icon opens 1:1 chat", async ({ page }) => {
   });
   page.on("pageerror", error => errors.push(String(error)));
 
-  await page.goto("/browser/lab/");
+  await page.goto(process.env.AMWAY_DEMO_URL ?? `/browser/lab/?commServer=${encodeURIComponent(`ws://127.0.0.1:${COMM_SERVER_PORT}`)}`);
   await expect(page.getByText("Mesh: 4/4 Nodes Online")).toBeVisible({ timeout: 180_000 });
   const columns = page.locator("section.lab-column");
   await expect(columns).toHaveCount(4);
   const [admin, manager, seller, customer] = [0, 1, 2, 3].map(n => columns.nth(n));
+
+  // A contact needs its worker's role before its audience can be resolved.
+  for (const column of [manager, seller, customer]) {
+    await expect(column.getByLabel("Contact name")).toBeDisabled();
+  }
 
   // No generic pairing section: invites live only as QR codes under the apps.
   await expect(page.getByText("Device pairing")).toHaveCount(0);
@@ -28,11 +64,11 @@ test("amway lane contact chat icon opens 1:1 chat", async ({ page }) => {
   const bodyOverflow = await columns.nth(0).locator(".lab-column-body").evaluate(el => getComputedStyle(el).overflowY);
   expect(bodyOverflow).toBe("auto");
 
-  // IoM invite QR section lives under every app, no clicks needed.
-  for (const n of [0, 1, 2, 3]) {
-    await expect(columns.nth(n).getByLabel("Second device invitation")).toBeVisible();
-    await expect(columns.nth(n).getByRole("button", { name: "Invite device" })).toBeVisible();
+  // Automatically generated IoM QRs remain below the fixed app frames.
+  for (const key of ["admin", "manager", "seller", "customer"]) {
+    await expect(page.getByRole("img", { name: `Device invitation QR for ${key}`, exact: true })).toBeVisible({ timeout: 60_000 });
   }
+  await expect(page.locator(".lab-column-body .lab-device-invite")).toHaveCount(0);
 
   await admin.getByRole("button", { name: "Appoint Manager" }).click();
   await expect(manager.locator(".badge-accent").first()).toBeVisible({ timeout: 90_000 });
@@ -59,13 +95,25 @@ test("amway lane contact chat icon opens 1:1 chat", async ({ page }) => {
   await expect(sellerChat.getByText("icon hello")).toBeVisible({ timeout: 30_000 });
 
   // The customer's closed chat raises an unread notification badge …
-  await expect(customer.locator(".lab-chat-badge").first()).toBeVisible({ timeout: 60_000 });
+  await expect(customer.locator(".lab-chat-badge")).toHaveText("1", { timeout: 60_000 });
+
+  // Repeated text is a separate message; one send must add exactly one unread.
+  await sellerChat.getByLabel("Message Customer One").fill("icon hello");
+  await sellerChat.getByRole("button", { name: "Send" }).click();
+  await expect(sellerChat.getByText("icon hello", { exact: true })).toHaveCount(2);
+  await expect(customer.locator(".lab-chat-badge")).toHaveText("2", { timeout: 60_000 });
+  await expect(seller.locator(".lab-chat-badge")).toHaveCount(0);
 
   await customer.getByRole("button", { name: "Open chat with Seller One" }).click();
   const customerChat = customer.locator('.lab-chat[aria-label="Chat with Seller One"]');
   // … which clears the moment the chat opens.
   await expect(customer.locator(".lab-chat-badge")).toHaveCount(0, { timeout: 30_000 });
-  await expect(customerChat.getByText("icon hello")).toBeVisible({ timeout: 90_000 });
+  await expect(customerChat.getByText("icon hello", { exact: true })).toHaveCount(2, { timeout: 90_000 });
+
+  await customerChat.getByRole("button", { name: "Close chat" }).click();
+  await sellerChat.getByLabel("Message Customer One").fill("one more");
+  await sellerChat.getByRole("button", { name: "Send" }).click();
+  await expect(customer.locator(".lab-chat-badge")).toHaveText("1", { timeout: 60_000 });
 
   // The seller's address book stays with the seller: staff never sees it,
   // even after a full chat round-trip synced across the mesh.

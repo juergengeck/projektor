@@ -1,0 +1,169 @@
+/* EK's website palette, scoped to this entry point. Shared UI components
+ * consume the existing token names; other lanes retain their own theme. */
+.ek-lane .lab-purchase-card {
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.ek-lane .lab-purchase-card .lab-item-main {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+html:root[data-brand="ek"],
+html:root:has(.ek-lane) {
+  --ek-red: #ed1d1e;
+  --ek-charcoal: #2d3239;
+  --amway-surface: #fff;
+  --amway-surface-elevated: #fff;
+  --amway-surface-subtle: #f5f5f5;
+  --amway-surface-sunken: #ededed;
+  --amway-neutral: #e6e6e6;
+  --amway-border: #d6d8da;
+  --amway-border-subtle: #e8e8e8;
+  --amway-border-focus: var(--ek-red);
+  --amway-ink: var(--ek-charcoal);
+  --amway-ink-secondary: #494949;
+  --amway-muted: #656565;
+  --amway-subtle: #757575;
+  /* Slightly deeper red keeps small white button labels readable. */
+  --amway-accent: #d51112;
+  --amway-accent-hover: #ba1011;
+  --amway-accent-active: #9e0d0e;
+  --amway-accent-light: #fde9e9;
+  --amway-accent-subtle: #fff5f5;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+}
+
+html[data-theme="dark"]:root:has(.ek-lane) {
+  --amway-surface: #1d2024;
+  --amway-surface-elevated: #25292e;
+  --amway-surface-subtle: #25292e;
+  --amway-surface-sunken: #16181b;
+  --amway-neutral: #34383e;
+  --amway-border: #454a51;
+  --amway-border-subtle: #363b41;
+  --amway-ink: #f5f5f5;
+  --amway-ink-secondary: #d0d2d4;
+  --amway-muted: #b3b6ba;
+  --amway-subtle: #a3a7ac;
+  --amway-accent: #f47778;
+  --amway-accent-hover: #ff9697;
+  --amway-accent-active: #ffb6b7;
+  --amway-accent-light: #492326;
+  --amway-accent-subtle: #352023;
+}
+
+.ek-lane a { color: var(--amway-accent); }
+.ek-lane a:hover { color: var(--amway-accent-hover); }
+.ek-lane .btn-accent { background: #d51112; }
+.ek-lane .btn-accent:hover { background: #ba1011; }
+
+.ek-lane .lab-header {
+  position: relative;
+  overflow: hidden;
+  padding: 0;
+  gap: 0;
+  border-top: 4px solid var(--ek-red);
+}
+
+.ek-brand-heading {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  gap: 2rem;
+  padding: 1.5rem 2rem;
+}
+
+.ek-logo {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.ek-logo img {
+  display: block;
+  width: 200px;
+  height: auto;
+}
+
+.ek-eyebrow {
+  margin: 0 0 0.25rem;
+  color: var(--amway-accent);
+  font-size: 0.7rem;
+  font-weight: 750;
+  letter-spacing: 0.13em;
+}
+
+.ek-lane .lab-title-group h1 {
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
+.ek-project-art {
+  position: relative;
+  align-self: stretch;
+  width: 190px;
+  min-height: 160px;
+  overflow: hidden;
+  background: var(--ek-charcoal);
+}
+
+.ek-project-art img {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 40%;
+  transform: scale(1.5);
+}
+
+.ek-project-art span {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 1.5rem 0.75rem 0.5rem;
+  background: linear-gradient(transparent, #2d3239e6);
+  color: #fff;
+  font-size: 0.65rem;
+}
+
+.ek-lane .lab-header-actions {
+  flex-basis: 100%;
+  padding: 0.75rem 1.25rem;
+  border-top: 1px solid var(--amway-border-subtle);
+  background: var(--amway-surface-subtle);
+}
+
+.ek-lane .lab-column-header::before {
+  background: var(--ek-red);
+}
+
+.ek-lane .lab-role-tags .badge-info,
+.ek-lane .lab-role-tags .badge-success {
+  color: var(--amway-ink);
+  background: var(--amway-surface-sunken);
+  border-color: var(--amway-border);
+}
+
+.ek-lane .lab-feed-EkOffer,
+.ek-lane .lab-feed-EkRoleAssignment {
+  border-left-color: var(--ek-red);
+}
+
+.ek-lane .lab-feed-EkOrder,
+.ek-lane .lab-feed-EkContact {
+  border-left-color: var(--ek-charcoal);
+}
+
+@media (max-width: 700px) {
+  .ek-lane { padding: 0.75rem; }
+  .ek-brand-heading { gap: 1rem; padding: 1.25rem; }
+  .ek-logo img { width: 130px; }
+  .ek-lane .lab-title-group h1 { font-size: 1.5rem; }
+  .ek-eyebrow { font-size: 0.6rem; letter-spacing: 0.06em; }
+  .ek-project-art { display: none; }
+  .ek-lane .lab-header-actions { gap: 0.5rem; padding: 0.75rem; }
+}

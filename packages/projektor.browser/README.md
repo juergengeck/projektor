@@ -49,17 +49,37 @@ any page.
 
 ## Device pairing (IoM)
 
-Each column can invite a second device of its own person: `Invite device`
-creates a same-person pairing invitation bound to a token room on the
-rendezvous relay (`/lab/relay`, served by `scripts/amway-server.mjs`).
+Each app automatically creates an IoM invitation when its worker is ready.
+The QR and copyable link appear below the fixed app frame, following Flexibel's
+lane layout. Click the QR to enlarge it. Pairing completion consumes the displayed
+QR; a new invitation can be requested in the same panel.
+
+Discovery and device pairing use Glue's standard ONE commserver at
+`wss://api.glue.one/comm` through a dedicated `ConnectionsModel`. There is no
+Projektor rendezvous relay. Local integration tests can override the commserver
+with `?commServer=ws://127.0.0.1:<port>`.
 Opening the invitation on another device registers it with the exact same
-email, which reproduces the exact same Person id — the pairing token then
-authorizes the new instance keys, and the native stack reports the link as
-Internet of Me. The lane accepts pastes under the quiet Device pairing
-disclosure; grants are person-scoped, so the department replicates with no
-re-granting. A different person is refused before any network traffic.
+email, which reproduces the same Person id. The token authorizes the new instance
+keys and the native stack reports the link as Internet of Me. Person-scoped
+access grants then replicate the department without re-granting. A different
+person is refused before network traffic.
 
 - **Host → worker:** refinio.api `IpcTransport` over the worker port (`handler:call`, `handler:list`).
 - **Worker ↔ worker:** CHUM only. A worker dials `lab://<key>` through the one.models `lab:` dialer; the host transfers the MessagePort to the target, which accepts it as an external connection. The host never reads Amway data.
 - **Data:** `AmwayDepartment`, `AmwayRoleAssignment`, `AmwayContact`, `AmwayOffer` and `AmwayOrder` are versioned ONE objects, disclosed by sender-side access grants.
-- **UI:** a snapshot on boot/resume, then feed-forward rows from each worker's `onVersionedObjStored`.
+- **UI:** a snapshot on boot, then feed-forward rows from each worker's semantic `onVersionedObj` event after its version head is readable.
+
+## Amway and EK demo purchases
+
+The customer’s **Buy** action publishes a typed purchase request. The appointed
+seller worker confirms it automatically through the existing stock checks;
+confirmed orders update the customer history and the admin/manager inventory.
+There is no second seller button. Processing requests are shown as processing,
+and an out-of-stock decision is shown as a failed purchase, without decrementing
+stock or creating balances. The lower-level placement/admission operations
+remain available for protocol tests in both lanes.
+
+The seller decides against inventory currently replicated to that worker. An
+out-of-stock decision is final for that request; after a later restock arrives,
+the customer can submit a new purchase. A failed request never silently becomes
+a charge after restocking.

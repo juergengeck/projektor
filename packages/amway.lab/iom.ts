@@ -7,32 +7,35 @@
  * with fresh instance keys. A same-person pairing invitation then authorizes
  * the new instance keys under a one-time token, and the native stack reports
  * the link as Internet of Me. Pairing never transfers identity; the invite
- * only introduces the two instances over a rendezvous relay neither side
- * could dial directly (browsers cannot listen, and the mesh `lab://`
- * endpoints are unreachable across devices).
+ * only introduces the two instances over a commserver neither side could
+ * replace by listening directly (browsers cannot listen, and the mesh
+ * `lab://` endpoints are unreachable across devices) — the same join_token
+ * discovery every ONE app pairs with (see the glue commserver and flexibel).
+ * The mesh itself stays on the local `lab://` switch; only IoM discovery
+ * and pairing ride the commserver, through a dedicated ConnectionsModel
+ * whose pairing listener lives there.
  *
  * Wire format mirrors the ONE stack's canonical invitation (ConnectionPlan +
- * ContactPairingUtils in flexibel): the invitation travels as
- * `{origin}/invites/inviteDevice/?invited=true&connectionMode=primed` with
- * the owner hint as `fe`/`fdi` query params and the pairing handshake as an
+ * ContactPairingUtils in flexibel): the invitation travels as the lane entry
+ * `{appBase}?invited=true&connectionMode=primed` with the owner hint as
+ * `fe`/`fdi` query params and the pairing handshake as an
  * `encodeURIComponent(JSON)` fragment carrying `{token, url, publicKey,
  * pairingProtocolVersion, pairingMode: "primed", identityRelation:
  * "same-person", deviceEnrollmentPersonId, mode: "IoM"}`. The fragment `url`
- * is the join-side relay room; the origin is only an entry point and is
- * never fetched. Acceptance is paste-only; no route is linked from any page.
+ * is the commserver both sides dial; opening the lane URL starts the join
+ * flow in the lane itself.
  */
-import { createWebSocket } from "../../../one/packages/one.core/lib/system/websocket.js";
-import Connection from "../../../one/packages/one.models/lib/misc/Connection/Connection.js";
-import WebSocketPlugin from "../../../one/packages/one.models/lib/misc/Connection/plugins/WebSocketPlugin.js";
-import PromisePlugin from "../../../one/packages/one.models/lib/misc/Connection/plugins/PromisePlugin.js";
 import { PAIRING_PROTOCOL_VERSION } from "../../../one/packages/one.models/lib/misc/ConnectionEstablishment/PairingManager.js";
 import type ConnectionsModel from "../../../one/packages/one.models/lib/models/ConnectionsModel.js";
+
+/** Commserver carrying lane IoM discovery and pairing (glue service). */
+export const DEFAULT_COMM_SERVER_URL = "wss://api.glue.one/comm";
 
 export { PAIRING_PROTOCOL_VERSION };
 
 export interface IoMInvite {
   token: string;
-  /** Join-side rendezvous room both devices dial through the relay. */
+  /** Commserver both devices dial for discovery and the pairing handshake. */
   url: string;
   publicKey: string;
   pairingProtocolVersion: number;
@@ -51,16 +54,12 @@ const TOKEN_PATTERN = /^[0-9a-zA-Z_-]{16,128}$/;
 const INVITE_DEVICE_PATH = /\/(?:invites\/)?invitedevice(?:\/|$)/;
 const INVITE_PARTNER_PATH = /\/(?:invites\/)?invitepartner(?:\/|$)/;
 
-function relayHttpOrigin(relayUrl: string): string {
-  const url = new URL(relayUrl);
+function commServerHttpOrigin(commServerUrl: string): string {
+  const url = new URL(commServerUrl);
   if (url.protocol !== "ws:" && url.protocol !== "wss:") {
-    throw new Error("Amway lab: IoM rendezvous must be a ws:// or wss:// URL.");
+    throw new Error("Amway lab: IoM commserver must be a ws:// or wss:// URL.");
   }
   return `${url.protocol === "wss:" ? "https:" : "http:"}//${url.host}`;
-}
-
-export function relayRoomUrl(relay: string, token: string, side: "host" | "join"): string {
-  return `${relay}?token=${token}&side=${side}`;
 }
 
 function reject(reason: string): never {
@@ -69,8 +68,8 @@ function reject(reason: string): never {
 
 /**
  * Strictly validate an invitation URL; anything else fails fast. Only the
- * path (mode), the `fe`/`fdi` params and the fragment (token, relay room)
- * matter — the origin is never fetched.
+ * path (mode), the `fe`/`fdi` params and the fragment (token, commserver
+ * URL) matter — the origin is never fetched.
  */
 export function decodeIoMInvite(invitationUrl: string): IoMInvite {
   let url: URL;
@@ -95,7 +94,7 @@ export function decodeIoMInvite(invitationUrl: string): IoMInvite {
   if (typeof fragment.token !== "string" || !TOKEN_PATTERN.test(fragment.token)) return reject("bad token");
   if (typeof fragment.url !== "string") return reject("bad rendezvous");
   try {
-    relayHttpOrigin(fragment.url);
+    commServerHttpOrigin(fragment.url);
   } catch {
     return reject("bad rendezvous");
   }
@@ -127,6 +126,7 @@ export function decodeIoMInvite(invitationUrl: string): IoMInvite {
 
 interface PairingInvitation {
   token: string;
+  url: string;
   publicKey: string;
 }
 
@@ -141,47 +141,24 @@ interface LabPairing {
     myPersonId?: string,
     options?: { mode?: string },
   ): Promise<void>;
+  onPairingSuccess: {
+    listen(callback: (...args: unknown[]) => void): () => void;
+  };
 }
 
 export interface IoMDeps {
+  /** IoM-dedicated connections: pairing listener homed on the commserver. */
   connections: ConnectionsModel;
   /** Instance owner Person id hash. */
   self(): string;
-  /** Listener id carrying the registered pairing credential (lab:// url). */
-  listenerUrl: string;
   /** Instance owner email; IoM invitations name it as the identity hint. */
   email: string;
+  /** Lane entry URL prefix the QR-encoded invitation links back to. */
+  appBaseUrl: string;
 }
-
-interface PendingInvite {
-  socket: { close(): void };
-  paired: Promise<void>;
-}
-
-const pendingInvites = new Map<string, PendingInvite>();
 
 function unref(timer: unknown): void {
   (timer as { unref?: () => void } | undefined)?.unref?.();
-}
-
-function waitOpen(socket: WebSocket, url: string, timeoutMs: number): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const done = (finish: () => void): void => {
-      clearTimeout(timer);
-      socket.removeEventListener("open", onOpen);
-      socket.removeEventListener("error", onError);
-      finish();
-    };
-    const timer = setTimeout(() => {
-      socket.close();
-      done(() => reject(new Error(`Amway lab: rendezvous unreachable (${url}).`)));
-    }, timeoutMs);
-    unref(timer);
-    const onOpen = (): void => done(resolve);
-    const onError = (): void => done(() => reject(new Error(`Amway lab: rendezvous unreachable (${url}).`)));
-    socket.addEventListener("open", onOpen);
-    socket.addEventListener("error", onError);
-  });
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
@@ -196,48 +173,56 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): 
   }), timeout]);
 }
 
-export function createIoMOps({ connections, self, listenerUrl, email }: IoMDeps) {
+/** Resolve once the pairing with this token commits on our side. */
+function waitForPairingToken(
+  pairing: LabPairing,
+  token: string,
+  timeoutMs: number,
+  label: string,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      unlisten();
+      reject(new Error(label));
+    }, timeoutMs);
+    unref(timer);
+    const unlisten = pairing.onPairingSuccess.listen((...args: unknown[]) => {
+      if (args[5] !== token) return;
+      clearTimeout(timer);
+      unlisten();
+      resolve();
+    });
+  });
+}
+
+export function createIoMOps({ connections, self, email, appBaseUrl }: IoMDeps) {
   const pairing = (connections as unknown as { pairing: LabPairing }).pairing;
 
   return {
     /**
-     * Create a same-person pairing invitation and host its rendezvous room.
-     * Returns immediately with the shareable URL; pairing completes when the
-     * second device accepts. Await it with awaitIoMInvite.
+     * Create a same-person pairing invitation on the commserver. Creating
+     * the invitation registers this instance's pairing listener there, so
+     * this is purely local work plus the listener registration — no relay
+     * room to host. Returns immediately with the shareable lane URL; pairing
+     * completes when the second device accepts. Await it with awaitIoMInvite.
      */
-    async createIoMInvite({ relayUrl, openTimeoutMs = 15_000 }: {
-      relayUrl: string;
-      openTimeoutMs?: number;
-    }): Promise<{ invitationUrl: string; token: string; person: string }> {
+    async createIoMInvite(): Promise<{ invitationUrl: string; token: string; person: string }> {
       const person = self();
       if (!email || !email.includes("@")) throw new Error("Amway lab: IoM is not wired for this instance (owner email missing).");
-      const relay = String(relayUrl ?? "").trim();
-      const origin = relayHttpOrigin(relay);
       const invitation = await pairing.createInvitation(person, undefined, {
         mode: "primed",
         identityRelation: "same-person",
         deviceEnrollmentPersonId: person,
       });
-      const socket = createWebSocket(relayRoomUrl(relay, invitation.token, "host"));
-      await waitOpen(socket, relay, openTimeoutMs);
-      // The outgoing side gains its PromisePlugin in connectWithEncryption;
-      // the accepted side needs it added explicitly (the lab: chum-accept
-      // path does the same for MessagePort sockets).
-      const incoming = Connection.fromPlugin(new WebSocketPlugin(socket));
-      incoming.addPlugin(new PromisePlugin());
-      const paired = connections.acceptExternalConnection(incoming, listenerUrl).then(() => undefined);
-      // Never float: awaitIoMInvite observes this promise; the catch below
-      // only records so an unobserved failure cannot crash the worker.
-      const observed = paired.catch(() => undefined);
-      pendingInvites.set(invitation.token, { socket, paired: observed });
-      const inviteUrl = new URL(`${origin}/invites/inviteDevice/`);
+      const base = String(appBaseUrl ?? "").trim() || "http://localhost/";
+      const inviteUrl = new URL(base);
       inviteUrl.searchParams.set("invited", "true");
       inviteUrl.searchParams.set("connectionMode", "primed");
       inviteUrl.searchParams.set("fe", email);
       inviteUrl.searchParams.set("fdi", person);
       inviteUrl.hash = encodeURIComponent(JSON.stringify({
         token: invitation.token,
-        url: relayRoomUrl(relay, invitation.token, "join"),
+        url: invitation.url,
         publicKey: String(invitation.publicKey),
         pairingProtocolVersion: PAIRING_PROTOCOL_VERSION,
         pairingMode: "primed",
@@ -248,23 +233,21 @@ export function createIoMOps({ connections, self, listenerUrl, email }: IoMDeps)
       return { invitationUrl: inviteUrl.toString(), token: invitation.token, person };
     },
 
-    /** Wait for the pairing started by createIoMInvite (socket stays open). */
+    /** Wait for the pairing started by createIoMInvite to commit. */
     async awaitIoMInvite({ token, timeoutMs = 120_000 }: {
       token: string;
       timeoutMs?: number;
     }): Promise<{ person: string }> {
-      const pending = pendingInvites.get(token);
-      if (!pending) throw new Error("Amway lab: unknown IoM invitation token.");
-      await withTimeout(pending.paired, timeoutMs, "Amway lab: IoM pairing timed out waiting for the second device.");
-      pendingInvites.delete(token);
+      await waitForPairingToken(pairing, token, timeoutMs, "Amway lab: IoM pairing timed out waiting for the second device.");
       return { person: self() };
     },
 
     /**
      * Accept an IoM invitation on a device holding the invited identity
      * (registered with the exact invited email). Runs the standard
-     * same-person pairing over the rendezvous room; the token authorizes
-     * this instance's additional keys. Fails fast for any other person.
+     * same-person pairing through the commserver named in the invitation;
+     * the token authorizes this instance's additional keys. Fails fast for
+     * any other person.
      */
     async acceptIoMInvite({ invitationUrl, timeoutMs = 120_000 }: {
       invitationUrl: string;

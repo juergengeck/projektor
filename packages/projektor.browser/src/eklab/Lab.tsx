@@ -1,23 +1,42 @@
 // packages/projektor.browser/src/lab/Lab.tsx
 import { useEffect, useReducer, useRef, useState } from "react";
-import { QRCodeSVG } from "qrcode.react";
-import { bootLab, LAB_KEYS, type FeedRow, type LabHandle, type LabKey } from "./transport";
+import { LabDeviceInvite } from "../components/LabDeviceInvite";
+import { bootJoinInstance, bootLab, LAB_KEYS, type FeedRow, type LabHandle, type LabKey } from "./transport";
 import type { PortApiClient } from "@projektor/ek.lab/port-ipc.ts";
-import { Badge, RoleBadge, StatusBadge } from "../components/ui";
+import { Badge, RoleBadge } from "../components/ui";
+import ekLogo from "./assets/elektro-klein-logo.jpg";
+import omniturm from "./assets/omniturm.jpg";
 
-function defaultRelayUrl(): string {
-  const secure = window.location.protocol === "https:";
-  return `${secure ? "wss:" : "ws:"}//${window.location.host}/lab/relay`;
+/**
+ * Invitation link opened from a QR code (`?invited=true` plus the pairing
+ * payload in the hash): the lane offers to join as a second device instead
+ * of booting another mesh.
+ */
+function inviteLinkFromLocation(): string | null {
+  try {
+    const url = new URL(window.location.href);
+    return url.searchParams.get("invited") === "true" && url.hash.length > 1 ? url.toString() : null;
+  } catch {
+    return null;
+  }
 }
 
-const TITLES: Record<LabKey, { title: string; subtitle: string; icon: string; roleType: string }> = {
-  admin: { title: "Org Admin", subtitle: "Root Authority & Scope Governance", icon: "🏛️", roleType: "admin" },
-  manager: { title: "Manager", subtitle: "Catalog, Offers & Team Management", icon: "🏢", roleType: "manager" },
-  seller: { title: "Seller", subtitle: "Sales & Order Admission", icon: "💼", roleType: "seller" },
-  customer: { title: "Customer", subtitle: "Client Account & Direct Purchase", icon: "👤", roleType: "customer" },
+const TITLES: Record<LabKey, { title: string; subtitle: string; roleType: string }> = {
+  admin: { title: "Klein", subtitle: "Root Authority & Scope Governance", roleType: "admin" },
+  manager: { title: "Bauleiter", subtitle: "Catalog, Offers & Team Management", roleType: "manager" },
+  seller: { title: "Vorarbeiter", subtitle: "Sales & Order Admission", roleType: "seller" },
+  customer: { title: "Werker", subtitle: "Client Account & Direct Purchase", roleType: "customer" },
 };
 
 const DEPARTMENT = "ek-de";
+
+function roleLabel(role: string): string {
+  return Object.hasOwn(TITLES, role) ? TITLES[role as LabKey].title : role;
+}
+
+function EkRoleBadge({ role }: { role: string }) {
+  return <RoleBadge role={role} label={roleLabel(role)} />;
+}
 
 /** Clipboard fallback for contexts without navigator.clipboard. */
 function fallbackCopy(text: string) {
@@ -74,6 +93,7 @@ export interface View {
   offers: Offer[];
   orders: Order[];
   pendingOrders: Order[];
+  purchaseFailures: { idempotencyKey: string; offer: string; quantity: number; reason: string; decidedAt: number }[];
   availability: { lot: string; facility: string; stocked: number; available: number } | null;
   balances: Balance[];
   rejected: { type: string; id: string; reason: string }[];
@@ -180,6 +200,7 @@ const EMPTY_VIEW: View = {
   offers: [],
   orders: [],
   pendingOrders: [],
+  purchaseFailures: [],
   availability: null,
   balances: [],
   rejected: [],
@@ -210,11 +231,11 @@ function formatFeedLabel(row: FeedRow): string {
   }
   if (row.type === "EkContact") {
     const obj = row.obj as Record<string, unknown>;
-    return `Contact ${obj.name || row.id} (${obj.role})`;
+    return `Contact ${obj.name || row.id} (${roleLabel(String(obj.role))})`;
   }
   if (row.type === "EkRoleAssignment") {
     const obj = row.obj as Record<string, unknown>;
-    return `Role ${(obj.subject as string)?.slice(0, 8)}… → ${obj.role}`;
+    return `Role ${(obj.subject as string)?.slice(0, 8)}… → ${roleLabel(String(obj.role))}`;
   }
   if (row.type === "EkDepartment") {
     return `Department ${row.id}`;
@@ -464,14 +485,28 @@ export default function Lab() {
   const [state, dispatch] = useReducer(reduce, undefined, initial);
   const [boot, setBoot] = useState<"booting" | "live" | string>("booting");
   const [bootStage, setBootStage] = useState("spawning workers");
+  const [buying, setBuying] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const lab = useRef<LabHandle | null>(null);
-  const [relayUrl, setRelayUrl] = useState<string>(() => defaultRelayUrl());
-  const [iomInvites, setIomInvites] = useState<Record<string, { url: string; status: string }>>({});
+  const [joinInvite] = useState<string | null>(() => inviteLinkFromLocation());
+  const [joinStatus, setJoinStatus] = useState("");
+  const joinHandle = useRef<LabHandle | null>(null);
+  const [joined, setJoined] = useState<null | { key: LabKey; person: string; view: View }>(null);
 
   useEffect(() => {
     let cancelled = false;
     const offs: (() => void)[] = [];
+
+    if (joinInvite) {
+      // Invitation link: join-only page with no mesh boot. The inviting tab
+      // stays alive elsewhere and holds the pairing listener; booting a mesh
+      // here would only waste workers.
+      setBootStage("invitation link — join only");
+      setBoot("live");
+      return () => {
+        cancelled = true;
+      };
+    }
 
     bootLab(setBootStage)
       .then(async handle => {
@@ -492,7 +527,7 @@ export default function Lab() {
           offs.push(
             client.onFeed((row: FeedRow) => {
               dispatch({ kind: "feed", key, row });
-              if (row.type === "EkRoleAssignment" || row.type === "EkDepartment" || row.type === "EkOrder" || row.type === "EkStockReceipt") {
+              if (row.type === "EkRoleAssignment" || row.type === "EkDepartment" || row.type === "EkOrder" || row.type === "EkPurchaseRequest" || row.type === "EkPurchaseDecision" || row.type === "EkStockReceipt") {
                 snapshot().catch(error => dispatch({ kind: "notice", key, notice: error.message }));
               }
             }),
@@ -546,39 +581,11 @@ export default function Lab() {
     }
   }
 
-  async function toggleNode(key: LabKey) {
-    const handle = lab.current;
-    if (!handle) return;
-    const online = !state[key].online;
-    handle.setSwitch(key, online);
-    await handle.clients[key].call("ekLab", "setOnline", { online });
-    dispatch({ kind: "online", key, online });
-    if (online) {
-      dispatch({
-        kind: "snapshot",
-        key,
-        view: await handle.clients[key].call("ekLab", "getDepartment", { department: DEPARTMENT }),
-      });
-    }
-  }
-
-  async function toggleAll(online: boolean) {
-    const handle = lab.current;
-    if (!handle) return;
-    for (const key of LAB_KEYS) {
-      if (state[key].online !== online) {
-        handle.setSwitch(key, online);
-        await handle.clients[key].call("ekLab", "setOnline", { online });
-        dispatch({ kind: "online", key, online });
-        if (online) {
-          dispatch({
-            kind: "snapshot",
-            key,
-            view: await handle.clients[key].call("ekLab", "getDepartment", { department: DEPARTMENT }),
-          });
-        }
-      }
-    }
+  async function buy(offer: string) {
+    if (buying) return;
+    setBuying(true);
+    try { await run("customer", "buy", { offer, quantity: 1 }); }
+    finally { setBuying(false); }
   }
 
   function copyPerson(key: LabKey) {
@@ -589,54 +596,86 @@ export default function Lab() {
     setTimeout(() => setCopiedKey(null), 1800);
   }
 
-  function inviteNotice(key: LabKey, url: string, status: string) {
-    setIomInvites(current => {
-      const entry = current[key];
-      if (url && entry && entry.url !== url) return current;
-      return { ...current, [key]: { url, status } };
-    });
-  }
-
-  /** Create a same-person pairing invitation for this column's device lane. */
-  async function inviteDevice(key: LabKey) {
-    const handle = lab.current;
-    if (!handle || boot !== "live") return;
-    setIomInvites(current => ({ ...current, [key]: { url: "", status: "creating invitation…" } }));
+  /** Join link opened from a QR invitation: boot a same-person device and pair it. */
+  async function joinWithInviteLink(invitationUrl: string) {
+    if (joinHandle.current) {
+      setJoinStatus("A joined device is already active; leave it first.");
+      return;
+    }
+    let key: LabKey | null = null;
     try {
-      const result = await handle.clients[key].call("ekLab", "createIoMInvite", {
-        relayUrl: relayUrl.trim(),
-      }) as { invitationUrl: string; token: string };
-      setIomInvites(current => ({ ...current, [key]: { url: result.invitationUrl, status: "waiting for device…" } }));
-      // The room stays hosted; this only observes the pairing outcome.
-      void handle.clients[key].call("ekLab", "awaitIoMInvite", { token: result.token, timeoutMs: 600_000 })
-        .then(() => inviteNotice(key, result.invitationUrl, "device paired ✓"))
-        .catch(error => inviteNotice(
-          key,
-          result.invitationUrl,
-          `pairing failed: ${error instanceof Error ? error.message : String(error)}`,
-        ));
+      const prefix = (new URL(invitationUrl).searchParams.get("fe") ?? "").split("@")[0];
+      key = (LAB_KEYS as readonly string[]).includes(prefix) ? (prefix as LabKey) : null;
+    } catch {
+      key = null;
+    }
+    if (!key) {
+      setJoinStatus("That URL is not a lab device invitation.");
+      return;
+    }
+    setJoinStatus("booting device…");
+    setJoined(null);
+    try {
+      const handle = await bootJoinInstance(key);
+      joinHandle.current = handle;
+      const client = handle.clients[key];
+      const snapshotJoined = async () => {
+        const raw = await client.call("ekLab", "getDepartment", { department: DEPARTMENT }) as View;
+        const view = raw.known ? raw : { ...EMPTY_VIEW };
+        setJoined(current => current ? { ...current, view } : current);
+      };
+      client.onFeed((row: FeedRow) => {
+        if (row.type === "EkRoleAssignment" || row.type === "EkDepartment" || row.type === "EkOrder" || row.type === "EkPurchaseRequest" || row.type === "EkPurchaseDecision" || row.type === "EkStockReceipt") {
+          void snapshotJoined().catch(() => {});
+        }
+      });
+      const accepted = await client.call("ekLab", "acceptIoMInvite", {
+        invitationUrl,
+      }) as { person: string };
+      setJoined({ key, person: accepted.person, view: { ...EMPTY_VIEW } });
+      await snapshotJoined().catch(() => {});
+      setJoinStatus("device paired ✓");
     } catch (error) {
-      setIomInvites(current => ({
-        ...current,
-        [key]: { url: "", status: `invite failed: ${error instanceof Error ? error.message : String(error)}` },
-      }));
+      await joinHandle.current?.stop().catch(() => {});
+      joinHandle.current = null;
+      setJoined(null);
+      setJoinStatus(`join failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
-  const allOnline = LAB_KEYS.every(k => state[k].online);
+  async function leaveJoined() {
+    await joinHandle.current?.stop().catch(() => {});
+    joinHandle.current = null;
+    setJoined(null);
+    setJoinStatus("");
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("invited");
+      window.history.replaceState(null, "", url.pathname + url.search);
+    } catch {
+      // Link cleanup is cosmetic; the join state above already reset.
+    }
+  }
+
   const onlineCount = LAB_KEYS.filter(k => state[k].online).length;
 
   return (
-    <div className="lab-container">
+    <div className="lab-container ek-lane">
       {/* Top Navigation & Mesh Status Header */}
       <header className="lab-header">
-        <div className="lab-title-group">
-          <h1>
-            <span>🌐</span> EK lab
-          </h1>
-          <p className="lab-subtitle">
-            Four independent Web Workers running isolated ONE instances · Pure CHUM peer-to-peer sync · Host switches MessagePorts only
-          </p>
+        <div className="ek-brand-heading">
+          <a className="ek-logo" href="https://www.e-k-ag.de/" target="_blank" rel="noreferrer" aria-label="Elektro Klein AG website">
+            <img src={ekLogo} width="200" height="70" alt="Elektro Klein AG" />
+          </a>
+          <div className="lab-title-group">
+            <p className="ek-eyebrow">ELEKTRO KLEIN AG</p>
+            <h1>EK lab</h1>
+            <p className="lab-subtitle">Four connected workspaces · One team</p>
+          </div>
+        </div>
+        <div className="ek-project-art">
+          <img src={omniturm} alt="Omniturm, an Elektro Klein project in Frankfurt" />
+          <span>Omniturm · Frankfurt</span>
         </div>
 
         <div className="lab-header-actions">
@@ -651,31 +690,10 @@ export default function Lab() {
             </span>
           </div>
 
-          <button
-            type="button"
-            className="secondary sm"
-            disabled={boot !== "live"}
-            onClick={() => void toggleAll(!allOnline)}
-          >
-            {boot === "booting"
-              ? "Starting…"
-              : boot === "live"
-                ? (allOnline ? "❚❚ Pause Entire Mesh" : "● Resume Entire Mesh")
-                : "Unavailable"}
-          </button>
-
           <a href="#/overview" className="btn btn-secondary sm" style={{ textDecoration: "none" }}>
             ← Single-Instance App
           </a>
-          <label style={{ display: "flex", gap: "0.4rem", alignItems: "center", fontSize: "0.72rem", color: "var(--amway-muted)" }}>
-            Rendezvous
-            <input
-              value={relayUrl}
-              onChange={event => setRelayUrl(event.target.value)}
-              aria-label="Pairing rendezvous URL"
-              style={{ width: "14rem", fontSize: "0.72rem" }}
-            />
-          </label>
+
         </div>
       </header>
 
@@ -692,6 +710,34 @@ export default function Lab() {
         </div>
       )}
 
+      {/* Invitation link (QR): join this lane as a second device */}
+      {joinInvite && (
+        <div className="card" role="dialog" aria-label="Join with device invitation" style={{ marginBottom: "1.25rem", fontSize: "0.8rem" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            <strong>This device was invited to join the lane as a second device.</strong>
+            <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
+              <button type="button" className="secondary sm" onClick={() => void joinWithInviteLink(joinInvite)}>
+                Join
+              </button>
+              <button type="button" className="secondary sm" onClick={() => void leaveJoined()}>
+                Dismiss
+              </button>
+              {joinStatus && <span style={{ color: "var(--amway-muted)" }}>{joinStatus}</span>}
+            </div>
+            {joined && (
+              <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", fontSize: "0.72rem" }}>
+                <span style={{ color: "var(--amway-muted)" }}>Joined as {TITLES[joined.key].title}:</span>
+                <span>{joined.person.slice(0, 10)}…{joined.person.slice(-4)}</span>
+                {joined.view.roles.map(role => <EkRoleBadge key={role} role={role} />)}
+                <button type="button" className="secondary sm" onClick={() => void leaveJoined()}>
+                  Leave
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* 4-Node Multi-Worker Grid */}
       <div className="lab-grid">
         {LAB_KEYS.map(key => {
@@ -702,6 +748,9 @@ export default function Lab() {
           const seller = staff || view.roles.includes("seller");
           const personId = lab.current?.persons[key] ?? "";
           const activeTab = column.tab;
+          const isCustomer = key === "customer";
+          const orderHistory = [...view.pendingOrders, ...view.orders];
+          const purchaseCount = isCustomer ? view.orders.length : orderHistory.length;
 
           // Staff-only meter: sellers and customers project no availability
           // and must never see a phantom number here.
@@ -731,8 +780,8 @@ export default function Lab() {
           }
 
           return (
+            <div className="lab-device" key={key}>
             <section
-              key={key}
               aria-label={meta.title}
               className={`lab-column lab-role-${meta.roleType} ${column.online ? "" : "lab-paused"}`}
             >
@@ -740,28 +789,13 @@ export default function Lab() {
               <header className="lab-column-header">
                 <div className="lab-column-title-row">
                   <div className="lab-role-title">
-                    <span>{meta.icon}</span>
                     <span>{meta.title}</span>
                   </div>
-                  <button
-                    type="button"
-                    className="secondary sm"
-                    onClick={() => void toggleNode(key)}
-                    disabled={boot !== "live"}
-                    style={{ fontSize: "0.72rem", padding: "0.25rem 0.5rem" }}
-                  >
-                    {boot === "booting" ? (
-                      <>Starting…</>
-                    ) : column.online ? (
-                      <>
-                        <span className="lab-pulse-online" /> Pause
-                      </>
-                    ) : (
-                      <>
-                        <span className="lab-pulse-paused" /> Resume
-                      </>
-                    )}
-                  </button>
+                  <Badge
+                    text={boot === "booting" ? "Starting…" : boot !== "live" ? "Unavailable" : column.online ? "Online" : "Offline"}
+                    variant={boot === "live" && column.online ? "success" : "neutral"}
+                    dot={boot === "live" && column.online}
+                  />
                 </div>
 
                 {/* Person Cryptographic Identity */}
@@ -783,7 +817,7 @@ export default function Lab() {
                 <div className="lab-role-tags">
                   <span style={{ fontSize: "0.72rem", color: "var(--amway-muted)", marginRight: "2px" }}>Roles:</span>
                   {view.roles.length > 0 ? (
-                    view.roles.map(r => <RoleBadge key={r} role={r} />)
+                    view.roles.map(r => <EkRoleBadge key={r} role={r} />)
                   ) : (
                     <Badge text="None" variant="neutral" />
                   )}
@@ -832,8 +866,8 @@ export default function Lab() {
                     <span className="lab-metric-mini-lbl">Offers</span>
                   </div>
                   <div className="lab-metric-mini">
-                    <span className="lab-metric-mini-val">{view.orders.length}</span>
-                    <span className="lab-metric-mini-lbl">Orders</span>
+                    <span className="lab-metric-mini-val">{purchaseCount}</span>
+                    <span className="lab-metric-mini-lbl">{isCustomer ? "Purchases" : "Orders"}</span>
                   </div>
                   <div className="lab-metric-mini">
                     <span className="lab-metric-mini-val">{view.availability ? currentStock : "—"}</span>
@@ -850,8 +884,8 @@ export default function Lab() {
                     <ContactNameField
                       key={view.contacts.find(entry => entry.person === personId)?.name ?? ""}
                       currentName={view.contacts.find(entry => entry.person === personId)?.name ?? ""}
-                      role={view.roles[0] ?? "customer"}
-                      disabled={!view.known || boot !== "live"}
+                      role={view.roles[0] ?? ""}
+                      disabled={!view.known || view.roles.length === 0 || boot !== "live"}
                       onSave={(name, role) => void run(key, "publishContact", { name, role })}
                     />
 
@@ -868,7 +902,7 @@ export default function Lab() {
                             })
                           }
                         >
-                          Appoint Manager
+                          Appoint {roleLabel("manager")}
                         </button>
                         <StockUpField
                           disabled={!view.known || boot !== "live"}
@@ -889,24 +923,9 @@ export default function Lab() {
                           })
                         }
                       >
-                        Appoint Seller
+                        Appoint {roleLabel("seller")}
                       </button>
                     )}
-
-                    {seller && key === "seller" && view.pendingOrders.map(entry => (
-                      <button
-                        key={entry.idempotencyKey}
-                        type="button"
-                        disabled={!seller || boot !== "live"}
-                        onClick={() =>
-                          void run(key, "admitOrder", {
-                            idempotencyKey: entry.idempotencyKey,
-                          })
-                        }
-                      >
-                        Admit {entry.offer} ×{entry.quantity}
-                      </button>
-                    ))}
 
                     {key === "seller" && (
                       <button
@@ -920,7 +939,7 @@ export default function Lab() {
                           })
                         }
                       >
-                        Appoint Customer
+                        Appoint {roleLabel("customer")}
                       </button>
                     )}
 
@@ -954,7 +973,7 @@ export default function Lab() {
                           })
                         }
                       >
-                        Share {offer.offerId} with seller
+                        Share {offer.offerId} with {roleLabel("seller")}
                       </button>
                     ))}
 
@@ -996,15 +1015,10 @@ export default function Lab() {
                     {key === "customer" && (
                       <button
                         type="button"
-                        disabled={!view.roles.includes("customer") || view.offers.length === 0 || boot !== "live"}
-                        onClick={() =>
-                          void run(key, "placeOrder", {
-                            offer: view.offers[0]?.offerId ?? "demo-offer",
-                            quantity: 1,
-                          })
-                        }
+                        disabled={!view.roles.includes("customer") || view.offers.length === 0 || boot !== "live" || buying || view.pendingOrders.length > 0}
+                        onClick={() => void buy(view.offers[0]?.offerId ?? "")}
                       >
-                        Buy 1x ({view.offers[0]?.offerId ?? "Offer"})
+                        {buying || view.pendingOrders.length > 0 ? "Processing purchase…" : `Buy 1x (${view.offers[0]?.offerId ?? "Offer"})`}
                       </button>
                     )}
                   </div>
@@ -1029,7 +1043,7 @@ export default function Lab() {
                               authorized by {nameOf(entry.issuer)} · since {fmtDate(entry.validFrom)}
                             </span>
                           </span>
-                          <RoleBadge role={entry.role} />
+                          <EkRoleBadge role={entry.role} />
                         </div>
                       ))
                     )}
@@ -1092,7 +1106,7 @@ export default function Lab() {
                     className={`lab-tab-btn ${activeTab === "orders" ? "active" : ""}`}
                     onClick={() => dispatch({ kind: "tab", key, tab: "orders" })}
                   >
-                    Orders ({view.orders.length})
+                    {isCustomer ? "Purchase history" : "Orders"} ({purchaseCount})
                   </button>
                   <button
                     type="button"
@@ -1147,37 +1161,50 @@ export default function Lab() {
                 )}
 
                 {(activeTab === "overview" || activeTab === "orders") && (
-                  <div className="lab-section">
+                  <section className="lab-section" aria-label={isCustomer ? "Purchase history" : "Orders & Reservations"}>
                     <div className="lab-section-title">
-                      <span>Orders & Reservations</span>
-                      <span style={{ fontSize: "0.7rem", color: "var(--amway-muted)" }}>{view.orders.length} orders</span>
+                      <span>{isCustomer ? "Purchase history" : "Orders & Reservations"}</span>
+                      <span style={{ fontSize: "0.7rem", color: "var(--amway-muted)" }}>
+                        {purchaseCount} {isCustomer ? (purchaseCount === 1 ? "purchase" : "purchases") : (purchaseCount === 1 ? "order" : "orders")}
+                      </span>
                     </div>
                     <div className="lab-items-list">
-                      {view.orders.length === 0 ? (
+                      {orderHistory.length === 0 && view.purchaseFailures.length === 0 ? (
                         <div className="state-empty" style={{ padding: "0.8rem", fontSize: "0.75rem" }}>
-                          No orders placed.
+                          {isCustomer ? "No purchases yet." : "No orders placed."}
                         </div>
                       ) : (
-                        view.orders.map(entry => {
+                        orderHistory.map(entry => {
                           const isFresh = Boolean(column.fresh[`EkOrder:${entry.idempotencyKey}`]);
+                          const confirmed = entry.admittedAt > 0;
                           return (
                             <div
-                              key={`${entry.idempotencyKey}:${column.fresh[`EkOrder:${entry.idempotencyKey}`] ?? ""}`}
-                              className={`lab-item-card ${isFresh ? "lab-fresh" : ""}`}
+                              key={entry.idempotencyKey}
+                              data-order-id={entry.idempotencyKey}
+                              className={`lab-item-card lab-purchase-card ${isFresh ? "lab-fresh" : ""}`}
                             >
                               <div className="lab-item-main">
-                                <span className="lab-item-title">📦 {entry.idempotencyKey}</span>
+                                <span className="lab-item-title">{entry.offer}</span>
                                 <span className="lab-item-sub">
-                                  {entry.offer} · Qty: {entry.quantity}
+                                  Qty: {entry.quantity} · {fmtMoney(entry.quantity * entry.unitAmount, entry.currency)}
                                 </span>
+                                <span className="lab-item-sub">{entry.idempotencyKey}</span>
+                                {confirmed && <span className="lab-item-sub">Confirmed {fmtDate(entry.admittedAt)}</span>}
                               </div>
-                              <StatusBadge status="accepted" />
+                              <Badge text={confirmed ? "Confirmed" : "Processing purchase"} variant={confirmed ? "success" : "warning"} />
                             </div>
                           );
                         })
                       )}
+                      {view.purchaseFailures.map(failure => (
+                        <div key={failure.idempotencyKey} className="state-denied lab-purchase-failure" role="status">
+                          <strong>{failure.reason === "out-of-stock" ? "Out of stock" : "Purchase could not be completed"}</strong>
+                          <div>{failure.offer} · Qty: {failure.quantity}</div>
+                          <div>No purchase was confirmed.</div>
+                        </div>
+                      ))}
                     </div>
-                  </div>
+                  </section>
                 )}
 
                 {(activeTab === "overview" || activeTab === "orders") && (
@@ -1200,7 +1227,7 @@ export default function Lab() {
                                 Receivable {fmtMoney(entry.receivable, entry.currency)} · Payable {fmtMoney(entry.payable, entry.currency)}
                               </span>
                             </div>
-                            <RoleBadge role={entry.role} />
+                            <EkRoleBadge role={entry.role} />
                           </div>
                         ))
                       )}
@@ -1248,7 +1275,7 @@ export default function Lab() {
                                     {entry.person.slice(0, 10)}…{entry.person.slice(-4)}
                                   </span>
                                 </div>
-                                <RoleBadge role={entry.role} />
+                                <EkRoleBadge role={entry.role} />
                                 {entry.person !== personId && (
                                   <button
                                     type="button"
@@ -1335,55 +1362,14 @@ export default function Lab() {
                   </details>
                 )}
 
-                {/* Second device (IoM): invitation QR under every app */}
-                <div className="lab-section" aria-label="Second device invitation">
-                  <div className="lab-section-title">
-                    <span>Second device</span>
-                    <button
-                      type="button"
-                      className="secondary sm"
-                      disabled={boot !== "live"}
-                      onClick={() => void inviteDevice(key)}
-                    >
-                      Invite device
-                    </button>
-                  </div>
-                  {iomInvites[key] && iomInvites[key].url ? (
-                    <div style={{ display: "flex", gap: "0.6rem", alignItems: "center" }}>
-                      <QRCodeSVG
-                        value={iomInvites[key].url}
-                        size={112}
-                        role="img"
-                        aria-label={`Device invitation QR for ${key}`}
-                      />
-                      <div style={{ flex: 1, minWidth: 0, fontSize: "0.72rem" }}>
-                        <input
-                          readOnly
-                          value={iomInvites[key].url}
-                          aria-label="Device invitation URL"
-                          style={{ width: "100%", fontSize: "0.68rem" }}
-                          onFocus={event => event.target.select()}
-                        />
-                        <div style={{ display: "flex", gap: "0.4rem", marginTop: "0.3rem", alignItems: "center" }}>
-                          <button
-                            type="button"
-                            className="secondary sm"
-                            onClick={() => void navigator.clipboard?.writeText(iomInvites[key].url)}
-                          >
-                            Copy
-                          </button>
-                          <span style={{ color: "var(--amway-muted)" }}>{iomInvites[key].status}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="state-empty" style={{ padding: "0.6rem", fontSize: "0.72rem" }}>
-                      {iomInvites[key]?.status || (boot === "live" ? "No invitation yet." : "Waiting for boot…")}
-                    </div>
-                  )}
-                </div>
               </div>
             </section>
+            <LabDeviceInvite
+              client={boot === "live" ? lab.current?.clients[key] : undefined}
+              plan="ekLab"
+              deviceKey={meta.title}
+            />
+            </div>
           );
         })}
       </div>

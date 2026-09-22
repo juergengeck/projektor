@@ -18,10 +18,32 @@ export interface LabHandle {
   stop(): Promise<void>;
 }
 
+/**
+ * Commserver override for tests and dev (`?commServer=`); production lanes
+ * use the glue service default baked into the lab. Only ws(s) URLs pass.
+ */
+function laneCommServer(): string | undefined {
+  try {
+    const value = new URLSearchParams(window.location.search).get("commServer") ?? "";
+    return /^wss?:\/\//.test(value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Lane entry URL prefix the QR-encoded IoM invitation links back to. */
+function laneAppBase(): string {
+  const url = new URL(window.location.pathname, window.location.origin);
+  // The invitation payload replaces the hash; retain the workspace's lane
+  // selection in the query so #/lab invitations still open the join page.
+  url.searchParams.set("lane", "amway");
+  return url.toString();
+}
+
 function spawnWorker(key: LabKey, session: string, prune: boolean) {
   // Inline `new URL` so Vite emits a worker chunk; the key follows as the first message.
   const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
-  worker.postMessage({ kind: "lab-key", key, session, prune });
+  worker.postMessage({ kind: "lab-key", key, session, prune, commServer: laneCommServer(), appBase: laneAppBase() });
   return {
     port: worker,
     terminate: async () => worker.terminate(),
@@ -65,7 +87,7 @@ export async function bootLab(onStage: (stage: string) => void = () => {}): Prom
  * Boot one worker for a joining device: same role credentials (hence the
  * same Person), fresh session storage, no mesh pairing and no seed. The
  * caller then runs acceptIoMInvite on the returned handle to pair this
- * instance with its counterpart over the rendezvous relay.
+ * instance with its counterpart through the commserver.
  */
 export async function bootJoinInstance(
   key: LabKey,

@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { audience, canPublish, projectDepartment, rolesOf } from "./projection.ts";
-import type { AmwayContact, AmwayDepartment, AmwayOffer, AmwayOrder, AmwayRoleAssignment, AmwayStockReceipt } from "./recipes.ts";
+import type { AmwayContact, AmwayDepartment, AmwayOffer, AmwayOrder, AmwayPurchaseDecision, AmwayPurchaseRequest, AmwayRoleAssignment, AmwayStockReceipt } from "./recipes.ts";
 
 const P = (ch: string): string => ch.repeat(64);
 const ADMIN = P("a"), MANAGER = P("b"), SELLER = P("c"), CUSTOMER = P("d"), DEPT = P("e");
@@ -89,6 +89,19 @@ test("placed orders pend until the seller admits them", () => {
   assert.deepEqual(unstocked.orders, [], "an admission without stock settles nothing");
   assert.deepEqual(unstocked.rejected, [{ type: "AmwayOrder", id: "p1", reason: "oversold" }]);
   assert.equal(unstocked.availability?.available, 0, "availability never goes negative");
+});
+
+test("an automatic out-of-stock decision is terminal and leaves confirmed orders unchanged", () => {
+  const placed: AmwayOrder = { $type$: "AmwayOrder", department: DEPT, idempotencyKey: "auto-no-stock", customer: CUSTOMER, seller: CUSTOMER, offer: "o1", quantity: 1, lot: "demo-lot-a", facility: "demo-facility", currency: "EUR", unitAmount: 10000, admittedAt: 0 };
+  const request: AmwayPurchaseRequest = { $type$: "AmwayPurchaseRequest", department: DEPT, idempotencyKey: placed.idempotencyKey, customer: CUSTOMER, seller: SELLER, requestedAt: 5 };
+  const decision: AmwayPurchaseDecision = { $type$: "AmwayPurchaseDecision", department: DEPT, idempotencyKey: placed.idempotencyKey, customer: CUSTOMER, seller: SELLER, outcome: "rejected", reason: "out-of-stock", decidedAt: 6 };
+  const view = projectDepartment({
+    department, assignments, contacts: [], offers: [], orders: [placed],
+    purchaseRequests: [request], purchaseDecisions: [decision], stock: [], viewer: CUSTOMER, atTime: 7,
+  });
+  assert.deepEqual(view.orders, []);
+  assert.deepEqual(view.pendingOrders, []);
+  assert.deepEqual(view.purchaseFailures, [{ idempotencyKey: "auto-no-stock", offer: "o1", quantity: 1, reason: "out-of-stock", decidedAt: 6 }]);
 });
 
 test("admission accrues receivables and payables per role", () => {

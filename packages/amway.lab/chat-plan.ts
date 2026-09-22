@@ -11,6 +11,9 @@ import type TopicRoom from "../../../one/packages/one.models/lib/models/Chat/Top
 import type ChannelManager from "../../../one/packages/one.models/lib/models/ChannelManager.js";
 import type { Person } from "../../../one/packages/one.core/lib/recipes.js";
 import type { SHA256IdHash } from "../../../one/packages/one.core/lib/util/type-checks.js";
+import { getObject } from "../../../one/packages/one.core/lib/storage-unversioned-objects.js";
+import { createChatNotifications } from "./chat-notifications.ts";
+import type { ChatNotification } from "./chat-notifications.ts";
 
 const HASH = /^[0-9a-f]{64}$/;
 
@@ -24,8 +27,8 @@ export function createChatPlan({ topicModel, channelManager, self, notify }: {
   topicModel: TopicModel;
   channelManager: ChannelManager;
   self: () => string;
-  /** Called with the peer hash whenever its topic channel changes. */
-  notify: (peer: string) => void;
+  /** Called once for each distinct message entry in a known peer's channel. */
+  notify: (peer: string, message: ChatNotification) => void;
 }) {
   const me = (): SHA256IdHash<Person> => {
     const owner = self();
@@ -47,17 +50,20 @@ export function createChatPlan({ topicModel, channelManager, self, notify }: {
 
   const rooms = new Map<string, TopicRoom>();
   const peerByParticipants = new Map<string, string>();
+  const notifyMessages = createChatNotifications({ self, readObject: getObject, notify });
   let subscribed = false;
 
   function ensureSubscription(): void {
     if (subscribed) return;
     subscribed = true;
     // TopicRoom's own live event never arms in this stack, so subscribe the
-    // channel directly: any update on a known topic channel — local post or
-    // replicated entry — refreshes that peer's open chat.
-    channelManager.onUpdated.listen((_channel, channelParticipants) => {
+    // channel directly, using its changed entries rather than treating each
+    // channel event as a message (empty updates and replay are normal).
+    channelManager.onUpdated.listen((_channel, channelParticipants, _owner, _time, entries) => {
       const peer = peerByParticipants.get(channelParticipants);
-      if (peer) notify(peer);
+      if (peer) void notifyMessages(peer, entries).catch(error => {
+        console.error("Amway lab: chat notification failed.", error);
+      });
     });
   }
 

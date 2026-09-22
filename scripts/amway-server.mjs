@@ -35,7 +35,6 @@ import { AmwaySubscriptions } from "../packages/shop.amway/subscriptions.js";
 import { AmwayReturns } from "../packages/shop.amway/returns.js";
 import { AmwayReconciliation } from "../packages/shop.amway/reconciliation.js";
 import { AmwayJournal } from "../packages/shop.amway/journal.js";
-import { createLabRelay } from "./lab-relay.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = path.resolve(__dirname, "..");
@@ -593,16 +592,10 @@ export function createAmwayServer({ directory, instanceDir, shop, journal } = {}
       send(400, value);
     }
   });
-  // Token-room relay for lab IoM device pairing. Upgrade requests bypass the
-  // loopback-only HTTP guard on purpose: a second device on the LAN must be
-  // able to dial in. Rooms are single-use and expire; the relay only pipes
-  // opaque frames while the pairing token check and the same-person identity
-  // proof run peer to peer inside the ONE stack.
-  const labRelay = createLabRelay();
-  server.on("upgrade", (request, socket, head) => {
-    if (!labRelay.handleUpgrade(request, socket, head)) socket.destroy();
-  });
-  server.on("close", () => { labRelay.shutdown(); if (initialized) { closeInstance(); initialized = false; } });
+  // Lab device pairing uses Glue's commserver; this HTTP server hosts no
+  // custom device relay or pairing protocol.
+  server.on("upgrade", (_request, socket) => socket.destroy());
+  server.on("close", () => { if (initialized) { closeInstance(); initialized = false; } });
   return { server, state, getPlan: () => plan };
 }
 

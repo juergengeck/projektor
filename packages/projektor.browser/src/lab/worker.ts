@@ -34,7 +34,7 @@ const port: LabPort = {
 };
 
 scope.onmessage = (event: MessageEvent) => {
-  const message = event.data as { kind?: string; key?: string; session?: string; prune?: boolean };
+  const message = event.data as { kind?: string; key?: string; session?: string; prune?: boolean; commServer?: string; appBase?: string };
   if (message?.kind !== "lab-key" || typeof message.key !== "string") return;
   scope.onmessage = null;
   const key = message.key;
@@ -55,6 +55,8 @@ scope.onmessage = (event: MessageEvent) => {
     secret: `lab-${key}`,
     directory,
     createMessageChannel: () => new MessageChannel(),
+    commServerUrl: message.commServer,
+    appBaseUrl: message.appBase,
   }).catch(error => {
     scope.postMessage({ kind: "boot-failed", key, error: error instanceof Error ? error.stack : String(error) });
   });

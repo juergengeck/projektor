@@ -1,4 +1,34 @@
+import { spawn, type ChildProcess } from "node:child_process";
+import { connect } from "node:net";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { test, expect } from "@playwright/test";
+
+const COMM_SERVER_PORT = 18342;
+let commserver: ChildProcess | undefined;
+
+test.beforeAll(async () => {
+  const bundle = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "../../../../one/packages/one.models/comm_server.bundle.js",
+  );
+  commserver = spawn(process.execPath, [bundle, "-h", "127.0.0.1", "-p", String(COMM_SERVER_PORT)], { stdio: "ignore" });
+  const deadline = Date.now() + 30_000;
+  for (;;) {
+    const reachable = await new Promise<boolean>(resolve => {
+      const socket = connect(COMM_SERVER_PORT, "127.0.0.1");
+      socket.on("connect", () => { socket.end(); resolve(true); });
+      socket.on("error", () => resolve(false));
+    });
+    if (reachable) break;
+    if (Date.now() > deadline) throw new Error("local commserver never came up");
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+});
+
+test.afterAll(() => {
+  commserver?.kill();
+});
 
 /**
  * EK lane contact chat icon: every third-party directory contact carries
@@ -13,11 +43,16 @@ test("ek lane contact chat icon opens 1:1 chat", async ({ page }) => {
   });
   page.on("pageerror", error => errors.push(String(error)));
 
-  await page.goto("/browser/eklab/");
+  await page.goto(`/browser/eklab/?commServer=${encodeURIComponent(`ws://127.0.0.1:${COMM_SERVER_PORT}`)}`);
   await expect(page.getByText("Mesh: 4/4 Nodes Online")).toBeVisible({ timeout: 180_000 });
   const columns = page.locator("section.lab-column");
   await expect(columns).toHaveCount(4);
   const [admin, manager, seller, customer] = [0, 1, 2, 3].map(n => columns.nth(n));
+
+  // A contact needs its worker's role before its audience can be resolved.
+  for (const column of [manager, seller, customer]) {
+    await expect(column.getByLabel("Contact name")).toBeDisabled();
+  }
 
   // No generic pairing section: invites live only as QR codes under the apps.
   await expect(page.getByText("Device pairing")).toHaveCount(0);
@@ -28,17 +63,17 @@ test("ek lane contact chat icon opens 1:1 chat", async ({ page }) => {
   const bodyOverflow = await columns.nth(0).locator(".lab-column-body").evaluate(el => getComputedStyle(el).overflowY);
   expect(bodyOverflow).toBe("auto");
 
-  // IoM invite QR section lives under every app, no clicks needed.
-  for (const n of [0, 1, 2, 3]) {
-    await expect(columns.nth(n).getByLabel("Second device invitation")).toBeVisible();
-    await expect(columns.nth(n).getByRole("button", { name: "Invite device" })).toBeVisible();
+  // Automatically generated IoM QRs remain below the fixed app frames.
+  for (const key of ["Klein", "Bauleiter", "Vorarbeiter", "Werker"]) {
+    await expect(page.getByRole("img", { name: `Device invitation QR for ${key}`, exact: true })).toBeVisible({ timeout: 60_000 });
   }
+  await expect(page.locator(".lab-column-body .lab-device-invite")).toHaveCount(0);
 
-  await admin.getByRole("button", { name: "Appoint Manager" }).click();
+  await admin.getByRole("button", { name: "Appoint Bauleiter" }).click();
   await expect(manager.locator(".badge-accent").first()).toBeVisible({ timeout: 90_000 });
-  await manager.getByRole("button", { name: "Appoint Seller" }).click();
+  await manager.getByRole("button", { name: "Appoint Vorarbeiter" }).click();
   await expect(seller.locator(".badge-info").first()).toBeVisible({ timeout: 90_000 });
-  await seller.getByRole("button", { name: "Appoint Customer" }).click();
+  await seller.getByRole("button", { name: "Appoint Werker" }).click();
 
   await seller.getByLabel("Contact name").fill("Seller One");
   await seller.getByRole("button", { name: "Publish Contact" }).click();

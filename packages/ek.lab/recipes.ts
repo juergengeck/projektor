@@ -6,7 +6,7 @@
 
 export const LAB_ROLES = ["admin", "manager", "seller", "customer"] as const;
 export type LabRole = (typeof LAB_ROLES)[number];
-export const EK_LAB_TYPES = ["EkDepartment", "EkRoleAssignment", "EkContact", "EkOffer", "EkOrder", "EkStockReceipt"] as const;
+export const EK_LAB_TYPES = ["EkDepartment", "EkRoleAssignment", "EkContact", "EkOffer", "EkOrder", "EkPurchaseRequest", "EkPurchaseDecision", "EkStockReceipt"] as const;
 export type EkLabType = (typeof EK_LAB_TYPES)[number];
 
 interface RecipeRule {
@@ -32,12 +32,14 @@ export const EkLabRecipes: LabRecipe[] = [
   { $type$: "Recipe", name: "EkContact", rule: [departmentRef, person("person", true), text("name"), text("role"), person("publishedBy"), integer("publishedAt")] },
   { $type$: "Recipe", name: "EkOffer", rule: [departmentRef, text("offerId", true), text("item"), text("priceList"), text("channel"), integer("unitAmount"), text("currency"), person("publishedBy")] },
   { $type$: "Recipe", name: "EkOrder", rule: [departmentRef, text("idempotencyKey", true), person("customer"), person("seller"), text("offer"), integer("quantity"), text("lot"), text("facility"), text("currency"), integer("unitAmount"), integer("admittedAt")] },
+  { $type$: "Recipe", name: "EkPurchaseRequest", rule: [departmentRef, text("idempotencyKey", true), person("customer"), person("seller", true), integer("requestedAt")] },
+  { $type$: "Recipe", name: "EkPurchaseDecision", rule: [departmentRef, text("idempotencyKey", true), person("customer"), person("seller"), text("outcome"), text("reason"), integer("decidedAt")] },
   { $type$: "Recipe", name: "EkStockReceipt", rule: [departmentRef, text("receiptId", true), text("lot"), text("facility"), integer("quantity"), person("receivedBy"), integer("receivedAt")] },
 ];
 
 export const EkLabReverseMapsForIdObjects: [string, Set<string>][] = EK_LAB_TYPES
   .filter(type => type !== "EkDepartment")
-  .map(type => [type, new Set(["department"])]);
+  .map(type => [type, new Set(type === "EkPurchaseRequest" ? ["department", "seller"] : ["department"])]);
 
 const HASH = /^[0-9a-f]{64}$/;
 
@@ -122,7 +124,27 @@ export interface EkStockReceipt {
   receivedAt: number;
 }
 
-export type EkLabObject = EkDepartment | EkRoleAssignment | EkContact | EkOffer | EkOrder | EkStockReceipt;
+export interface EkPurchaseRequest {
+  $type$: "EkPurchaseRequest";
+  department: string;
+  idempotencyKey: string;
+  customer: string;
+  seller: string;
+  requestedAt: number;
+}
+
+export interface EkPurchaseDecision {
+  $type$: "EkPurchaseDecision";
+  department: string;
+  idempotencyKey: string;
+  customer: string;
+  seller: string;
+  outcome: "rejected";
+  reason: "out-of-stock";
+  decidedAt: number;
+}
+
+export type EkLabObject = EkDepartment | EkRoleAssignment | EkContact | EkOffer | EkOrder | EkPurchaseRequest | EkPurchaseDecision | EkStockReceipt;
 
 function isRole(role: unknown): role is LabRole {
   return typeof role === "string" && (LAB_ROLES as readonly string[]).includes(role);
@@ -190,5 +212,28 @@ export function createOrder({ department, idempotencyKey, customer, seller, offe
     lot: nonEmpty(lot, "lot"), facility: nonEmpty(facility, "facility"),
     currency: nonEmpty(currency, "currency"), unitAmount: unitAmount as number,
     admittedAt: timestamp(admittedAt, "admittedAt"),
+  };
+}
+
+export function createPurchaseRequest({ department, idempotencyKey, customer, seller, requestedAt }: {
+  department?: unknown; idempotencyKey?: unknown; customer?: unknown; seller?: unknown; requestedAt?: unknown;
+} = {}): EkPurchaseRequest {
+  return {
+    $type$: "EkPurchaseRequest", department: hash(department, "department"),
+    idempotencyKey: nonEmpty(idempotencyKey, "idempotencyKey"), customer: hash(customer, "customer"),
+    seller: hash(seller, "seller"), requestedAt: timestamp(requestedAt, "requestedAt"),
+  };
+}
+
+export function createPurchaseDecision({ department, idempotencyKey, customer, seller, outcome, reason, decidedAt }: {
+  department?: unknown; idempotencyKey?: unknown; customer?: unknown; seller?: unknown;
+  outcome?: unknown; reason?: unknown; decidedAt?: unknown;
+} = {}): EkPurchaseDecision {
+  if (outcome !== "rejected") fail("purchase outcome must be rejected.");
+  if (reason !== "out-of-stock") fail("purchase reason must be out-of-stock.");
+  return {
+    $type$: "EkPurchaseDecision", department: hash(department, "department"),
+    idempotencyKey: nonEmpty(idempotencyKey, "idempotencyKey"), customer: hash(customer, "customer"),
+    seller: hash(seller, "seller"), outcome, reason, decidedAt: timestamp(decidedAt, "decidedAt"),
   };
 }

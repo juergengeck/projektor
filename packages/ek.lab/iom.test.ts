@@ -1,35 +1,49 @@
 // packages/ek.lab/iom.test.ts
 /**
- * IoM device pairing over a rendezvous relay.
+ * IoM device pairing through a commserver.
  *
  * Two seller instances hold the same Person (same deterministic lab email,
  * separate storage directories) on separate worker runtimes. Instance A
- * hosts a same-person pairing invitation on a token-room relay; instance B
- * accepts it with the standard pairing handshake. Afterwards B projects the
- * department through person-scoped grants, and A sees the link as the same
- * person (the native isInternetOfMe condition). A third, different person
- * is refused before any network traffic.
+ * creates a same-person pairing invitation (registering its pairing listener
+ * on the commserver); instance B accepts it with the standard pairing
+ * handshake routed there. Afterwards B projects the department through
+ * person-scoped grants, and A sees the link as the same person (the native
+ * isInternetOfMe condition). A third, different person is refused before
+ * any network traffic.
  *
- * The relay lives in scripts/ (node-only); this test borrows it the same
- * way the browser lane borrows amway-server at runtime.
+ * Discovery rides a locally spawned commserver (the one.models bundle also
+ * backing the glue service), so the suite stays hermetic: no hosted relay,
+ * no custom rendezvous protocol.
  */
 import assert from "node:assert/strict";
-import { once } from "node:events";
-import { createServer } from "node:http";
+import { spawn } from "node:child_process";
+import { connect } from "node:net";
 import { test } from "node:test";
 import { Worker } from "node:worker_threads";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { createLabRelay } from "../../scripts/lab-relay.mjs";
 import { PortApiClient } from "./port-ipc.ts";
 import { decodeIoMInvite, PAIRING_PROTOCOL_VERSION } from "./iom.ts";
 
+const COMM_SERVER_PORT = 18332;
+const commServerBundle = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..", "..", "..", "one", "packages", "one.models", "comm_server.bundle.js",
+);
+
 let root = "";
+let commServerUrl = "";
 
 function spawnInstance(key: string, directory: string) {
   const worker = new Worker(new URL("./test/node-worker.ts", import.meta.url), {
-    workerData: { key, directory },
+    workerData: {
+      key,
+      directory,
+      commServerUrl,
+      appBaseUrl: "http://127.0.0.1/browser/eklab/",
+    },
   });
   const port = {
     postMessage: (message: unknown, transfer?: unknown[]) => worker.postMessage(message, transfer as []),
@@ -52,25 +66,30 @@ function spawnInstance(key: string, directory: string) {
   return { worker, client, ready };
 }
 
-async function startRelay() {
-  const relay = createLabRelay();
-  const server = createServer((req, res) => {
-    res.writeHead(404).end();
+async function startCommServer() {
+  const child = spawn(process.execPath, [commServerBundle, "-h", "127.0.0.1", "-p", String(COMM_SERVER_PORT)], {
+    stdio: "ignore",
   });
-  server.on("upgrade", (request, socket, head) => {
-    if (!relay.handleUpgrade(request, socket, head)) socket.destroy();
-  });
-  server.listen(0, "127.0.0.1");
-  await once(server, "listening");
-  const relayUrl = `ws://127.0.0.1:${server.address().port}/lab/relay`;
-  return { relay, server, relayUrl };
+  const deadline = Date.now() + 30_000;
+  for (;;) {
+    const reachable = await new Promise<boolean>(resolve => {
+      const socket = connect(COMM_SERVER_PORT, "127.0.0.1");
+      socket.on("connect", () => { socket.end(); resolve(true); });
+      socket.on("error", () => resolve(false));
+    });
+    if (reachable) break;
+    if (Date.now() > deadline) {
+      child.kill();
+      throw new Error("local commserver never came up");
+    }
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  commServerUrl = `ws://127.0.0.1:${COMM_SERVER_PORT}`;
+  return child;
 }
 
-async function stopRelay(relay: { shutdown(): void }, server: { closeAllConnections?: () => void; close(cb?: () => void): void }) {
-  relay.shutdown();
-  server.closeAllConnections?.();
-  server.close();
-  await once(server, "close");
+async function stopCommServer(child: { kill(): void }) {
+  child.kill();
 }
 
 async function settle(): Promise<void> {
@@ -94,17 +113,17 @@ async function removeTree(root: string): Promise<void> {
   }
 }
 
-test("same-person second instance pairs over the relay and projects the department", async (t) => {
+test("same-person second instance pairs over the commserver and projects the department", async (t) => {
   root = await mkdtemp(path.join(tmpdir(), "ek-lab-iom-"));
 
-  const { relay, server, relayUrl } = await startRelay();
+  const commserver = await startCommServer();
 
   const deviceA = spawnInstance("seller", path.join(root, "device-a"));
   const deviceB = spawnInstance("seller", path.join(root, "device-b"));
   t.after(async () => {
     await Promise.all([deviceA.worker.terminate(), deviceB.worker.terminate()]);
     await settle();
-    await stopRelay(relay, server);
+    await stopCommServer(commserver);
     await removeTree(root);
   });
   const [personA, personB] = await Promise.all([deviceA.ready, deviceB.ready]);
@@ -113,22 +132,20 @@ test("same-person second instance pairs over the relay and projects the departme
   await deviceA.client.call("ekLab", "createDepartment", { department: "ek-de", name: "Demo DE" });
   await deviceA.client.call("ekLab", "assignRole", { department: "ek-de", subject: personA, role: "seller" });
 
-  const invite = await deviceA.client.call("ekLab", "createIoMInvite", {
-    relayUrl,
-  }) as { invitationUrl: string; token: string; person: string };
+  const invite = await deviceA.client.call("ekLab", "createIoMInvite", {}) as { invitationUrl: string; token: string; person: string };
   assert.equal(invite.person, personA);
   const parsed = new URL(invite.invitationUrl);
-  assert.match(parsed.pathname, /\/(?:invites\/)?invitedevice(?:\/|$)/i, "canonical inviteDevice path carries the IoM mode");
+  assert.equal(parsed.pathname, "/browser/eklab/", "the invitation links back to the lane entry");
   assert.equal(parsed.searchParams.get("invited"), "true");
   assert.equal(parsed.searchParams.get("connectionMode"), "primed");
   assert.equal(parsed.searchParams.get("fe"), "seller@ek.local");
   assert.equal(parsed.searchParams.get("fdi"), personA);
   // The fragment stays consumable by the canonical parser shape:
-  // decodeURIComponent JSON carrying the pairing token and relay room.
+  // decodeURIComponent JSON carrying the pairing token and commserver URL.
   const fragment = JSON.parse(decodeURIComponent(parsed.hash.slice(1))) as Record<string, unknown>;
   assert.equal(fragment.mode, "IoM");
   assert.equal(fragment.token, invite.token);
-  assert.match(String(fragment.url), /\/lab\/relay\?token=.*&side=join/);
+  assert.equal(String(fragment.url), commServerUrl);
   const payload = decodeIoMInvite(invite.invitationUrl);
   assert.equal(payload.mode, "IoM");
   assert.equal(payload.deviceEnrollmentPersonId, personA);
@@ -161,7 +178,7 @@ test("same-person second instance pairs over the relay and projects the departme
 test("invitation URLs validate strictly and reject impostors", () => {
   const fragment = {
     token: "abCD09_-".repeat(4),
-    url: "ws://127.0.0.1:9/lab/relay?token=abCD09_-&side=join",
+    url: "ws://127.0.0.1:9/comm",
     publicKey: "0".repeat(64),
     pairingProtocolVersion: PAIRING_PROTOCOL_VERSION,
     pairingMode: "primed",
@@ -208,19 +225,17 @@ test("invitation URLs validate strictly and reject impostors", () => {
 
 test("a different person is refused before any network traffic", async (t) => {
   const localRoot = await mkdtemp(path.join(tmpdir(), "ek-lab-iom-"));
-  const { relay, server, relayUrl } = await startRelay();
+  const commserver = await startCommServer();
   const deviceA = spawnInstance("seller", path.join(localRoot, "stranger-a"));
   const stranger = spawnInstance("customer", path.join(localRoot, "stranger-c"));
   t.after(async () => {
     await Promise.all([deviceA.worker.terminate(), stranger.worker.terminate()]);
-    await stopRelay(relay, server);
+    await stopCommServer(commserver);
     await removeTree(localRoot);
   });
   await Promise.all([deviceA.ready, stranger.ready]);
 
-  const invite = await deviceA.client.call("ekLab", "createIoMInvite", {
-    relayUrl,
-  }) as { invitationUrl: string };
+  const invite = await deviceA.client.call("ekLab", "createIoMInvite", {}) as { invitationUrl: string };
   await assert.rejects(
     stranger.client.call("ekLab", "acceptIoMInvite", { invitationUrl: invite.invitationUrl }),
     /different person/,
