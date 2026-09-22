@@ -81,7 +81,11 @@ interface AcceptMessage {
   port?: unknown;
 }
 
-export async function startLabInstance({ brand, port, key, directory, createMessageChannel, commServerUrl, appBaseUrl, credentials }: LabInstanceOptions): Promise<{ shutdown(): Promise<void> }> {
+export async function startLabInstance({ brand, port, key, directory, createMessageChannel, commServerUrl, appBaseUrl, credentials }: LabInstanceOptions): Promise<{
+  shutdown(): Promise<void>;
+  /** Direct registry dispatch for same-realm callers (the lane app bridge). */
+  call(plan: string, method: string, params?: unknown): Promise<unknown>;
+}> {
   const label = brand.label;
   const { recipes: labRecipes, reverseMapsForIdObjects: labReverseMaps } = createLabRecipes(brand);
   const url = labUrl(key);
@@ -357,9 +361,15 @@ export async function startLabInstance({ brand, port, key, directory, createMess
     port.postMessage({ kind: "ready", key });
   }
 
+  const call = async (plan: string, method: string, params?: unknown): Promise<unknown> => {
+    const result = await registry.execute(plan, method, params ?? {});
+    return (result as { product?: unknown }).product;
+  };
+
   return {
     async shutdown() {
       if (tornDown) await tornDown();
     },
+    call,
   };
 }

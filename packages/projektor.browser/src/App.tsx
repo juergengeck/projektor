@@ -4,7 +4,7 @@ import { applyTheme, setLanguage, t, useLang } from "./i18n";
 import Auth from "./screens/Auth";
 import Lab from "./lab/Lab";
 import EkLab from "./eklab/Lab";
-import ekFavicon from "./eklab/assets/favicon.png";
+import ekFavicon from "./lane-app/assets/ek/favicon.png";
 import Chat from "./screens/Chat";
 import { Earnings, Returns } from "./screens/Finance";
 import Inventory from "./screens/Inventory";

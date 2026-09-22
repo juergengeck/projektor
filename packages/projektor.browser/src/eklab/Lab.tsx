@@ -5,8 +5,21 @@ import { bootJoinInstance, bootLab, LAB_KEYS, type FeedRow, type LabHandle, type
 import { EK } from "@projektor/lab.core/brand.ts";
 import type { PortApiClient } from "@projektor/lab.core/port-ipc.ts";
 import { Badge, RoleBadge } from "../components/ui";
-import ekLogo from "./assets/elektro-klein-logo.jpg";
-import omniturm from "./assets/omniturm.jpg";
+import {
+  applyFeedRow,
+  EMPTY_FEED_VIEW as EMPTY_VIEW,
+  timeNow,
+} from "../lane-app/feed";
+import type {
+  Balance,
+  Contact,
+  FeedEntry,
+  Offer,
+  Order,
+  View,
+} from "../lane-app/feed";
+import ekLogo from "../lane-app/assets/ek/elektro-klein-logo.jpg";
+import omniturm from "../lane-app/assets/ek/omniturm.jpg";
 
 /**
  * Invitation link opened from a QR code (`?invited=true` plus the pairing
@@ -51,64 +64,7 @@ function fallbackCopy(text: string) {
   area.remove();
 }
 
-export interface Offer {
-  offerId: string;
-  item: string;
-  priceList?: string;
-  unitAmount: number;
-  currency: string;
-  publishedBy: string;
-}
-
-export interface Contact {
-  person: string;
-  name: string;
-  role: string;
-  publishedBy: string;
-}
-
-export interface Order {
-  idempotencyKey: string;
-  customer: string;
-  seller: string;
-  offer: string;
-  quantity: number;
-  currency: string;
-  unitAmount: number;
-  admittedAt: number;
-}
-
-export interface Balance {
-  party: string;
-  role: string;
-  receivable: number;
-  payable: number;
-  currency: string;
-}
-
-export interface View {
-  known: boolean;
-  roles: string[];
-  assignments: { subject: string; role: string; issuer: string; validFrom: number }[];
-  contacts: Contact[];
-  offers: Offer[];
-  orders: Order[];
-  pendingOrders: Order[];
-  purchaseFailures: { idempotencyKey: string; offer: string; quantity: number; reason: string; decidedAt: number }[];
-  availability: { lot: string; facility: string; stocked: number; available: number } | null;
-  balances: Balance[];
-  rejected: { type: string; id: string; reason: string }[];
-}
-
 export type { FeedRow };
-
-export interface FeedEntry {
-  at: string;
-  type: string;
-  id: string;
-  hash: string;
-  label: string;
-}
 
 export type TabKey = "overview" | "offers" | "orders" | "contacts" | "activity";
 
@@ -180,6 +136,8 @@ export interface Column {
   /** Unread chat messages per peer: bumped by chat feed rows while the
    * peer's chat is closed, cleared when it opens. */
   chatUnread: Record<string, number>;
+  /** Chat message hashes already counted as unread. */
+  seenChatHashes: string[];
 }
 
 type State = Record<LabKey, Column>;
@@ -192,57 +150,6 @@ type Action =
   | { kind: "notice"; key: LabKey; notice: string }
   | { kind: "clear_notice"; key: LabKey }
   | { kind: "chat"; key: LabKey; peer: string | null };
-
-const EMPTY_VIEW: View = {
-  known: false,
-  roles: [],
-  assignments: [],
-  contacts: [],
-  offers: [],
-  orders: [],
-  pendingOrders: [],
-  purchaseFailures: [],
-  availability: null,
-  balances: [],
-  rejected: [],
-};
-
-function upsert<T>(list: T[], item: T, same: (entry: T) => boolean): T[] {
-  const index = list.findIndex(same);
-  if (index === -1) return [...list, item];
-  const next = list.slice();
-  next[index] = item;
-  return next;
-}
-
-function timeNow(): string {
-  return new Date().toLocaleTimeString([], { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
-}
-
-function formatFeedLabel(row: FeedRow): string {
-  if (row.type === "EkOffer") {
-    const obj = row.obj as Record<string, unknown>;
-    const amt = typeof obj.unitAmount === "number" ? (obj.unitAmount / 100).toFixed(2) : "";
-    return `Offer ${row.id} (${amt} ${obj.currency || "EUR"})`;
-  }
-  if (row.type === "EkOrder") {
-    const obj = row.obj as Record<string, unknown>;
-    const state = (obj.admittedAt as number) > 0 ? "admitted" : "placed";
-    return `Order ${row.id} ${state} (${obj.offer} ×${obj.quantity})`;
-  }
-  if (row.type === "EkContact") {
-    const obj = row.obj as Record<string, unknown>;
-    return `Contact ${obj.name || row.id} (${roleLabel(String(obj.role))})`;
-  }
-  if (row.type === "EkRoleAssignment") {
-    const obj = row.obj as Record<string, unknown>;
-    return `Role ${(obj.subject as string)?.slice(0, 8)}… → ${roleLabel(String(obj.role))}`;
-  }
-  if (row.type === "EkDepartment") {
-    return `Department ${row.id}`;
-  }
-  return `${row.type} ${row.id}`;
-}
 
 function reduce(state: State, action: Action): State {
   const column = state[action.key];
@@ -272,77 +179,7 @@ function reduce(state: State, action: Action): State {
   }
 
   const { row } = action;
-  const view = column.view;
-  const fresh = { ...column.fresh, [`${row.type}:${row.id}`]: row.hash };
-  const entry: FeedEntry = {
-    at: timeNow(),
-    type: row.type,
-    id: row.id,
-    hash: row.hash,
-    label: formatFeedLabel(row),
-  };
-  const feedLog = [entry, ...column.feedLog].slice(0, 30);
-
-  if (row.type === "EkOffer") {
-    const offer = row.obj as unknown as Offer;
-    return {
-      ...state,
-      [action.key]: {
-        ...column,
-        fresh,
-        feedLog,
-        view: {
-          ...view,
-          offers: upsert(view.offers, offer, e => e.offerId === offer.offerId),
-        },
-      },
-    };
-  }
-
-  if (row.type === "EkContact") {
-    const contact = row.obj as unknown as Contact;
-    return {
-      ...state,
-      [action.key]: {
-        ...column,
-        fresh,
-        feedLog,
-        view: {
-          ...view,
-          contacts: upsert(view.contacts, contact, e => e.person === contact.person),
-        },
-      },
-    };
-  }
-
-  if (row.type === "EkOrder") {
-    const order = row.obj as unknown as Order;
-    const same = (e: Order): boolean => e.idempotencyKey === order.idempotencyKey;
-    // Placed (admittedAt 0) and admitted rows share the idempotency key:
-    // each version replaces the other, never both.
-    const orders = order.admittedAt > 0 ? upsert(view.orders, order, same) : view.orders.filter(e => !same(e));
-    const pendingOrders = order.admittedAt === 0
-      ? upsert(view.pendingOrders, order, same)
-      : view.pendingOrders.filter(e => !same(e));
-    // The balance itself comes from the projection snapshot (refreshed on
-    // every order row below): recomputing it here from the viewer-scoped
-    // order list showed each column its own number.
-    return {
-      ...state,
-      [action.key]: {
-        ...column,
-        fresh,
-        feedLog,
-        view: { ...view, orders, pendingOrders },
-      },
-    };
-  }
-
-  const chatUnread = { ...column.chatUnread };
-  if (row.type === "EkChat" && row.obj?.incoming === true && row.id !== column.chatPeer) {
-    chatUnread[row.id] = (chatUnread[row.id] ?? 0) + 1;
-  }
-  return { ...state, [action.key]: { ...column, fresh, feedLog, chatUnread } };
+  return { ...state, [action.key]: applyFeedRow(column, row, timeNow()) };
 }
 
 function initial(): State {
@@ -358,6 +195,7 @@ function initial(): State {
         feedLog: [],
         chatPeer: null as string | null,
         chatUnread: {},
+        seenChatHashes: [],
       },
     ]),
   ) as unknown as State;
@@ -528,7 +366,7 @@ export default function Lab() {
           offs.push(
             client.onFeed((row: FeedRow) => {
               dispatch({ kind: "feed", key, row });
-              if (row.type === "EkRoleAssignment" || row.type === "EkDepartment" || row.type === "EkOrder" || row.type === "EkPurchaseRequest" || row.type === "EkPurchaseDecision" || row.type === "EkStockReceipt") {
+              if (["assignment", "department", "order", "stock", "purchase-request", "purchase-decision"].includes(row.kind ?? "")) {
                 snapshot().catch(error => dispatch({ kind: "notice", key, notice: error.message }));
               }
             }),
@@ -626,7 +464,7 @@ export default function Lab() {
         setJoined(current => current ? { ...current, view } : current);
       };
       client.onFeed((row: FeedRow) => {
-        if (row.type === "EkRoleAssignment" || row.type === "EkDepartment" || row.type === "EkOrder" || row.type === "EkPurchaseRequest" || row.type === "EkPurchaseDecision" || row.type === "EkStockReceipt") {
+        if (["assignment", "department", "order", "stock", "purchase-request", "purchase-decision"].includes(row.kind ?? "")) {
           void snapshotJoined().catch(() => {});
         }
       });
@@ -1139,10 +977,10 @@ export default function Lab() {
                         </div>
                       ) : (
                         view.offers.map(entry => {
-                          const isFresh = Boolean(column.fresh[`EkOffer:${entry.offerId}`]);
+                          const isFresh = Boolean(column.fresh[`offer:${entry.offerId}`]);
                           return (
                             <div
-                              key={`${entry.offerId}:${column.fresh[`EkOffer:${entry.offerId}`] ?? ""}`}
+                              key={`${entry.offerId}:${column.fresh[`offer:${entry.offerId}`] ?? ""}`}
                               className={`lab-item-card ${isFresh ? "lab-fresh" : ""}`}
                             >
                               <div className="lab-item-main">
@@ -1176,7 +1014,7 @@ export default function Lab() {
                         </div>
                       ) : (
                         orderHistory.map(entry => {
-                          const isFresh = Boolean(column.fresh[`EkOrder:${entry.idempotencyKey}`]);
+                          const isFresh = Boolean(column.fresh[`order:${entry.idempotencyKey}`]);
                           const confirmed = entry.admittedAt > 0;
                           return (
                             <div
@@ -1249,12 +1087,12 @@ export default function Lab() {
                         </div>
                       ) : (
                         view.contacts.map(entry => {
-                          const isFresh = Boolean(column.fresh[`EkContact:${entry.person}`]);
+                          const isFresh = Boolean(column.fresh[`contact:${entry.person}`]);
                           const chatting = column.chatPeer === entry.person;
                           const peerName = entry.name || `${entry.person.slice(0, 10)}…`;
                           const unread = column.chatUnread[entry.person] ?? 0;
                           return (
-                            <div key={`${entry.person}:${column.fresh[`EkContact:${entry.person}`] ?? ""}`}>
+                            <div key={`${entry.person}:${column.fresh[`contact:${entry.person}`] ?? ""}`}>
                               <div
                                 className={`lab-item-card ${isFresh ? "lab-fresh" : ""}`}
                                 role="button"

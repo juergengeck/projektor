@@ -47,6 +47,7 @@ export default defineConfig({
         main: path.join(HERE, "index.html"),
         lab: path.join(HERE, "lab/index.html"),
         eklab: path.join(HERE, "eklab/index.html"),
+        app: path.join(HERE, "app/index.html"),
       },
     },
   },

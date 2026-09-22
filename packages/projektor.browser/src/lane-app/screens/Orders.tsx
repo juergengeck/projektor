@@ -1,0 +1,96 @@
+// packages/projektor.browser/src/lane-app/screens/Orders.tsx
+/** Order/purchase history, failures and balances. */
+import { Badge, RoleBadge } from "../../components/ui";
+import type { Order } from "../feed.ts";
+import type { LaneContent } from "../content.ts";
+import { fmtDate, fmtMoney, nameOf } from "../format.ts";
+import type { Contact } from "../feed.ts";
+
+export function Orders({ orders, pendingOrders, failures, balances, contacts, fresh, isCustomer, content }: {
+  orders: Order[];
+  pendingOrders: Order[];
+  failures: { idempotencyKey: string; offer: string; quantity: number; reason: string; decidedAt: number }[];
+  balances: { party: string; role: string; receivable: number; payable: number; currency: string }[];
+  contacts: Contact[];
+  fresh: Record<string, string>;
+  isCustomer: boolean;
+  content: LaneContent;
+}) {
+  // Both stages belong to the history. Confirmation replaces the
+  // pending version under the same idempotency key in the projection.
+  const orderHistory = [...pendingOrders, ...orders];
+  const purchaseCount = isCustomer ? orders.length : orderHistory.length;
+  return (
+    <>
+      <section className="lab-section" aria-label={isCustomer ? content.purchaseHistoryTitle : content.ordersTitle}>
+        <div className="lab-section-title">
+          <span>{isCustomer ? content.purchaseHistoryTitle : content.ordersTitle}</span>
+          <span style={{ fontSize: "0.7rem", color: "var(--amway-muted)" }}>
+            {content.orderCount(purchaseCount, isCustomer)}
+          </span>
+        </div>
+        <div className="lab-items-list">
+          {orderHistory.length === 0 && failures.length === 0 ? (
+            <div className="state-empty" style={{ padding: "0.8rem", fontSize: "0.75rem" }}>
+              {isCustomer ? content.empty.purchases : content.empty.orders}
+            </div>
+          ) : (
+            orderHistory.map(entry => {
+              const isFresh = Boolean(fresh[`order:${entry.idempotencyKey}`]);
+              const confirmed = entry.admittedAt > 0;
+              return (
+                <div
+                  key={entry.idempotencyKey}
+                  data-order-id={entry.idempotencyKey}
+                  className={`lab-item-card lab-purchase-card ${isFresh ? "lab-fresh" : ""}`}
+                >
+                  <div className="lab-item-main">
+                    <span className="lab-item-title">{entry.offer}</span>
+                    <span className="lab-item-sub">
+                      Qty: {entry.quantity} · {fmtMoney(entry.quantity * entry.unitAmount, entry.currency)}
+                    </span>
+                    <span className="lab-item-sub">{entry.idempotencyKey}</span>
+                    {confirmed && <span className="lab-item-sub">Confirmed {fmtDate(entry.admittedAt)}</span>}
+                  </div>
+                  <Badge text={confirmed ? "Confirmed" : "Processing purchase"} variant={confirmed ? "success" : "warning"} />
+                </div>
+              );
+            })
+          )}
+          {failures.map(failure => (
+            <div key={failure.idempotencyKey} className="state-denied lab-purchase-failure" role="status">
+              <strong>{failure.reason === "out-of-stock" ? "Out of stock" : "Purchase could not be completed"}</strong>
+              <div>{failure.offer} · Qty: {failure.quantity}</div>
+              <div>No purchase was confirmed.</div>
+            </div>
+          ))}
+        </div>
+      </section>
+      <div className="lab-section">
+        <div className="lab-section-title">
+          <span>{content.balancesTitle}</span>
+          <span style={{ fontSize: "0.7rem", color: "var(--amway-muted)" }}>{balances.length}{content.partiesSuffix}</span>
+        </div>
+        <div className="lab-items-list">
+          {balances.length === 0 ? (
+            <div className="state-empty" style={{ padding: "0.8rem", fontSize: "0.75rem" }}>
+              {content.empty.balances}
+            </div>
+          ) : (
+            balances.map(entry => (
+              <div key={`${entry.party}:${entry.currency}`} className="lab-item-card">
+                <div className="lab-item-main">
+                  <span className="lab-item-title">{nameOf(contacts, entry.party)}</span>
+                  <span className="lab-item-sub">
+                    Receivable {fmtMoney(entry.receivable, entry.currency)} · Payable {fmtMoney(entry.payable, entry.currency)}
+                  </span>
+                </div>
+                <RoleBadge role={entry.role} />
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
