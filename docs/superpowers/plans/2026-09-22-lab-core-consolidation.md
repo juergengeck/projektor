@@ -4,7 +4,7 @@
 
 **Goal:** Replace the two forked labs (`amway.lab` + `src/lab`, `ek.lab` + `src/eklab`) with one brand-parameterized `packages/lab.core` and one lane shell. Then move the lane onto Flexibel's lab architecture: one full app instance per role in a same-origin iframe, driven through a PlanRegistry bridge and seeded through real invites.
 
-**Architecture:** Phase 1 folds both labs into `lab.core` behind a `LabBrand` config and keeps today's worker + host-switch engine, so behavior stays the same and both lanes go green on one code path. Phase 2 builds the in-page lane app instance that Flexibel's architecture needs: projektor's current single-instance app is server-backed (`/api/amway/*`), so no browser-local product exists yet for an iframe to load. Phase 3 replaces the worker host with a Flexibel-style shell: sequential iframes, registry bridge, invite seeding, snapshot columns. Phase 4 (separate plan) extracts the lane-shell functions that projektor and `one.flexibel` then share.
+**Architecture:** Phase 1 folds both labs into `lab.core` behind a `LabBrand` config and keeps today's worker + host-switch engine, so behavior stays the same and both lanes go green on one code path. Phase 2 builds the in-page lane app instance that Flexibel's architecture needs: projektor's current single-instance app is server-backed (`/api/amway/*`), so no browser-local product exists yet for an iframe to load. Phase 3 replaces workers with Flexibel-style iframes: sequential boot, registry bridge, invite seeding, snapshot columns. **The data plane does not change:** CHUM keeps running over the host's local `lab://` MessagePort switch, with iframes as the switched endpoints instead of workers. The commserver stays what it is today and in Flexibel, rendezvous only (IoM discovery and pairing). Phase 4 (separate plan) extracts the lane-shell functions that projektor and `one.flexibel` then share.
 
 **Tech Stack:** TypeScript run directly by `node --test` (type stripping), React 19 + Vite (`projektor.browser`), ONE (`one.core`, `one.models`, `refinio.api` from `../one/packages`), Playwright (`projektor.browser/tests`).
 
@@ -25,15 +25,15 @@
 
 The working tree has a large uncommitted change set: `chat-notifications.ts`, `LabDeviceInvite`, join/purchase specs, and the `lab-relay` removal. Phase 1 moves every file that change set touches. **Land or commit that work first**, and confirm `npm run test:amway-lab && npm run test:ek-lab` is green on the result. That green run is the baseline every Phase 1 task is measured against.
 
-## Decisions (confirm before Phase 2)
+## Decisions (settled 2026-09-22)
 
-| # | Decision | Recommendation | Consequence |
+| # | Decision | Outcome | Consequence |
 |---|---|---|---|
-| D1 | Where the lane-shell functions shared with Flexibel live (`callPlan`, `waitForRegistry`, `callWhenRegistered`, `poll`, `observeAppTransitions`, theme cycle, `labAppUrl`, `resolveStorageDirectory`) | Phase 3 ports them into `lab.core/shell/` with a header naming the Flexibel source file. Phase 4 moves them to one package under `lama/packages` (per `src/CLAUDE.md`, shared code lives in lama), and both repos import it. | Temporary duplication across repos, bounded by Phase 4 |
-| D2 | Data plane | Adopt Flexibel's: CHUM over a commserver (glue by default, local commserver in tests and dev). Remove the `lab://` host switch. | Lanes are no longer hermetic or offline-capable. The per-column network-partition toggle (`setSwitch`/`setOnline`) goes away, and "Paused" becomes UI-only, as in Flexibel. `lab-mesh.spec.ts`/`ek-mesh.spec.ts` partition assertions are deleted. |
-| D3 | Pairing topology | Admin registers each role through an admin-issued invite (Flexibel pattern, `ownerId === invited personId`). The host then pairs the remaining three role↔role pairs with IoP invites. That keeps today's `pairAll` full mesh, so the existing replication assertions (offers, customer-contact scoping, 1:1 chat between any pair) hold unchanged. | Alternative: appointment-chain invites only. Rejected until someone proves offers and customer contacts replicate without a direct link. |
-| D4 | Persistence across reloads | Adopt Flexibel's: persistent per-role storage, reuse the pairing when the signed-in owner matches the seed record, and fail loudly on a foreign identity. | Projektor currently boots fresh per load because persisted worker state wedged CHUM (`src/lab/worker.ts:39-46`). If the wedge reproduces on the commserver path, that is a bug to root-cause (systematic-debugging), not a reason to keep fresh directories. |
-| D5 | Main-thread cost | Same-origin iframes share one renderer main thread, so four ONE instances do crypto on the UI thread. Boot sequentially (Flexibel found this load-bearing: parallel boot hit `ERR_INSUFFICIENT_RESOURCES`). | Measure boot-to-seeded time in Task 13. If it is more than 2× today's worker lane, raise it before Task 14. |
+| D1 | Where the lane-shell functions shared with Flexibel live (`callPlan`, `waitForRegistry`, `callWhenRegistered`, `poll`, `observeAppTransitions`, theme cycle, `labAppUrl`, `resolveStorageDirectory`) | **Accepted.** Phase 3 ports them into `lab.core/shell/` with a header naming the Flexibel source file. Phase 4 moves them to one package under `lama/packages` (per `src/CLAUDE.md`, shared code lives in lama), and both repos import it. | Temporary duplication across repos, bounded by Phase 4 |
+| D2 | Data plane | **Settled: unchanged.** CHUM stays on the local `lab://` MessagePort switch (`host-switch.ts`). Same-origin iframes transfer ports through `iframe.contentWindow.postMessage(msg, origin, [port])` / `parent.postMessage(msg, origin, [port])` exactly as workers do. The commserver carries rendezvous only (IoM discovery and pairing), which also matches Flexibel: its commserver hands connections over to direct WebRTC (`FlexibelModel.ts:835-861`) and never relays data. | Lanes stay hermetic, offline-capable and fast. The per-column partition toggle (`setSwitch`/`setOnline`) and the `*-mesh.spec.ts` partition assertions stay. |
+| D3 | Pairing topology | **Accepted.** Admin registers each role through an admin-issued invite (Flexibel pattern, `ownerId === invited personId`). The host then pairs the remaining three role↔role pairs with IoP invites. That keeps today's `pairAll` full mesh, so the existing replication assertions (offers, customer-contact scoping, 1:1 chat between any pair) hold unchanged. | Alternative: appointment-chain invites only. Rejected until someone proves offers and customer contacts replicate without a direct link. |
+| D4 | Persistence across reloads | **Session-scoped fresh boot through Phase 3**, as today. Each page load gets its own directories (`${storagePrefix}-${role}-${session}`), the host prunes earlier sessions, and the seed runs in full on every load. Flexibel's pairing reuse and foreign-identity refusal are **not** ported. Persistence is gated on a root cause (see "Gated follow-up: persistent storage" below). | The wedge is documented from experience (`src/lab/worker.ts:39-46`: reloaded state leaves CHUM paired and connected with nothing flowing, and nothing short of a fresh instance repairs it). Persistence without a root cause would wedge the first deliverable on its second page load. Cost: boot is a full seed every time, which is already the case today and what the D5 baseline measures. |
+| D5 | Main-thread cost | **Accepted.** Same-origin iframes share one renderer main thread, so four ONE instances do crypto on the UI thread. Boot sequentially (Flexibel found this load-bearing: parallel boot hit `ERR_INSUFFICIENT_RESOURCES`). | Measure boot-to-seeded time in Task 13. If it is more than 2× today's worker lane, raise it before Task 14. |
 
 ## Target File Structure
 
@@ -47,9 +47,11 @@ packages/lab.core/                     (new; replaces amway.lab + ek.lab)
   chat-plan.ts        createChatPlan({ brand, … })                         [P1]
   chat-notifications.ts                                                   [P1, moved as-is]
   iom.ts              createIoMOps({ brand, … })                           [P1]
-  worker/lab-instance.ts, worker/host-switch.ts                           [P1, deleted in P3]
-  port-ipc.ts         IPC control plane (node test harness after P3)      [P1]
-  instance.ts         startLaneInstance(): in-page instance, commserver   [P2]
+  lab-instance.ts     ONE composition on a LabPort (worker or iframe)      [P1; P2 adds session plans]
+  storage.ts          session-scoped directory names + prune selection    [P2]
+  host-switch.ts      lab:// MessagePort switch (data plane, kept)        [P1]
+  port-ipc.ts         IPC over a LabPort (node test harness; CHUM dial/accept messages) [P1]
+  iframe-port.ts      LabPort over window/parent postMessage              [P2]
   registry-bridge.ts  window.__planRegistry + #__api_bridge               [P2]
   session-plan.ts     session / ui plans the host drives                  [P2]
   shell/              ported Flexibel lane-shell functions (D1)           [P3]
@@ -59,7 +61,7 @@ packages/lab.core/                     (new; replaces amway.lab + ek.lab)
   *.test.ts
 
 packages/projektor.browser/src/
-  lab-engine/worker.ts   one worker for both brands                       [P1, deleted in P3]
+  lab-engine/worker.ts   one worker for both brands                       [P1, deleted in P3; host-switch stays]
   lane-app/              in-iframe app: main.tsx, RoleApp.tsx, screens/   [P2]
     themes/amway.css, themes/ek.css   (from lab/theme.css, eklab/theme.css)
   lab/                   host shell: Lab.tsx, transport.ts, main.tsx      [P3 rewrite]
@@ -616,8 +618,8 @@ git commit -m "refactor(lab): one plan code path for both lanes; ek gains chat n
 ### Task 5: Worker engine, integration suite and CI lanes on lab.core
 
 **Files:**
-- Create: `packages/lab.core/worker/lab-instance.ts` (from `packages/amway.lab/lab-instance.ts`)
-- Create: `packages/lab.core/worker/host-switch.ts` (from `packages/amway.lab/host-switch.ts`)
+- Create: `packages/lab.core/lab-instance.ts` (from `packages/amway.lab/lab-instance.ts`)
+- Create: `packages/lab.core/host-switch.ts` (from `packages/amway.lab/host-switch.ts`)
 - Create: `packages/lab.core/port-ipc.ts` (from `packages/amway.lab/port-ipc.ts`, unchanged)
 - Create: `packages/lab.core/test/node-worker.ts` (from `packages/amway.lab/test/node-worker.ts`)
 - Test: `packages/lab.core/lab.integration.test.ts`, `packages/lab.core/host-switch.test.ts`, `packages/lab.core/port-ipc.test.ts`
@@ -629,7 +631,7 @@ git commit -m "refactor(lab): one plan code path for both lanes; ek gains chat n
 
 - [ ] **Step 1: Port the tests**
 
-- `host-switch.test.ts`, `port-ipc.test.ts`: copy from `amway.lab` and fix the import paths (`./host-switch.ts` → `./worker/host-switch.ts`). They are identical between the labs today.
+- `host-switch.test.ts`, `port-ipc.test.ts`: copy from `amway.lab` unchanged. They are identical between the labs today.
 - `lab.integration.test.ts`: copy the **Amway** version and substitute `"amwayLab"` → `"lab"`, `"amwayChat"` → `"chat"`, `"demo-de"` → `brand.department.id`, `"Demo DE"` → `brand.department.name`, `"lab-stock-opening"` → `` `${brand.storagePrefix}-stock-opening` ``, `"amway-lab-"` → `` `${brand.storagePrefix}-` ``, and `"AmwayX"` literals → `types.X` (with `const types = labTypes(brand)`).
 - `test/node-worker.ts`: accept `brand` in `workerData` and pass it on:
 
@@ -654,11 +656,11 @@ await startLabInstance({
 - [ ] **Step 2: Run and confirm failure**
 
 Run: `LAB_BRAND=ek node --test --test-concurrency=1 packages/lab.core/lab.integration.test.ts`
-Expected: FAIL, missing `worker/lab-instance.ts`
+Expected: FAIL, missing `lab-instance.ts`
 
 - [ ] **Step 3: Implement**
 
-In `worker/lab-instance.ts` (copied from Amway), add `brand: LabBrand` to `LabInstanceOptions` and:
+In `lab-instance.ts` (copied from Amway), add `brand: LabBrand` to `LabInstanceOptions` and:
 
 ```ts
 const { recipes: labRecipes, reverseMapsForIdObjects: labReverseMaps } = createLabRecipes(brand);
@@ -754,7 +756,7 @@ Expected: FAIL. EK counts the customer's own replayed rows, so the badge text is
  */
 import "@refinio/one.core/system/load-browser.js";
 import { brandById } from "@projektor/lab.core/brand.ts";
-import { startLabInstance } from "@projektor/lab.core/worker/lab-instance.ts";
+import { startLabInstance } from "@projektor/lab.core/lab-instance.ts";
 import type { LabPort } from "@projektor/lab.core/port-ipc.ts";
 ```
 
@@ -833,7 +835,7 @@ git commit -m "refactor(lab): both browser lanes on lab.core; fix shared Indexed
 
 # Phase 2: The in-page lane app (what Flexibel's iframes load)
 
-Flexibel's lane loads `/app/?demoSession=lab-<role>&labInstance=<role>`, its real product app. Projektor has no browser-local product app, so this phase builds one from the pieces that already exist: the worker's ONE composition and the column UI inside `Lab.tsx`. Exit criterion: `/browser/app/?lane=amway&labInstance=seller` opens a standalone role app that exposes `window.__planRegistry` and can register, log in, create or accept invites, and run every `lab`/`chat` operation.
+Flexibel's lane loads `/app/?demoSession=lab-<role>&labInstance=<role>`, its real product app, with persistent storage. Projektor keeps session-scoped storage (D4), so the lane app URL carries `labSession=<per-load id>` as well. Projektor has no browser-local product app, so this phase builds one from the pieces that already exist: the worker's ONE composition and the column UI inside `Lab.tsx`. Exit criterion: `/browser/app/?lane=amway&labInstance=seller&labSession=<id>` renders a role app that exposes `window.__planRegistry`, can register, log in, create or accept invites, and run every `lab`/`chat` operation, with its CHUM on the host's `lab://` switch through `iframeChildPort`. The app always runs inside a lane host. Opened top-level, it throws (`window.parent === window` means there is no switch), and it never falls back to a commserver.
 
 ### Task 7: Registry bridge (the host↔app control plane)
 
@@ -1123,79 +1125,171 @@ git add packages/lab.core/session-plan.ts packages/lab.core/session-plan.test.ts
 git commit -m "feat(lab): session/ui/onecore plans for lane app instances"
 ```
 
-### Task 9: startLaneInstance on the commserver data plane (D2), with the node integration suite
+### Task 9: Iframe LabPort and invite-seeded integration suite (data plane unchanged)
+
+The instance keeps today's composition: the `lab:` dialer, the `chum-accept` listener, `routing-ready`, the separate IoM `ConnectionsModel` on the commserver, and `setOnline`. Only the endpoint changes, from worker to iframe, and the seeding moves to invites.
 
 **Files:**
-- Create: `packages/lab.core/instance.ts`
-- Modify: `packages/lab.core/test/node-worker.ts` (boot `startLaneInstance`; control plane stays `port-ipc`)
-- Modify: `packages/lab.core/lab.integration.test.ts` (commserver data plane, invite seeding per D3)
-- Modify: `packages/lab.core/lab-plan.ts` (remove `setOnline`)
+- Create: `packages/lab.core/iframe-port.ts`
+- Modify: `packages/lab.core/lab-instance.ts` (register `session`/`ui`/`onecore`; boot the ONE composition lazily, on `session.registerAndSetup`/`loginAndInit`, through `createSessionPlans({ boot })`)
+- Modify: `packages/lab.core/lab.integration.test.ts` (invite seeding per D3; still over `startLabHost`)
+- Test: `packages/lab.core/iframe-port.test.ts`
 
 **Interfaces:**
-- Consumes: `createLabRecipes`, `createLabPlan`, `createChatPlan`, `createSessionPlans`, `startCommServer`
-- Produces: `startLaneInstance({ brand, email, secret, instanceName, directory, commServerUrl, appBaseUrl, onFeed })` → `BootedInstance & { registry: { call(plan, method, params): Promise<unknown> }; shutdown(): Promise<void> }`
+- Produces:
+  - `iframeChildPort(win: Window, origin: string): LabPort`, used inside the lane app: posts to `win.parent` and listens on `win`
+  - `iframeHostPort(iframe: HTMLIFrameElement, origin: string): SpawnedWorker["port"]`, used by the host: posts to `iframe.contentWindow` and listens on `window`, filtered by `event.source === iframe.contentWindow`
+  - Both keep `LabPort`'s transfer semantics: `postMessage(message, transfer?)` → `target.postMessage(message, origin, transfer)`
+- Consumes: `startLabHost` (unchanged; it only needs `postMessage`/`addEventListener` and `terminate`, which removes the iframe)
 
-Implementation notes. Build this from `worker/lab-instance.ts`:
-- **One** `ConnectionsModel` on `commServerUrl` for mesh, IoP and IoM. This is the `iomConnections` configuration applied to everything. Remove the `lab:` dialer, `chum-accept` listener, `routing-ready`, the MessagePort plumbing and the second model.
-- Keep the `pairingProtocolVersion` restoration shim, applied once to the single model.
-- Keep `enableConnectionsToPerson` for persisted peers. This is the D4 reuse path, and it now runs on every reload.
-- Feed rows go to `onFeed(row)` instead of `postFeed(port, row)`.
-- `createLabPlan` loses `iomConnections` (pass the single model) and `setOnline`, per D2.
-- `registry` wraps refinio.api's `OperationRegistry` dispatch (see Task 7's note) and registers `lab`, `chat`, `connection`, `session`, `ui` and `onecore`.
+- [ ] **Step 1: Write the failing test**
 
-- [ ] **Step 1: Rewrite the integration seed first (failing)**
+```ts
+// packages/lab.core/iframe-port.test.ts
+import test from "node:test";
+import assert from "node:assert/strict";
+import { iframeChildPort, iframeHostPort } from "./iframe-port.ts";
 
-In `lab.integration.test.ts`, replace the `startLabHost` + `pairAll` boot with:
-1. `const commserver = await startCommServer(commServerPortFor(brand))`
-2. Spawn four node workers running `startLaneInstance` against `commserver.url` (control plane over `port-ipc` as today).
-3. Admin: `session.registerAndSetup`.
-4. For each of manager, seller and customer, in order: admin `connection.createInvite`, then role `ui.loadPendingInvitation({ url })`, then role `ui.acceptPendingInvitation({ secret, displayName, expectedEmail: \`${key}@${brand.emailDomain}\` })`. Assert `ownerId` equals the admin-side Person for that email.
-5. D3 full mesh: for each of (manager, seller), (manager, customer), (seller, customer), A `connection.createInvite` and B `connection.connectWithInvite`.
+function fakeWindow() {
+  const listeners: ((event: MessageEvent) => void)[] = [];
+  const sent: { message: unknown; origin: string; transfer?: unknown[] }[] = [];
+  const win = {
+    postMessage: (message: unknown, origin: string, transfer?: unknown[]) => sent.push({ message, origin, transfer }),
+    addEventListener: (_type: string, listener: (event: MessageEvent) => void) => listeners.push(listener),
+    dispatch: (data: unknown, source: unknown) => listeners.forEach(listener => listener({ data, source } as MessageEvent)),
+  };
+  return { win, sent };
+}
 
-Keep every assertion after the seed unchanged. Delete the partition/`setSwitch`/`setOnline` cases and list them in the commit message.
+test("child port posts to its parent with the origin and transfer list", () => {
+  const parent = fakeWindow();
+  const self = fakeWindow();
+  const port = iframeChildPort({ ...self.win, parent: parent.win } as unknown as Window, "http://lab.test");
+  const transfer = [{}];
+  port.postMessage({ kind: "chum-dial" }, transfer as unknown as Transferable[]);
+  assert.deepEqual(parent.sent, [{ message: { kind: "chum-dial" }, origin: "http://lab.test", transfer }]);
+});
 
-Run: `npm run test:amway-lab`
-Expected: FAIL, `startLaneInstance` missing
+test("host port only delivers messages from its own iframe", () => {
+  const host = fakeWindow();
+  const child = fakeWindow();
+  const other = fakeWindow();
+  const iframe = { contentWindow: child.win, remove() {} } as unknown as HTMLIFrameElement;
+  const port = iframeHostPort(iframe, "http://lab.test", host.win as unknown as Window);
+  const got: unknown[] = [];
+  port.addEventListener("message", event => got.push(event.data));
+  host.win.dispatch({ kind: "ready" }, child.win);
+  host.win.dispatch({ kind: "ready" }, other.win);
+  assert.deepEqual(got, [{ kind: "ready" }]);
+});
+```
 
-- [ ] **Step 2: Implement `instance.ts`** as described above.
+- [ ] **Step 2: Run and confirm failure**
 
-- [ ] **Step 3: Run both suites and confirm they pass**
+Run: `LAB_BRAND=amway node --test packages/lab.core/iframe-port.test.ts`
+Expected: FAIL, missing module
+
+- [ ] **Step 3: Implement `iframe-port.ts`**
+
+```ts
+// packages/lab.core/iframe-port.ts
+/**
+ * LabPort over same-origin iframe postMessage, so the lab:// switch
+ * (host-switch.ts) routes CHUM MessagePorts between iframes exactly as it
+ * does between workers. The data plane stays local; nothing here touches a
+ * commserver.
+ */
+import type { LabPort } from "./port-ipc.ts";
+
+export function iframeChildPort(win: Window, origin: string): LabPort {
+  return {
+    postMessage: (message, transfer) => win.parent.postMessage(message, origin, (transfer ?? []) as Transferable[]),
+    addEventListener: (type, listener) => win.addEventListener(type, event => {
+      if ((event as MessageEvent).source === win.parent) listener(event as MessageEvent);
+    }),
+  };
+}
+
+export function iframeHostPort(iframe: HTMLIFrameElement, origin: string, host: Window = window) {
+  const target = () => {
+    const child = iframe.contentWindow;
+    if (!child) throw new Error("lab.core: iframe has no window.");
+    return child;
+  };
+  return {
+    postMessage: (message: unknown, transfer?: unknown[]) => target().postMessage(message, origin, (transfer ?? []) as Transferable[]),
+    addEventListener: (type: "message", listener: (event: MessageEvent) => void) => host.addEventListener(type, event => {
+      if ((event as MessageEvent).source === iframe.contentWindow) listener(event as MessageEvent);
+    }),
+  };
+}
+```
+
+Check `LabPort`'s exact listener signature in `port-ipc.ts` and match it. `iframeChildPort`'s source filter is only in the child listener, so the host-side test covers the host filter and the child test covers transfer.
+
+- [ ] **Step 4: Invite seeding in the node suite**
+
+`pairAll` already pairs through `connection.createInvite`/`connectWithInvite` over `lab://`. Split it into the D3 order, still on the lab:// switch:
+1. Admin: `session.registerAndSetup`.
+2. For each of manager, seller and customer, in order: admin `connection.createInvite`, then role `ui.loadPendingInvitation({ url })`, then role `ui.acceptPendingInvitation({ secret, displayName, expectedEmail: \`${key}@${brand.emailDomain}\` })`. Assert that `ownerId` equals the admin-side Person for that email.
+3. For each of (manager, seller), (manager, customer), (seller, customer): A `connection.createInvite`, then B `connection.connectWithInvite`.
+
+Keep every assertion after the seed, **including the partition/`setOnline` cases**.
 
 Run: `npm run test:amway-lab && npm run test:ek-lab`
 Expected: both `pass`
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add packages/lab.core
-git commit -m "feat(lab): startLaneInstance on the commserver data plane; invite-seeded integration suite"
+git commit -m "feat(lab): iframe LabPort for the lab:// switch; invite-seeded integration suite"
 ```
 
 ### Task 10: Lane app UI (`/browser/app/`)
 
 **Files:**
 - Create: `packages/projektor.browser/app/index.html` (Vite entry, `#lane-app-root`)
-- Create: `packages/projektor.browser/src/lane-app/main.tsx`: reads `?lane=`, `?labInstance=` and `?demoSession=`; resolves the brand with `brandById`; directory `resolveStorageDirectory(brand, search)`; calls `exposeRegistry`; renders `<RoleApp>`
+- Create: `packages/projektor.browser/src/lane-app/main.tsx`: reads `?lane=`, `?labInstance=` and `?labSession=`; resolves the brand with `brandById`; directory `resolveStorageDirectory(brand, search)`; calls `exposeRegistry`; renders `<RoleApp>`
 - Create: `packages/projektor.browser/src/lane-app/RoleApp.tsx` and `src/lane-app/screens/{Directory,Offers,Orders,Stock,Chat,FeedLog}.tsx`, extracted from the column body of `src/lab/Lab.tsx` (the directory with chat icon and unread badge, offers with share, orders/purchase history, staff-only meters, chat window, feed log)
 - Create: `src/lane-app/feed.ts`: the unread/feed reducer, switching on `row.kind` instead of `row.type`, so it is brand-agnostic
 - Move: `src/lab/theme.css` → `src/lane-app/themes/amway.css`, `src/eklab/theme.css` → `src/lane-app/themes/ek.css`; move `src/eklab/assets/` → `src/lane-app/assets/ek/`
-- Create: `packages/lab.core/storage.ts` with `resolveStorageDirectory(brand, search)`
+- Create: `packages/lab.core/storage.ts` with `resolveStorageDirectory(brand, search)` and `staleSessionDirectories(brand, role, keep, names)`
 - Modify: `packages/projektor.browser/vite.config.ts` (add the `app` input)
 - Test: `packages/lab.core/storage.test.ts`, `packages/projektor.browser/src/lane-app/feed.test.ts`
 
-`resolveStorageDirectory` follows Flexibel's rule, but without its silent default. The lane app has no single-instance mode, so a missing or invalid `labInstance` throws:
+`resolveStorageDirectory` follows Flexibel's `labInstance` rule, without its silent default, and adds the D4 session scope. The lane app has no single-instance mode, so missing or invalid parameters throw. The prune selection is a pure function, so the host's IndexedDB cleanup can be tested without IndexedDB:
 
 ```ts
 // packages/lab.core/storage.ts
+/**
+ * Session-scoped storage (D4): every page load boots each role into a fresh
+ * directory. Reloading into persisted state wedges CHUM (paired and
+ * connected, nothing flows) and one.models offers no repair short of a fresh
+ * instance. Persistence returns only with a root cause for that wedge.
+ */
 import type { LabBrand } from "./brand.ts";
 
-/** One ONE storage directory per lane role (Flexibel: flexibel-lab-<role>). */
+const NAME = /^[a-z-]{1,40}$/;
+const SESSION = /^[0-9a-f]{8}$/;
+
 export function resolveStorageDirectory(brand: LabBrand, search: string): string {
-  const labInstance = new URLSearchParams(search).get("labInstance");
-  if (labInstance === null || !/^[a-z-]{1,40}$/.test(labInstance)) {
+  const params = new URLSearchParams(search);
+  const labInstance = params.get("labInstance");
+  const labSession = params.get("labSession");
+  if (labInstance === null || !NAME.test(labInstance)) {
     throw new Error(`${brand.label}: labInstance must match [a-z-]{1,40}, got ${JSON.stringify(labInstance)}.`);
   }
-  return `${brand.storagePrefix}-${labInstance}`;
+  if (labSession === null || !SESSION.test(labSession)) {
+    throw new Error(`${brand.label}: labSession must be 8 hex characters, got ${JSON.stringify(labSession)}.`);
+  }
+  return `${brand.storagePrefix}-${labInstance}-${labSession}`;
+}
+
+/** Earlier sessions' directories for one role; `keep` is the live one. */
+export function staleSessionDirectories(brand: LabBrand, role: string, keep: string, names: readonly string[]): string[] {
+  const prefix = `${brand.storagePrefix}-${role}-`;
+  return names.filter(name => name.startsWith(prefix) && name !== keep);
 }
 ```
 
@@ -1204,28 +1298,36 @@ export function resolveStorageDirectory(brand: LabBrand, search: string): string
 import test from "node:test";
 import assert from "node:assert/strict";
 import { AMWAY, EK } from "./brand.ts";
-import { resolveStorageDirectory } from "./storage.ts";
+import { resolveStorageDirectory, staleSessionDirectories } from "./storage.ts";
 
-test("per-brand, per-role directories", () => {
-  assert.equal(resolveStorageDirectory(AMWAY, "?labInstance=seller"), "amway-lab-seller");
-  assert.equal(resolveStorageDirectory(EK, "?lane=ek&labInstance=seller"), "ek-lab-seller");
+test("per-brand, per-role, per-session directories", () => {
+  assert.equal(resolveStorageDirectory(AMWAY, "?labInstance=seller&labSession=0a1b2c3d"), "amway-lab-seller-0a1b2c3d");
+  assert.equal(resolveStorageDirectory(EK, "?lane=ek&labInstance=seller&labSession=0a1b2c3d"), "ek-lab-seller-0a1b2c3d");
 });
 
-test("rejects missing or unsafe instance names", () => {
-  assert.throws(() => resolveStorageDirectory(AMWAY, ""), /labInstance must match/);
-  assert.throws(() => resolveStorageDirectory(AMWAY, "?labInstance=../x"), /labInstance must match/);
+test("rejects missing or unsafe instance and session names", () => {
+  assert.throws(() => resolveStorageDirectory(AMWAY, "?labSession=0a1b2c3d"), /labInstance must match/);
+  assert.throws(() => resolveStorageDirectory(AMWAY, "?labInstance=../x&labSession=0a1b2c3d"), /labInstance must match/);
+  assert.throws(() => resolveStorageDirectory(AMWAY, "?labInstance=seller"), /labSession must be 8 hex/);
+});
+
+test("prunes only this brand's earlier sessions of this role", () => {
+  const names = ["amway-lab-seller-11111111", "amway-lab-seller-22222222", "amway-lab-sellerx-33333333", "ek-lab-seller-44444444", "amway-lab-manager-55555555"];
+  assert.deepEqual(staleSessionDirectories(AMWAY, "seller", "amway-lab-seller-22222222", names), ["amway-lab-seller-11111111"]);
 });
 ```
 
+`amway-lab-sellerx-…` is excluded only because no role name is a prefix of another (`admin`, `manager`, `seller`, `customer`). The trailing `-` in the prefix is what enforces this; keep it.
+
 `feed.test.ts` locks in the unread rule that both lanes now share: an incoming chat row for a closed peer increments, an own (`incoming: false`) row does not, the open peer does not, and the same `hash` twice counts once.
 
-Steps: write `storage.test.ts` and `feed.test.ts` (fail) → implement `storage.ts` and `feed.ts` (pass) → extract the screens (no behavior change; the class names `lab-column-body`, `lab-chat-badge` and `lab-device-invite` stay so the specs keep their selectors) → `npm run typecheck:browser` → manual check: open `http://localhost:<dev>/browser/app/?lane=amway&labInstance=admin&commServer=ws://127.0.0.1:18331`, run `window.__planRegistry.call("session","registerAndSetup",{email:"admin@lab.local",secret:"x",instanceName:"admin"})` in the console, and confirm the app renders the admin view → commit `feat(lab): standalone lane app per role`.
+Steps: write `storage.test.ts` and `feed.test.ts` (fail) → implement `storage.ts` and `feed.ts` (pass) → extract the screens (no behavior change; the class names `lab-column-body`, `lab-chat-badge` and `lab-device-invite` stay so the specs keep their selectors) → `npm run typecheck:browser` → add a `main.tsx` guard that throws when `window.parent === window` (lane app outside a host) → the end-to-end check happens in Task 13, inside the host → commit `feat(lab): standalone lane app per role`.
 
 ---
 
 # Phase 3: Flexibel-style host shell
 
-Exit criterion: `/browser/lab/?lane=amway` and `?lane=ek` boot four lane-app iframes sequentially, seed through invites, and render snapshot columns. Workers, the host switch and `src/eklab/` are gone.
+Exit criterion: `/browser/lab/?lane=amway` and `?lane=ek` boot four lane-app iframes sequentially, seed through invites, and render snapshot columns. Workers and `src/eklab/` are gone; `host-switch.ts` now switches iframes (`iframeHostPort`), and the column partition toggle still works.
 
 ### Task 11: Port Flexibel's lane-shell functions (D1)
 
@@ -1234,7 +1336,7 @@ Exit criterion: `/browser/lab/?lane=amway` and `?lane=ek` boot four lane-app ifr
 - Create: `packages/lab.core/shell/readiness.ts`: `callWhenRegistered`, `poll` (ported from `flexibel …/lab/transport.ts:278-305` and `poll`)
 - Create: `packages/lab.core/shell/transitions.ts`: `observeAppTransitions`, `APP_TRANSITION_DEBOUNCE_MS` (from `transport.ts:141-173`)
 - Create: `packages/lab.core/shell/theme.ts`: from `flexibel …/lab/theme.ts`, verbatim
-- Create: `packages/lab.core/shell/urls.ts`: `labAppUrl(href, brand, key)`, which returns `/browser/app/?lane=<brand.lane>&labInstance=<key>&demoSession=lab-<key>`
+- Create: `packages/lab.core/shell/urls.ts`: `labAppUrl(href, brand, key, session)`, which returns `/browser/app/?lane=<brand.lane>&labInstance=<key>&labSession=<session>`
 - Test: `packages/lab.core/shell/*.test.ts`, ported from `flexibel …/lab/transport.test.ts` (the cases for the functions above) and `theme.test.ts`
 
 Every ported file starts with the header `// Ported from one.flexibel/packages/flexibel.browser/browser-ui/src/<path> (<commit sha>); replace with the shared lane-shell package in Phase 4.` Record the commit sha with `git -C ../heiner/one.flexibel rev-parse --short HEAD`.
@@ -1248,16 +1350,18 @@ Steps: port the tests (fail) → port the code (pass) → commit `feat(lab): por
 **Files:**
 - Rewrite: `packages/projektor.browser/src/lab/transport.ts`, following the structure of Flexibel's `transport.ts`:
   - `LAB_KEYS = ["admin", "manager", "seller", "customer"]`
-  - `labAccount(brand, key, …)`: persisted in host `localStorage` under `` `${brand.storagePrefix}-account:${key}` ``
-  - `ensureLabAccount` (admin only; the same readiness probe as Flexibel's `ensureLabAccount`: `session.waitUntilReady` with `"still booting"`)
-  - `seedDepartment(admin)`: `lab.getDepartment`, then `lab.createDepartment(brand.department)` if unknown
+  - Session: `const session = crypto.randomUUID().replaceAll("-", "").slice(0, 8)` per page load (D4)
+  - Prune before any iframe boots: `indexedDB.databases()` → `staleSessionDirectories(brand, key, current, names)` → `deleteDatabase`, the same best-effort cleanup as today's `pruneOldSessions` (`src/lab/worker.ts:66-84`), moved to the host. The join path (`bootJoinInstance`) never prunes, as today.
+  - Accounts are deterministic and not stored: `` `${key}@${brand.emailDomain}` ``, secret `` `lab-${key}` ``, as today's worker does. IoM relies on the email → Person determinism.
+  - `ensureLabAccount` (admin only): Flexibel's readiness probe (`session.waitUntilReady` with `"still booting"`), then always `session.registerAndSetup`, because the directory is always fresh
+  - `seedDepartment(admin)`: `lab.createDepartment(brand.department)` (always unknown on a fresh boot)
   - `createRoleInvite(admin, key, email)` → `connection.createInvite`
   - `acceptRoleInvite(client, url, { secret, displayName, expectedEmail })` → `ui.loadPendingInvitation`, then `ui.acceptPendingInvitation`, then `callWhenRegistered(onecore.getStatus)`
-  - `seedRole(…)`: Flexibel's reuse and foreign-identity refusal, verbatim in behavior (seed record under `` `${brand.storagePrefix}-seed:${key}` ``; emails `` `lab-${key}-${hex6}@${brand.emailDomain}` ``; throw with recovery instructions on a foreign owner)
-  - `pairMesh(clients)`: the three remaining role↔role pairs (D3), skipped for pairs whose connection is already listed in `connection.listConnections`
+  - `seedRole(…)`: always the full invite path: `createRoleInvite`, then `acceptRoleInvite`, then assert `ownerId === personId`. No seed records, no reuse branch, no foreign-identity check. A fresh directory cannot hold a foreign identity, so porting that branch would be dead code.
+  - `pairMesh(clients)`: the three remaining role↔role pairs (D3), each exactly once per boot
   - `bootLab(brand, options)`: sequential iframes as in Flexibel's `bootLab` (the sequential boot is load-bearing), with `sizeLabFrame` at 720 px (matching the current fixed column height)
   - Snapshot per column: `ui.getInviteState` + `lab.getDepartment` for roles, each degrading to `null` independently, as in Flexibel PRD §5.5
-- Test: `packages/projektor.browser/src/lab/transport.test.ts`: account persistence, URL building, the seed record and foreign-identity refusal, and pairMesh idempotence, all with a fake `PlanRegistry` (modelled on Flexibel's `transport.test.ts`)
+- Test: `packages/projektor.browser/src/lab/transport.test.ts`: URL building with the session parameter, deterministic accounts, the owner-equals-invited-Person assertion, and exactly three `pairMesh` pairings, all with a fake `PlanRegistry` (modelled on Flexibel's `transport.test.ts`)
 
 Role appointments stay manual, as today (`src/lab/transport.ts:67-70`): the seed pairs the instances and creates the department, and the admin and manager appoint through the UI.
 
@@ -1266,28 +1370,35 @@ Steps: tests (fail) → implement (pass) → commit `feat(lab): flexibel-style h
 ### Task 13: Host shell UI; delete the worker engine and the EK fork
 
 **Files:**
-- Rewrite: `packages/projektor.browser/src/lab/Lab.tsx`: brand from `?lane=` (via `brandById`), four columns, each with title from `LANES[].roleLabels` + brand titles, owner/instance short IDs, roles, app state, Refresh, live/paused (UI-only, D2), seed log, the iframe, and the IoM invite. `LabDeviceInvite` now calls through the column's `PlanRegistry` client instead of `PortApiClient`. Add the light → dark → system theme toggle from `shell/theme.ts`, and propagate the resolved theme to the iframes via their theme key.
+- Rewrite: `packages/projektor.browser/src/lab/Lab.tsx`: brand from `?lane=` (via `brandById`), four columns, each with title from `LANES[].roleLabels` + brand titles, owner/instance short IDs, roles, app state, Refresh, live/paused (the existing `setSwitch` partition toggle, kept), seed log, the iframe, and the IoM invite. `LabDeviceInvite` now calls through the column's `PlanRegistry` client instead of `PortApiClient`. Add the light → dark → system theme toggle from `shell/theme.ts`, and propagate the resolved theme to the iframes via their theme key.
 - Modify: `src/lab/main.tsx`, `lab/index.html` (one entry for both lanes; brand title, favicon and theme-color set from the brand at runtime)
-- Delete: `src/eklab/`, `eklab/index.html`, `src/lab-engine/`, `packages/lab.core/worker/`
+- Delete: `src/eklab/`, `eklab/index.html`, `src/lab-engine/` (workers). `startLabHost` now spawns iframes: `spawn: key => ({ port: iframeHostPort(iframe, origin), terminate: async () => iframe.remove(), onError })`
 - Modify: `src/App.tsx`: `#/lab` and `#/eklab` redirect to `/browser/lab/?lane=amway|ek`, and the `EkLab` import goes away
 - Modify: `vite.config.ts` (drop the `eklab` input)
 - Modify: `scripts/amway-server.mjs:504-512`: `/amway/lab` serves `lab/index.html` with `?lane=amway`, and `/ek/lab` does the same with `?lane=ek`
 - Modify: `packages/ci.core/lanes.mjs` (`entry: "/browser/lab/?lane=<id>"`; drop `hash` if nothing else reads it), `packages/ci.core/smoke/lane-ceremony.mjs` (drive the columns through `frameLocator`)
 - Modify: `tests/*-chat.spec.ts`, `*-join.spec.ts`, `*-purchases.spec.ts`: column content moves inside `page.frameLocator("section.lab-column iframe").nth(i)`
-- Delete: `tests/lab-mesh.spec.ts` and `tests/ek-mesh.spec.ts` partition assertions (D2). Keep their ceremony assertions, rewritten as one `tests/lane-ceremony.spec.ts` parameterized over `LANES`.
+- Modify: `tests/lab-mesh.spec.ts` and `tests/ek-mesh.spec.ts`: merge into one `tests/lane-ceremony.spec.ts` parameterized over `LANES`, keeping the partition assertions.
+- Add to `tests/lane-ceremony.spec.ts`: reload the lane twice and assert that the third boot seeds and replicates (an offer published by the manager reaches the seller). This guards D4 on the iframe path.
 - Record: boot-to-seeded time for both lanes, before (worker engine, measured at Task 6's commit) and after. Per D5, stop and report if it is more than 2×.
 
-Verify: `npm test` exit 0; `cd packages/projektor.browser && npx playwright test` all pass; `grep -rn "eklab\|lab-engine\|host-switch\|setSwitch\|setOnline" packages scripts --include=*.ts --include=*.tsx --include=*.mjs | grep -v node_modules | grep -v /dist/` gives no output.
+Verify: `npm test` exit 0; `cd packages/projektor.browser && npx playwright test` all pass; `grep -rn "eklab\|lab-engine\|new Worker" packages scripts --include=*.ts --include=*.tsx --include=*.mjs | grep -v node_modules | grep -v /dist/` gives no output.
 
 Commit `feat(lab): flexibel lane architecture for amway and ek; remove worker engine`.
 
 ### Task 14: Docs
 
 **Files:**
-- Modify: `packages/projektor.browser/README.md` (lab section: the new architecture, `?lane=`, `?commServer=`, persistence and recovery)
-- Create: `docs/lab-lane-prd.md`, mirroring the section layout of Flexibel's `flexibel-lab-prd.md` (entry, isolation, seeding, readiness, snapshot, architecture diagram, deliberate deviations: plan-driven invite acceptance instead of test-ID clicking, and the D3 full mesh)
+- Modify: `packages/projektor.browser/README.md` (lab section: the new architecture, `?lane=`, `?commServer=`, and session-scoped storage with the reason for it)
+- Create: `docs/lab-lane-prd.md`, mirroring the section layout of Flexibel's `flexibel-lab-prd.md` (entry, isolation, seeding, readiness, snapshot, architecture diagram, deliberate deviations: plan-driven invite acceptance instead of test-ID clicking, the D3 full mesh, the `lab://` data plane, and session-scoped storage instead of Flexibel's persistence)
 
 Commit `docs(lab): lane PRD aligned with flexibel`.
+
+---
+
+# Gated follow-up: persistent storage (D4)
+
+Not scheduled. Entry criterion: a root cause for the reload wedge, reproduced and explained using superpowers:systematic-debugging. Start from the restart regression test in `lab.integration.test.ts` (it exercises persistent node workers; see `lab-instance.ts`, "The restart regression test … guards this path") and find why a browser reload differs. Only after the fix lands and a reload-twice spec passes against persistent directories should its own plan port Flexibel's pairing reuse and foreign-identity refusal (`flexibel …/lab/transport.ts` `seedRole`) and drop `labSession`.
 
 ---
 
@@ -1305,4 +1416,4 @@ Once Phase 3 has landed, write a separate plan to:
 
 - Coverage: the fork merge (Tasks 1–6), both drift bugs (EK chat dedupe in Task 4 and Task 6; shared IndexedDB prefix in Task 6), the Flexibel architecture (full instance: Tasks 7–10; iframe host: Tasks 11–13), the flexibel lab (reference throughout, sharing in Phase 4) and docs (Task 14).
 - Phases 2–3 give full code for the new pure modules (bridge, session plans, storage). The ONE composition (Task 9) and the UI extraction (Tasks 10, 13) are specified as exact moves from named line ranges, because they rearrange existing code rather than add new logic.
-- Names used consistently: `LabBrand`, `brandById`, `testBrand`, `commServerPortFor`, `labTypes`, `createLabRecipes`, `createLabObjects`, `createProjection`, `createLabPlan`, `createChatPlan`, `createIoMOps`, `startLabInstance` (P1, deleted in P3), `startLaneInstance` (P2+), `exposeRegistry`, `PlanRegistry`, `createSessionPlans`, `LaneUiState`, `BootedInstance`, `resolveStorageDirectory(brand, search)`, `labAppUrl(href, brand, key)`, plan names `lab`/`chat`/`connection`/`session`/`ui`/`onecore`.
+- Names used consistently: `LabBrand`, `brandById`, `testBrand`, `commServerPortFor`, `labTypes`, `createLabRecipes`, `createLabObjects`, `createProjection`, `createLabPlan`, `createChatPlan`, `createIoMOps`, `startLabInstance` (all phases; endpoint is a worker in P1, an iframe from P3), `iframeChildPort`, `iframeHostPort`, `staleSessionDirectories`, `exposeRegistry`, `PlanRegistry`, `createSessionPlans`, `LaneUiState`, `BootedInstance`, `resolveStorageDirectory(brand, search)`, `labAppUrl(href, brand, key, session)`, plan names `lab`/`chat`/`connection`/`session`/`ui`/`onecore`.
