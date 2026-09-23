@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import amwayLogo from "../../../amway.app/assets/amway-logo-black.svg";
 import ekLogo from "../lane-app/assets/ek/elektro-klein-logo.jpg";
 import ekFavicon from "../lane-app/assets/ek/favicon.png";
+import omniturm from "../lane-app/assets/ek/omniturm.jpg";
 import { LabDeviceInvite } from "../components/LabDeviceInvite";
 import { Badge, RoleBadge } from "../components/ui";
 import {
@@ -366,15 +367,31 @@ export default function Lab() {
   return (
     <div className={`lab-container ${shell.laneClass}`}>
       <header className="lab-header">
-        <div className="amway-brand-heading">
-          {brand.id !== "amway" && (
-            <img className="amway-logo" src={shell.logo} width={shell.logoWidth} height={shell.logoHeight} alt={shell.logoAlt} />
-          )}
-          <div className="lab-title-group">
-            <h1>{shell.heading}</h1>
-            <p className="lab-subtitle">{shell.subtitle}</p>
+        {brand.id === "ek" ? (
+          <>
+            <div className="ek-brand-heading">
+              <a className="ek-logo" href="https://www.e-k-ag.de/" target="_blank" rel="noreferrer" aria-label="Elektro Klein AG website">
+                <img src={shell.logo} width={shell.logoWidth} height={shell.logoHeight} alt={shell.logoAlt} />
+              </a>
+              <div className="lab-title-group">
+                <p className="ek-eyebrow">ELEKTRO KLEIN AG</p>
+                <h1>{shell.heading}</h1>
+                <p className="lab-subtitle">{shell.subtitle}</p>
+              </div>
+            </div>
+            <div className="ek-project-art">
+              <img src={omniturm} alt="Omniturm, an Elektro Klein project in Frankfurt" />
+              <span>Omniturm · Frankfurt</span>
+            </div>
+          </>
+        ) : (
+          <div className="amway-brand-heading">
+            <div className="lab-title-group">
+              <h1>{shell.heading}</h1>
+              <p className="lab-subtitle">{shell.subtitle}</p>
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="lab-header-actions">
           <div className="lab-mesh-badge">
