@@ -74,6 +74,8 @@ export interface LabInstanceOptions {
    * registry and posts `ready` unbooted.
    */
   credentials?: { email: string; secret: string; instanceName: string };
+  /** Lane peers pushed by the host after every role signed in (appoint/share subjects). */
+  onLanePeers?: (peers: Record<string, string>) => void;
 }
 
 interface AcceptMessage {
@@ -82,7 +84,7 @@ interface AcceptMessage {
   port?: unknown;
 }
 
-export async function startLabInstance({ brand, port, key, directory, createMessageChannel, commServerUrl, appBaseUrl, credentials }: LabInstanceOptions): Promise<{
+export async function startLabInstance({ brand, port, key, directory, createMessageChannel, commServerUrl, appBaseUrl, credentials, onLanePeers }: LabInstanceOptions): Promise<{
   shutdown(): Promise<void>;
   /** Direct registry dispatch for same-realm callers (the lane app bridge). */
   call(plan: string, method: string, params?: unknown): Promise<unknown>;
@@ -338,14 +340,14 @@ export async function startLabInstance({ brand, port, key, directory, createMess
     };
   };
 
-  const { session, ui, onecore } = createSessionPlans({ boot });
+  const { session, ui, onecore } = createSessionPlans({ boot, onLanePeers });
   registry.register("session", session, {
     description: `${label} sign-in lifecycle`,
     methods: ["registerAndSetup", "loginAndInit", "waitUntilReady"].map(name => ({ name, description: `session.${name}` })),
   });
   registry.register("ui", ui, {
     description: `${label} invite entry`,
-    methods: ["getInviteState", "loadPendingInvitation", "acceptPendingInvitation"].map(name => ({ name, description: `ui.${name}` })),
+    methods: ["getInviteState", "loadPendingInvitation", "acceptPendingInvitation", "setLanePeers", "getLanePeers"].map(name => ({ name, description: `ui.${name}` })),
   });
   registry.register("onecore", onecore, {
     description: `${label} instance status`,

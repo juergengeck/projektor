@@ -19,6 +19,8 @@ import {
   type PlanRegistry,
 } from "../../../lab.core/shell/plan-client.ts";
 import { callWhenRegistered, poll } from "../../../lab.core/shell/readiness.ts";
+import { iframeHostPort } from "../../../lab.core/iframe-port.ts";
+import { startLabHost, type LabHost } from "../../../lab.core/worker/host-switch.ts";
 import type { LaneUiState } from "../../../lab.core/session-plan.ts";
 import type { DepartmentProjection } from "../../../lab.core/projection.ts";
 
@@ -103,20 +105,26 @@ export async function pruneStaleSessions(brand: LabBrand, session: string): Prom
 }
 
 /**
- * Sign the admin in through its own session plan. The readiness probe reads
- * session.waitUntilReady, which rejects with "still booting" while the model
- * is null; registerAndSetup always runs because the directory is always fresh.
+ * Sign the admin in through its own session plan. The readiness probe waits
+ * for session.waitUntilReady to EXIST (retrying only "not found" via
+ * callWhenRegistered): its "still booting" rejection proves the plan is up
+ * with a null model — exactly when to sign in. registerAndSetup always runs
+ * because the directory is always fresh.
  */
 export async function ensureLabAccount(
   client: LabClient,
   signal: AbortSignal,
 ): Promise<{ ownerId: string; instanceId: string }> {
-  await poll(signal, `${client.key} model readiness`, 120_000, async () => {
-    const present = await callPlan(client.registry, signal, "session", "waitUntilReady", { timeoutMs: 1_500 }, 5_000).then(
-      () => true,
-      error => !String((error as Error)?.message ?? error).includes("still booting"),
-    );
-    return present;
+  await callWhenRegistered<LaneUiState>(
+    client,
+    signal,
+    "model registration",
+    "session",
+    "waitUntilReady",
+    { timeoutMs: 1_500 },
+    5_000,
+  ).catch(error => {
+    if (!String((error as Error)?.message ?? error).includes("still booting")) throw error;
   });
   const result = await callPlan<{ readyState: LaneUiState }>(
     client.registry,
@@ -328,26 +336,63 @@ export interface BootLabOptions {
 export async function bootLab(
   brand: LabBrand,
   options: BootLabOptions,
-): Promise<{ clients: Record<LabKey, LabClient>; stop: () => void }> {
+): Promise<{ clients: Record<LabKey, LabClient>; setSwitch(key: LabKey, open: boolean): void; stop: () => Promise<void> }> {
   const stage = (text: string) => {
     console.info(`[lab boot] ${text}`);
     options.onStage?.(text);
   };
   const controller = new AbortController();
   const session = createSessionId();
-  const iframes: HTMLIFrameElement[] = [];
+  const frames = {} as Record<LabKey, HTMLIFrameElement>;
   const clients = {} as Record<LabKey, LabClient>;
+  // Holder (not a narrowed local): the attach promise resolves after bootLab
+  // returns, when role readies arrive during seeding.
+  const switchBox: { host: LabHost<LabKey> | null; pending: Map<LabKey, boolean> } = {
+    host: null,
+    pending: new Map(),
+  };
   try {
     stage("pruning previous sessions");
     await pruneStaleSessions(brand, session);
+    // Attach the lab:// switch before any instance can post routing-ready or
+    // ready (both fire during iframe boot and a transferred MessagePort has
+    // no replay). Frames mount without a src; the sequential loop below
+    // navigates them one at a time. The attach promise is NOT awaited here:
+    // role readies only arrive during seeding, after bootLab returns — the
+    // spawn calls (and their listener attach) run synchronously on call.
+    stage("attaching lab switch");
+    const origin = new URL(options.document.location.href).origin;
+    const hostPromise = startLabHost({
+      keys: [...LAB_KEYS],
+      spawn: (key: LabKey) => {
+        const iframe = options.document.createElement("iframe");
+        iframe.title = `${brand.label} Lab – ${key}`;
+        sizeLabFrame(iframe);
+        options.mount(key).appendChild(iframe);
+        frames[key] = iframe;
+        return {
+          port: iframeHostPort(iframe, origin),
+          terminate: async () => iframe.remove(),
+          onError: (callback: (error: Error) => void) => {
+            iframe.addEventListener("error", () => callback(new Error(`Lab ${key}: iframe failed to load.`)));
+          },
+        };
+      },
+    });
+    void hostPromise.then(
+      booted => {
+        for (const [key, open] of switchBox.pending) booted.setSwitch(key, open);
+        switchBox.pending.clear();
+        switchBox.host = booted;
+      },
+      error => {
+        console.error(`[lab boot] switch attach failed: ${error instanceof Error ? error.message : String(error)}`);
+      },
+    );
     for (const key of LAB_KEYS) {
       stage(`booting ${key}`);
-      const iframe = options.document.createElement("iframe");
+      const iframe = frames[key];
       iframe.src = labAppUrl(options.document.location.href, brand, key, session);
-      iframe.title = `${brand.label} Lab – ${key}`;
-      sizeLabFrame(iframe);
-      options.mount(key).appendChild(iframe);
-      iframes.push(iframe);
       const app = iframe.contentWindow as unknown as InstrumentedWindow | null;
       if (!app) throw new Error(`Lab ${key}: iframe window is unavailable.`);
       stage(`waiting for ${key} registry`);
@@ -359,14 +404,28 @@ export async function bootLab(
     stage("ready");
     return {
       clients,
-      stop: () => {
+      setSwitch: (key, open) => {
+        if (switchBox.host) switchBox.host.setSwitch(key, open);
+        else switchBox.pending.set(key, open);
+      },
+      stop: async () => {
         controller.abort();
-        for (const iframe of iframes) iframe.remove();
+        if (switchBox.host) await switchBox.host.stop().catch(() => {});
+        else for (const key of LAB_KEYS) frames[key]?.remove();
       },
     };
   } catch (error) {
     controller.abort();
-    for (const iframe of iframes) iframe.remove();
+    if (switchBox.host) await switchBox.host.stop().catch(() => {});
+    else {
+      for (const key of LAB_KEYS) {
+        try {
+          frames[key]?.remove();
+        } catch {
+          // Removal is best-effort; the error below already reports the failure.
+        }
+      }
+    }
     throw error;
   }
 }

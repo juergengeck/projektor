@@ -8,6 +8,7 @@ const COMM_SERVER_PORT = 18342;
 let commserver: ChildProcess | undefined;
 
 test.beforeAll(async () => {
+  if (process.env.EK_DEMO_URL) return;
   const bundle = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
     "../../../../one/packages/one.models/comm_server.bundle.js",
@@ -34,7 +35,8 @@ test.afterAll(() => {
  * EK lane contact chat icon: every third-party directory contact carries
  * an "Open chat with …" icon button (the owner's own contact has none), and
  * clicking it opens the 1:1 chat panel and delivers messages both ways over
- * the topic channel.
+ * the topic channel. Role actions run inside the lane-app iframes; the host
+ * shell only carries the column chrome and the IoM invitations.
  */
 test("ek lane contact chat icon opens 1:1 chat", async ({ page }) => {
   const errors: string[] = [];
@@ -43,24 +45,25 @@ test("ek lane contact chat icon opens 1:1 chat", async ({ page }) => {
   });
   page.on("pageerror", error => errors.push(String(error)));
 
-  await page.goto(`/browser/eklab/?commServer=${encodeURIComponent(`ws://127.0.0.1:${COMM_SERVER_PORT}`)}`);
+  await page.goto(process.env.EK_DEMO_URL ?? `/browser/lab/?lane=ek&commServer=${encodeURIComponent(`ws://127.0.0.1:${COMM_SERVER_PORT}`)}`);
   await expect(page.getByText("Mesh: 4/4 Nodes Online")).toBeVisible({ timeout: 180_000 });
   const columns = page.locator("section.lab-column");
   await expect(columns).toHaveCount(4);
-  const [admin, manager, seller, customer] = [0, 1, 2, 3].map(n => columns.nth(n));
+  const frames = page.frameLocator("section.lab-column iframe");
+  const [admin, manager, seller, customer] = [0, 1, 2, 3].map(n => frames.nth(n));
 
-  // A contact needs its worker's role before its audience can be resolved.
-  for (const column of [manager, seller, customer]) {
-    await expect(column.getByLabel("Contact name")).toBeDisabled();
+  // A contact needs its instance's role before its audience can be resolved.
+  for (const frame of [manager, seller, customer]) {
+    await expect(frame.getByLabel("Display name")).toBeDisabled();
   }
 
   // No generic pairing section: invites live only as QR codes under the apps.
   await expect(page.getByText("Device pairing")).toHaveCount(0);
 
-  // Fixed-size apps: every column keeps its height and scrolls vertically.
-  const columnHeight = await columns.nth(0).evaluate(el => getComputedStyle(el).height);
-  expect(columnHeight).toBe("720px");
-  const bodyOverflow = await columns.nth(0).locator(".lab-column-body").evaluate(el => getComputedStyle(el).overflowY);
+  // Fixed-size app frames: every iframe keeps its height; the lane app scrolls inside.
+  const frameHeight = await columns.nth(0).locator("iframe").evaluate(el => getComputedStyle(el).height);
+  expect(frameHeight).toBe("720px");
+  const bodyOverflow = await frames.nth(0).locator(".lab-column-body").evaluate(el => getComputedStyle(el).overflowY);
   expect(bodyOverflow).toBe("auto");
 
   // Automatically generated IoM QRs remain below the fixed app frames.
@@ -70,22 +73,24 @@ test("ek lane contact chat icon opens 1:1 chat", async ({ page }) => {
   await expect(page.locator(".lab-column-body .lab-device-invite")).toHaveCount(0);
 
   await admin.getByRole("button", { name: "Appoint Bauleiter" }).click();
-  await expect(manager.locator(".badge-accent").first()).toBeVisible({ timeout: 90_000 });
+  await expect(columns.nth(1).locator(".badge-accent").first()).toBeVisible({ timeout: 90_000 });
   await manager.getByRole("button", { name: "Appoint Vorarbeiter" }).click();
-  await expect(seller.locator(".badge-info").first()).toBeVisible({ timeout: 90_000 });
+  await expect(columns.nth(2).locator(".badge-info").first()).toBeVisible({ timeout: 90_000 });
   await seller.getByRole("button", { name: "Appoint Werker" }).click();
 
-  await seller.getByLabel("Contact name").fill("Seller One");
-  await seller.getByRole("button", { name: "Publish Contact" }).click();
-  await customer.getByLabel("Contact name").fill("Customer One");
-  await customer.getByRole("button", { name: "Publish Contact" }).click();
+  await seller.getByLabel("Display name").fill("Seller One");
+  await seller.getByLabel("Role (admin, manager, seller, customer)").fill("seller");
+  await seller.getByRole("button", { name: "Save name" }).click();
+  await customer.getByLabel("Display name").fill("Customer One");
+  await customer.getByLabel("Role (admin, manager, seller, customer)").fill("customer");
+  await customer.getByRole("button", { name: "Save name" }).click();
   await expect(seller.getByText("Customer One").first()).toBeVisible({ timeout: 90_000 });
   await expect(customer.getByText("Seller One").first()).toBeVisible({ timeout: 90_000 });
 
   // The icon opens the chat; the owner's own contact carries no icon.
-  await expect(seller.getByRole("button", { name: "Open chat with Customer One" })).toBeVisible();
-  await expect(seller.getByRole("button", { name: "Open chat with Seller One" })).toHaveCount(0);
-  await seller.getByRole("button", { name: "Open chat with Customer One" }).click();
+  await expect(seller.locator('button[aria-label="Open chat with Customer One"]')).toBeVisible();
+  await expect(seller.locator('button[aria-label="Open chat with Seller One"]')).toHaveCount(0);
+  await seller.locator('button[aria-label="Open chat with Customer One"]').click();
   const sellerChat = seller.locator('.lab-chat[aria-label="Chat with Customer One"]');
   await expect(sellerChat).toBeVisible({ timeout: 30_000 });
 
@@ -103,7 +108,7 @@ test("ek lane contact chat icon opens 1:1 chat", async ({ page }) => {
   await expect(customer.locator(".lab-chat-badge")).toHaveText("2", { timeout: 60_000 });
   await expect(seller.locator(".lab-chat-badge")).toHaveCount(0);
 
-  await customer.getByRole("button", { name: "Open chat with Seller One" }).click();
+  await customer.locator('button[aria-label="Open chat with Seller One"]').click();
   const customerChat = customer.locator('.lab-chat[aria-label="Chat with Seller One"]');
   // … which clears the moment the chat opens.
   await expect(customer.locator(".lab-chat-badge")).toHaveCount(0, { timeout: 30_000 });

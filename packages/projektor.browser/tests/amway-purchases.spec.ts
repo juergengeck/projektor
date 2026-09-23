@@ -44,9 +44,10 @@ test("buy confirms automatically, decrements inventory, and refuses overselling"
   });
   page.on("pageerror", error => errors.push(String(error)));
 
-  await page.goto(process.env.AMWAY_DEMO_URL ?? `/browser/lab/?commServer=${encodeURIComponent(`ws://127.0.0.1:${COMM_SERVER_PORT}`)}`);
+  await page.goto(process.env.AMWAY_DEMO_URL ?? `/browser/lab/?lane=amway&commServer=${encodeURIComponent(`ws://127.0.0.1:${COMM_SERVER_PORT}`)}`);
   await expect(page.getByText("Mesh: 4/4 Nodes Online")).toBeVisible({ timeout: 180_000 });
-  await expect(page.getByRole("button", { name: /pause|resume/i })).toHaveCount(0);
+  // One partition toggle per column, live by default.
+  await expect(page.getByRole("button", { name: "Live — pause" })).toHaveCount(4);
 
   const header = page.locator("header.lab-header");
   await expect(header.getByRole("img", { name: "Amway", exact: true })).toBeVisible();
@@ -68,7 +69,8 @@ test("buy confirms automatically, decrements inventory, and refuses overselling"
 
   const columns = page.locator("section.lab-column");
   await expect(columns).toHaveCount(4);
-  const [admin, manager, seller, customer] = [0, 1, 2, 3].map(index => columns.nth(index));
+  const frames = page.frameLocator("section.lab-column iframe");
+  const [admin, manager, seller, customer] = [0, 1, 2, 3].map(n => frames.nth(n));
 
   // Build the real authority chain. The test does not rely on seeded manager,
   // seller, or customer assignments.
@@ -79,14 +81,15 @@ test("buy confirms automatically, decrements inventory, and refuses overselling"
   const appointCustomer = seller.getByRole("button", { name: "Appoint Customer", exact: true });
   await expect(appointCustomer).toBeEnabled({ timeout: 90_000 });
   await appointCustomer.click();
-  await expect(customer.getByLabel("Contact name")).toBeEnabled({ timeout: 90_000 });
+  await expect(customer.getByLabel("Display name")).toBeEnabled({ timeout: 90_000 });
 
-  // Admission consumes real stock, so establish it through the admin worker.
-  await admin.getByLabel("Stock quantity").fill("2");
-  await admin.getByRole("button", { name: "Stock Up", exact: true }).click();
+  // Admission consumes real stock, so establish it through the admin app.
+  await admin.getByLabel("Receipt ID").fill("purchases-receipt-1");
+  await admin.getByLabel("Quantity").fill("2");
+  await admin.getByRole("button", { name: "Receive stock", exact: true }).click();
   await expect(manager.getByText("2 / 2 units", { exact: true })).toBeVisible({ timeout: 90_000 });
 
-  // The offer traverses manager -> seller -> customer through the worker mesh.
+  // The offer traverses manager -> seller -> customer through the lane mesh.
   await manager.getByRole("button", { name: "+ Offer (100.00€)", exact: true }).click();
   const shareWithSeller = manager.getByRole("button", { name: "Share offer-glister-1 with seller", exact: true });
   await expect(shareWithSeller).toBeEnabled({ timeout: 90_000 });
@@ -99,7 +102,7 @@ test("buy confirms automatically, decrements inventory, and refuses overselling"
   await expect(buy).toBeEnabled({ timeout: 90_000 });
   const history = customer.getByRole("region", { name: "Purchase history", exact: true });
 
-  // Buying needs no separate action from the seller. Every worker projects
+  // Buying needs no separate action from the seller. Every instance projects
   // the same confirmed purchase and both stock meters drop immediately.
   await buy.click();
   await expect(history.getByText("Confirmed", { exact: true })).toHaveCount(1, { timeout: 90_000 });

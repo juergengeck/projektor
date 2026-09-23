@@ -22,10 +22,14 @@ export interface BootedInstance {
 
 interface Credentials { email: string; secret: string; instanceName: string }
 
-export function createSessionPlans({ boot }: { boot: (credentials: Credentials) => Promise<BootedInstance> }) {
+export function createSessionPlans({ boot, onLanePeers }: {
+  boot: (credentials: Credentials) => Promise<BootedInstance>;
+  onLanePeers?: (peers: Record<string, string>) => void;
+}) {
   let instance: BootedInstance | null = null;
   let booting: Promise<BootedInstance> | null = null;
   let pendingInvitation: string | null = null;
+  let lanePeers: Record<string, string> = {};
 
   const state = (): LaneUiState => ({
     ownerId: instance?.ownerId ?? null,
@@ -82,6 +86,24 @@ export function createSessionPlans({ boot }: { boot: (credentials: Credentials) 
       await instance!.connectWithInvite(url);
       pendingInvitation = null;
       return { ownerId: instance!.ownerId };
+    },
+    async setLanePeers({ peers }: { peers: Record<string, string> }) {
+      if (!peers || typeof peers !== "object" || Array.isArray(peers)) {
+        throw new Error("Lane app: peers must be a role map.");
+      }
+      const clean: Record<string, string> = {};
+      for (const [role, person] of Object.entries(peers)) {
+        if (typeof person !== "string" || !/^[0-9a-f]{64}$/.test(person)) {
+          throw new Error(`Lane app: bad person for ${role}.`);
+        }
+        clean[role] = person;
+      }
+      lanePeers = clean;
+      onLanePeers?.(clean);
+      return { peers: clean };
+    },
+    async getLanePeers() {
+      return { peers: { ...lanePeers } };
     },
   };
 

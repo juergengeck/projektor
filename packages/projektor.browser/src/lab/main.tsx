@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import Lab from "./Lab";
 import "../../../amway.app/ui/styles.css";
 import "../lane-app/themes/amway.css";
+import "../lane-app/themes/ek.css";
 
 ReactDOM.createRoot(document.getElementById("lab-root")!).render(
   <React.StrictMode>

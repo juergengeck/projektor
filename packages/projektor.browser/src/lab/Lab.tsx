@@ -1,24 +1,86 @@
 // packages/projektor.browser/src/lab/Lab.tsx
-import { useEffect, useReducer, useRef, useState } from "react";
+/**
+ * Flexibel-style lane host: one lane-app iframe per role, seeded through
+ * invites. The host never touches lab data — columns render snapshot chrome
+ * (owner/instance ids, roles, app state) around the live iframe, and every
+ * role action happens inside the lane app. CHUM stays between the instances
+ * over the lab:// switch with the glue commserver for IoM discovery.
+ */
+import { useEffect, useRef, useState } from "react";
 import amwayLogo from "../../../amway.app/assets/amway-logo-black.svg";
+import ekLogo from "../lane-app/assets/ek/elektro-klein-logo.jpg";
+import ekFavicon from "../lane-app/assets/ek/favicon.png";
 import { LabDeviceInvite } from "../components/LabDeviceInvite";
-import { bootJoinInstance, bootLab, LAB_KEYS, type FeedRow, type LabHandle, type LabKey } from "../lab-engine/transport";
-import { AMWAY } from "@projektor/lab.core/brand.ts";
-import type { PortApiClient } from "@projektor/lab.core/port-ipc.ts";
-import { Badge, RoleBadge, StatusBadge } from "../components/ui";
+import { Badge, RoleBadge } from "../components/ui";
 import {
-  applyFeedRow,
-  EMPTY_FEED_VIEW as EMPTY_VIEW,
-  timeNow,
-} from "../lane-app/feed";
-import type {
-  Balance,
-  Contact,
-  FeedEntry,
-  Offer,
-  Order,
-  View,
-} from "../lane-app/feed";
+  bootJoinInstance,
+  bootLab,
+  LAB_KEYS,
+  pairMesh,
+  seedDepartment,
+  seedRole,
+  type LabClient,
+  type LabKey,
+  type LabSnapshot,
+} from "./transport";
+import { AMWAY_CONTENT, EK_CONTENT } from "../lane-app/content";
+import type { LaneContent } from "../lane-app/content";
+import { brandById, type LabBrand } from "@projektor/lab.core/brand.ts";
+import { callPlan, type PlanRegistry } from "@projektor/lab.core/shell/plan-client.ts";
+import { observeAppTransitions } from "@projektor/lab.core/shell/transitions.ts";
+import {
+  nextLabThemeMode,
+  parseLabThemeMode,
+  resolveLabEffectiveTheme,
+  type LabThemeMode,
+} from "@projektor/lab.core/shell/theme.ts";
+
+interface ShellMeta {
+  pageTitle: string;
+  heading: string;
+  subtitle: string;
+  logo: string;
+  logoAlt: string;
+  logoWidth: number;
+  logoHeight: number;
+  favicon: string;
+  themeColor: string;
+  laneClass: string;
+  content: LaneContent;
+  /** Device name in the IoM invitation chrome (the forks disagreed; keep both). */
+  deviceName(key: LabKey): string;
+}
+
+const SHELL: Record<LabBrand["id"], ShellMeta> = {
+  amway: {
+    pageTitle: "Amway · Demo workspace",
+    heading: "Demo workspace",
+    subtitle: "Four federated solutions in one real time view",
+    logo: amwayLogo,
+    logoAlt: "Amway",
+    logoWidth: 142,
+    logoHeight: 48,
+    favicon: "/amway/assets/amway-logo-black.svg",
+    themeColor: "#38539a",
+    laneClass: "amway-lane",
+    content: AMWAY_CONTENT,
+    deviceName: key => key,
+  },
+  ek: {
+    pageTitle: "Elektro Klein AG · EK Lab",
+    heading: "EK lab",
+    subtitle: "Four independent instances in one browser tab",
+    logo: ekLogo,
+    logoAlt: "Elektro Klein AG",
+    logoWidth: 200,
+    logoHeight: 70,
+    favicon: ekFavicon,
+    themeColor: "#ED1D1E",
+    laneClass: "ek-lane",
+    content: EK_CONTENT,
+    deviceName: key => EK_CONTENT.roleTitles[key] ?? key,
+  },
+};
 
 /**
  * Invitation link opened from a QR code (`?invited=true` plus the pairing
@@ -34,399 +96,217 @@ function inviteLinkFromLocation(): string | null {
   }
 }
 
-const TITLES: Record<LabKey, { title: string; subtitle: string; icon: string; roleType: string }> = {
-  admin: { title: "Org Admin", subtitle: "Root Authority & Scope Governance", icon: "🏛️", roleType: "admin" },
-  manager: { title: "Manager", subtitle: "Catalog, Offers & Team Management", icon: "🏢", roleType: "manager" },
-  seller: { title: "Seller", subtitle: "Sales & Order Admission", icon: "💼", roleType: "seller" },
-  customer: { title: "Customer", subtitle: "Client Account & Direct Purchase", icon: "👤", roleType: "customer" },
-};
-
-const DEPARTMENT = "demo-de";
-
-/** Clipboard fallback for contexts without navigator.clipboard. */
-function fallbackCopy(text: string) {
-  const area = document.createElement("textarea");
-  area.value = text;
-  area.style.position = "fixed";
-  area.style.opacity = "0";
-  document.body.appendChild(area);
-  area.select();
-  document.execCommand("copy");
-  area.remove();
-}
-
-export type { FeedRow };
-
-export type TabKey = "overview" | "offers" | "orders" | "contacts" | "activity";
-
-function ContactNameField({ currentName, role, disabled, onSave }: {
-  currentName: string; role: string; disabled: boolean; onSave: (name: string, role: string) => void;
-}) {
-  const [name, setName] = useState(currentName);
-  const trimmed = name.trim();
-  return (
-    <div className="lab-contact-name">
-      <input
-        type="text"
-        value={name}
-        maxLength={120}
-        placeholder="Contact name"
-        aria-label="Contact name"
-        disabled={disabled}
-        onChange={e => setName(e.target.value)}
-      />
-      <button
-        type="button"
-        className="secondary"
-        disabled={disabled || !trimmed || trimmed === currentName}
-        onClick={() => onSave(trimmed, role)}
-      >
-        {currentName ? "Save Name" : "Publish Contact"}
-      </button>
-    </div>
-  );
-}
-
-function StockUpField({ disabled, onSave }: {
-  disabled: boolean; onSave: (receiptId: string, quantity: number) => void;
-}) {
-  const [quantity, setQuantity] = useState("10");
-  const amount = Number(quantity);
-  const valid = Number.isSafeInteger(amount) && amount > 0;
-  return (
-    <div className="lab-contact-name">
-      <input
-        type="number"
-        min={1}
-        step={1}
-        value={quantity}
-        aria-label="Stock quantity"
-        disabled={disabled}
-        onChange={e => setQuantity(e.target.value)}
-      />
-      <button
-        type="button"
-        className="btn-accent"
-        disabled={disabled || !valid}
-        onClick={() => onSave(`stock-${Date.now()}`, amount)}
-      >
-        Stock Up
-      </button>
-    </div>
-  );
-}
-
-export interface Column {
-  online: boolean;
-  view: View;
-  fresh: Record<string, string>;
+interface ColumnState {
+  snapshot: LabSnapshot | null;
   notice: string;
-  tab: TabKey;
-  feedLog: FeedEntry[];
-  chatPeer: string | null;
-  /** Unread chat messages per peer: bumped by distinct incoming messages while the
-   * peer's chat is closed, cleared when it opens. */
-  chatUnread: Record<string, number>;
-  /** Chat message hashes already counted as unread. */
-  seenChatHashes: string[];
+  paused: boolean;
+  seed: string;
 }
 
-type State = Record<LabKey, Column>;
-
-type Action =
-  | { kind: "snapshot"; key: LabKey; view: View }
-  | { kind: "feed"; key: LabKey; row: FeedRow }
-  | { kind: "online"; key: LabKey; online: boolean }
-  | { kind: "tab"; key: LabKey; tab: TabKey }
-  | { kind: "notice"; key: LabKey; notice: string }
-  | { kind: "clear_notice"; key: LabKey }
-  | { kind: "chat"; key: LabKey; peer: string | null };
-
-function reduce(state: State, action: Action): State {
-  const column = state[action.key];
-  if (action.kind === "snapshot") {
-    // getDepartment answers { known: false } without projection fields until
-    // the department reaches that worker. Keep the empty view for those
-    // answers; storing them would crash role rendering on missing fields.
-    const view = action.view.known ? action.view : { ...EMPTY_VIEW };
-    return { ...state, [action.key]: { ...column, view, notice: "" } };
-  }
-  if (action.kind === "online") {
-    return { ...state, [action.key]: { ...column, online: action.online } };
-  }
-  if (action.kind === "tab") {
-    return { ...state, [action.key]: { ...column, tab: action.tab } };
-  }
-  if (action.kind === "notice") {
-    return { ...state, [action.key]: { ...column, notice: action.notice } };
-  }
-  if (action.kind === "clear_notice") {
-    return { ...state, [action.key]: { ...column, notice: "" } };
-  }
-  if (action.kind === "chat") {
-    const chatUnread = { ...column.chatUnread };
-    if (action.peer) delete chatUnread[action.peer];
-    return { ...state, [action.key]: { ...column, chatPeer: action.peer, chatUnread } };
-  }
-
-  const { row } = action;
-  return { ...state, [action.key]: applyFeedRow(column, row, timeNow()) };
-}
-
-function initial(): State {
+function initialColumns(): Record<LabKey, ColumnState> {
   return Object.fromEntries(
-    LAB_KEYS.map(key => [
-      key,
-      {
-        online: false,
-        view: EMPTY_VIEW,
-        fresh: {},
-        notice: "",
-        tab: "overview" as TabKey,
-        feedLog: [],
-        chatPeer: null as string | null,
-        chatUnread: {},
-        seenChatHashes: [],
-      },
-    ]),
-  ) as unknown as State;
+    LAB_KEYS.map(key => [key, { snapshot: null, notice: "", paused: false, seed: "" }]),
+  ) as Record<LabKey, ColumnState>;
 }
 
-export interface ChatMsg {
-  text: string;
-  sender: string;
-  sentAt: number;
+function appStateOf(snapshot: LabSnapshot | null): string {
+  const state = snapshot?.inviteState;
+  if (!state) return "unknown";
+  if (state.authState === "logged_in") return state.postLoginPlansReady ? "ready" : "signing in";
+  if (state.authState === "logging_in") return "signing in";
+  return "pre-login";
 }
 
-/** 1:1 chat with a directory contact over its topic channel. Opens the
- * deterministic P2P topic, reads the thread, and re-reads whenever the
- * worker reports a new message for this peer. */
-function ChatPanel({ client, me, peer, peerName, onClose }: {
-  client: PortApiClient | undefined;
-  me: string;
-  peer: string;
-  peerName: string;
-  onClose: () => void;
-}) {
-  const [thread, setThread] = useState<ChatMsg[]>([]);
-  const [draft, setDraft] = useState("");
-  const [status, setStatus] = useState("opening chat…");
-  useEffect(() => {
-    if (!client) {
-      setStatus("worker not ready");
-      return;
-    }
-    let cancelled = false;
-    const read = async () => {
-      try {
-        const result = await client.call<{ messages: ChatMsg[] }>("chat", "readChat", { peer });
-        if (!cancelled) {
-          setThread(result.messages);
-          setStatus("");
-        }
-      } catch (error) {
-        if (!cancelled) setStatus(error instanceof Error ? error.message : String(error));
-      }
-    };
-    void (async () => {
-      try {
-        await client.call("chat", "openChat", { peer });
-        if (!cancelled) await read();
-      } catch (error) {
-        if (!cancelled) setStatus(error instanceof Error ? error.message : String(error));
-      }
-    })();
-    const off = client.onFeed(row => {
-      if (row.type === "AmwayChat" && row.id === peer) void read();
-    });
-    return () => {
-      cancelled = true;
-      off();
-    };
-  }, [client, peer]);
-  const send = async () => {
-    if (!client) return;
-    const body = draft.trim();
-    if (!body) return;
-    setDraft("");
-    try {
-      await client.call("chat", "sendChat", { peer, text: body });
-      const result = await client.call<{ messages: ChatMsg[] }>("chat", "readChat", { peer });
-      setThread(result.messages);
-      setStatus("");
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : String(error));
-      setDraft(body);
-    }
-  };
-  const fmtTime = (at: number) =>
-    at > 0
-      ? new Date(at).toLocaleTimeString([], { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })
-      : "";
-  return (
-    <div className="lab-chat" aria-label={`Chat with ${peerName}`}>
-      <div className="lab-chat-header">
-        <span>Chat with {peerName}</span>
-        <button type="button" className="lab-copy-btn" onClick={onClose} aria-label="Close chat">
-          ✕
-        </button>
-      </div>
-      {status !== "" && <div className="lab-chat-status">{status}</div>}
-      {status === "" && (
-        <div className="lab-chat-thread">
-          {thread.length === 0 ? (
-            <div className="state-empty" style={{ padding: "0.4rem", fontSize: "0.72rem" }}>
-              No messages yet.
-            </div>
-          ) : (
-            thread.map((message, index) => (
-              <div
-                key={`${message.sentAt}-${message.sender.slice(0, 8)}-${index}`}
-                className={`lab-chat-msg ${message.sender === me ? "lab-chat-own" : ""}`}
-              >
-                <span className="lab-chat-text">{message.text}</span>
-                <span className="lab-chat-time">{fmtTime(message.sentAt)}</span>
-              </div>
-            ))
-          )}
-        </div>
-      )}
-      <div className="lab-chat-composer">
-        <input
-          value={draft}
-          onChange={event => setDraft(event.target.value)}
-          onKeyDown={event => {
-            if (event.key === "Enter") void send();
-          }}
-          placeholder={`Message ${peerName}`}
-          aria-label={`Message ${peerName}`}
-          maxLength={2000}
-          style={{ flex: 1, minWidth: 0, fontSize: "0.72rem" }}
-        />
-        <button type="button" className="secondary sm" disabled={draft.trim() === ""} onClick={() => void send()}>
-          Send
-        </button>
-      </div>
-    </div>
-  );
+function shortId(id: string | null | undefined): string {
+  return id ? `${id.slice(0, 10)}…${id.slice(-6)}` : "Initializing…";
 }
 
 export default function Lab() {
-  const [state, dispatch] = useReducer(reduce, undefined, initial);
+  const [brand] = useState<LabBrand>(() => brandById(new URLSearchParams(window.location.search).get("lane") ?? ""));
+  const shell = SHELL[brand.id];
+  const content = shell.content;
   const [boot, setBoot] = useState<"booting" | "live" | string>("booting");
-  const [bootStage, setBootStage] = useState("spawning workers");
-  const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const [buying, setBuying] = useState(false);
-  const lab = useRef<LabHandle | null>(null);
+  const [bootStage, setBootStage] = useState("starting");
+  const [seedLog, setSeedLog] = useState<string[]>([]);
+  const [columns, setColumns] = useState<Record<LabKey, ColumnState>>(initialColumns);
+  const [clients, setClients] = useState<Record<LabKey, LabClient> | null>(null);
+  const handle = useRef<{ setSwitch(key: LabKey, open: boolean): void; stop(): Promise<void> } | null>(null);
+  const mounts = useRef<Record<LabKey, HTMLDivElement | null>>({ admin: null, manager: null, seller: null, customer: null });
   const [joinInvite] = useState<string | null>(() => inviteLinkFromLocation());
   const [joinStatus, setJoinStatus] = useState("");
-  const joinHandle = useRef<LabHandle | null>(null);
-  const [joined, setJoined] = useState<null | { key: LabKey; person: string; view: View }>(null);
+  const [joined, setJoined] = useState<{ key: LabKey; person: string } | null>(null);
+  const joinHandle = useRef<{ stop(): void } | null>(null);
+  const joinMount = useRef<HTMLDivElement | null>(null);
+  const [themeMode, setThemeMode] = useState<LabThemeMode>(
+    () => parseLabThemeMode(localStorage.getItem("lab.themeMode")) ?? "system",
+  );
+  const [systemDark, setSystemDark] = useState(
+    () => typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: dark)").matches,
+  );
 
   useEffect(() => {
-    let cancelled = false;
-    const offs: (() => void)[] = [];
-
-    if (joinInvite) {
-      // Invitation link: join-only page with no mesh boot. The inviting tab
-      // stays alive elsewhere and holds the pairing listener; booting a mesh
-      // here would only waste workers.
-      setBootStage("invitation link — join only");
-      setBoot("live");
-      return () => {
-        cancelled = true;
-      };
+    document.title = shell.pageTitle;
+    let icon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    if (!icon) {
+      icon = document.createElement("link");
+      icon.rel = "icon";
+      document.head.appendChild(icon);
     }
+    icon.href = shell.favicon;
+    let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (!meta) {
+      meta = document.createElement("meta");
+      meta.name = "theme-color";
+      document.head.appendChild(meta);
+    }
+    meta.content = shell.themeColor;
+  }, [shell]);
 
-    bootLab(AMWAY, setBootStage)
-      .then(async handle => {
-        if (cancelled) {
-          await handle.stop();
-          return;
-        }
-        lab.current = handle;
-        for (const key of LAB_KEYS) {
-          const client = handle.clients[key];
-          const snapshot = async () =>
-            dispatch({
-              kind: "snapshot",
-              key,
-              view: await client.call("lab", "getDepartment", { department: DEPARTMENT }),
-            });
-
-          offs.push(
-            client.onFeed((row: FeedRow) => {
-              dispatch({ kind: "feed", key, row });
-              if (["assignment", "department", "order", "stock", "purchase-request", "purchase-decision"].includes(row.kind ?? "")) {
-                snapshot().catch(error => dispatch({ kind: "notice", key, notice: error.message }));
-              }
-            }),
-          );
-          await snapshot();
-          dispatch({ kind: "online", key, online: true });
-        }
-        setBoot("live");
-      })
-      .catch(error => setBoot(error instanceof Error ? error.message : String(error)));
-
-    return () => {
-      cancelled = true;
-      offs.forEach(off => off());
-      void lab.current?.stop();
-      lab.current = null;
-    };
+  useEffect(() => {
+    if (typeof matchMedia !== "function") return;
+    const query = matchMedia("(prefers-color-scheme: dark)");
+    const onChange = (event: MediaQueryListEvent) => setSystemDark(event.matches);
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
   }, []);
 
-  // Keep a 1:1 chat room open for every directory contact (except self) so
-  // incoming messages raise feed notifications — and the unread badge — even
-  // when that peer's chat panel is closed. Rooms are deterministic P2P
-  // topics: either side may create them, and reopening is a cache hit.
-  const openChats = useRef<Record<LabKey, Set<string>>>({
-    admin: new Set(), manager: new Set(), seller: new Set(), customer: new Set(),
-  });
+  const effectiveTheme = resolveLabEffectiveTheme(themeMode, systemDark);
+
   useEffect(() => {
-    const handle = lab.current;
-    if (!handle || boot !== "live") return;
+    document.documentElement.dataset.theme = effectiveTheme;
+    try {
+      localStorage.setItem("lab.themeMode", themeMode);
+    } catch {
+      // Private browsing: the toggle still applies to this page load.
+    }
     for (const key of LAB_KEYS) {
-      const me = handle.persons[key];
-      if (!me) continue;
-      const opened = openChats.current[key];
-      for (const contact of state[key].view.contacts) {
-        if (contact.person === me || opened.has(contact.person)) continue;
-        opened.add(contact.person);
-        handle.clients[key]
-          .call("chat", "openChat", { peer: contact.person })
-          .catch(() => opened.delete(contact.person));
+      try {
+        const doc = handle.current ? clients?.[key].iframe.contentDocument : undefined;
+        if (doc) doc.documentElement.dataset.theme = effectiveTheme;
+      } catch {
+        // Same-origin write; a navigating iframe reports it on its next snapshot.
       }
     }
-  });
+  }, [effectiveTheme, themeMode, clients]);
 
-  async function run(key: LabKey, method: string, params: Record<string, unknown>) {
-    const handle = lab.current;
-    if (!handle) return;
+  useEffect(() => {
+    if (joinInvite) {
+      setBootStage("invitation link — join only");
+      setBoot("live");
+      return;
+    }
+    const controller = new AbortController();
+    const signal = controller.signal;
+    let cancelled = false;
+    const stops: (() => void)[] = [];
+    const log = (line: string) => {
+      if (!cancelled) setSeedLog(current => [...current, line]);
+    };
+    const snapshotColumn = async (client: LabClient) => {
+      try {
+        const snapshot = await client.snapshot(signal);
+        if (!cancelled) {
+          setColumns(current => ({ ...current, [client.key]: { ...current[client.key], snapshot, notice: "" } }));
+        }
+      } catch (error) {
+        if (!cancelled) {
+          const notice = error instanceof Error ? error.message : String(error);
+          setColumns(current => ({ ...current, [client.key]: { ...current[client.key], notice } }));
+        }
+      }
+    };
+    const setSeed = (key: LabKey, seed: string) => {
+      if (!cancelled) setColumns(current => ({ ...current, [key]: { ...current[key], seed } }));
+    };
+    (async () => {
+      const booted = await bootLab(brand, {
+        document,
+        mount: key => {
+          const mount = mounts.current[key];
+          if (!mount) throw new Error(`Lab ${key}: column mount is missing.`);
+          return mount;
+        },
+        onStage: line => {
+          setBootStage(line);
+          log(line);
+        },
+      });
+      if (cancelled) {
+        await booted.stop();
+        return;
+      }
+      handle.current = booted;
+      setClients(booted.clients);
+      const { clients: lane } = booted;
+      // Re-snapshot on visible app transitions instead of polling on a timer.
+      for (const key of LAB_KEYS) {
+        const root = lane[key].iframe.contentDocument?.documentElement;
+        if (root) {
+          stops.push(
+            observeAppTransitions(callback => new MutationObserver(callback), root, () => void snapshotColumn(lane[key])),
+          );
+        }
+      }
+      await seedDepartment(lane.admin, brand, signal);
+      setSeed("admin", `department ${brand.department.id} created`);
+      log(`department ${brand.department.id} created`);
+      for (const key of ["manager", "seller", "customer"] as const) {
+        const line = await seedRole(lane.admin, lane[key], key, `${key}@${brand.emailDomain}`, window.location.href, signal);
+        setSeed(key, line);
+        log(line);
+      }
+      await pairMesh(lane, signal);
+      log("mesh paired: manager–seller, manager–customer, seller–customer");
+      // Appoint/share subjects: every role's owner, pushed into the iframes
+      // (a URL renavigation cannot supply them — see lane-app/main.tsx).
+      const persons: Record<string, string> = {};
+      for (const key of LAB_KEYS) {
+        const snapshot = await lane[key].snapshot(signal);
+        const owner = snapshot.inviteState?.ownerId;
+        if (!owner) throw new Error(`Lab ${key}: no owner after seed.`);
+        persons[key] = owner;
+      }
+      for (const key of LAB_KEYS) {
+        await callPlan(lane[key].registry, signal, "ui", "setLanePeers", { peers: persons });
+      }
+      log(`peers shared (${LAB_KEYS.length} roles)`);
+      for (const key of LAB_KEYS) await snapshotColumn(lane[key]);
+      setBoot("live");
+    })().catch(error => {
+      if (!cancelled) setBoot(error instanceof Error ? error.message : String(error));
+    });
+    return () => {
+      cancelled = true;
+      controller.abort();
+      stops.forEach(stop => stop());
+      const running = handle.current;
+      handle.current = null;
+      setClients(null);
+      void running?.stop().catch(() => {});
+    };
+  }, [brand, joinInvite]);
+
+  const onlineCount = LAB_KEYS.filter(key => columns[key].snapshot?.inviteState?.authState === "logged_in").length;
+
+  async function refresh(key: LabKey) {
+    const client = clients?.[key];
+    if (!client) return;
     try {
-      await handle.clients[key].call("lab", method, { department: DEPARTMENT, ...params });
+      const snapshot = await client.snapshot(new AbortController().signal);
+      setColumns(current => ({ ...current, [key]: { ...current[key], snapshot, notice: "" } }));
     } catch (error) {
-      dispatch({ kind: "notice", key, notice: error instanceof Error ? error.message : String(error) });
+      setColumns(current => ({ ...current, [key]: { ...current[key], notice: error instanceof Error ? error.message : String(error) } }));
     }
   }
 
-  async function buy(offer: string) {
-    if (buying) return;
-    setBuying(true);
+  function togglePause(key: LabKey) {
+    const paused = !columns[key].paused;
     try {
-      await run("customer", "buy", { offer, quantity: 1 });
-    } finally {
-      setBuying(false);
+      handle.current?.setSwitch(key, !paused);
+      setColumns(current => ({ ...current, [key]: { ...current[key], paused } }));
+    } catch (error) {
+      setColumns(current => ({ ...current, [key]: { ...current[key], notice: error instanceof Error ? error.message : String(error) } }));
     }
-  }
-
-  function copyPerson(key: LabKey) {
-    const person = lab.current?.persons[key];
-    if (!person) return;
-    void navigator.clipboard?.writeText(person);
-    setCopiedKey(key);
-    setTimeout(() => setCopiedKey(null), 1800);
   }
 
   /** Join link opened from a QR invitation: boot a same-person device and pair it. */
@@ -436,40 +316,50 @@ export default function Lab() {
       return;
     }
     let key: LabKey | null = null;
+    let email = "";
     try {
-      const prefix = (new URL(invitationUrl).searchParams.get("fe") ?? "").split("@")[0];
+      email = new URL(invitationUrl).searchParams.get("fe") ?? "";
+      const prefix = email.split("@")[0];
       key = (LAB_KEYS as readonly string[]).includes(prefix) ? (prefix as LabKey) : null;
     } catch {
       key = null;
     }
-    if (!key) {
+    if (!key || !email.includes("@")) {
       setJoinStatus("That URL is not a lab device invitation.");
       return;
     }
+    const role = key;
     setJoinStatus("booting device…");
     setJoined(null);
     try {
-      const handle = await bootJoinInstance(AMWAY, key);
-      joinHandle.current = handle;
-      const client = handle.clients[key];
-      const snapshotJoined = async () => {
-        const raw = await client.call("lab", "getDepartment", { department: DEPARTMENT }) as View;
-        const view = raw.known ? raw : { ...EMPTY_VIEW };
-        setJoined(current => current ? { ...current, view } : current);
-      };
-      client.onFeed((row: FeedRow) => {
-        if (["assignment", "department", "order", "stock", "purchase-request", "purchase-decision"].includes(row.kind ?? "")) {
-          void snapshotJoined().catch(() => {});
-        }
+      const controller = new AbortController();
+      const { client, stop } = await bootJoinInstance(brand, role, {
+        document,
+        mount: () => {
+          if (!joinMount.current) throw new Error(`Lab ${role}: join mount is missing.`);
+          return joinMount.current;
+        },
+        onStage: setJoinStatus,
       });
-      const accepted = await client.call("lab", "acceptIoMInvite", {
-        invitationUrl,
-      }) as { person: string };
-      setJoined({ key, person: accepted.person, view: { ...EMPTY_VIEW } });
-      await snapshotJoined().catch(() => {});
+      joinHandle.current = { stop };
+      // Same role credentials reproduce the invited Person; the invitation
+      // authorizes this instance's additional keys through the commserver.
+      await callPlan(client.registry, controller.signal, "session", "registerAndSetup", {
+        email,
+        secret: `lab-${role}`,
+        instanceName: role,
+      }, 125_000);
+      const accepted = await callPlan<{ person: string }>(
+        client.registry, controller.signal, "lab", "acceptIoMInvite", { invitationUrl }, 120_000,
+      );
+      setJoined({ key: role, person: accepted.person });
       setJoinStatus("device paired ✓");
     } catch (error) {
-      await joinHandle.current?.stop().catch(() => {});
+      try {
+        joinHandle.current?.stop();
+      } catch {
+        // Removal is best-effort; the status below already reports the failure.
+      }
       joinHandle.current = null;
       setJoined(null);
       setJoinStatus(`join failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -477,7 +367,11 @@ export default function Lab() {
   }
 
   async function leaveJoined() {
-    await joinHandle.current?.stop().catch(() => {});
+    try {
+      joinHandle.current?.stop();
+    } catch {
+      // Removal is best-effort; the state below already reset.
+    }
     joinHandle.current = null;
     setJoined(null);
     setJoinStatus("");
@@ -490,17 +384,14 @@ export default function Lab() {
     }
   }
 
-  const onlineCount = LAB_KEYS.filter(k => state[k].online).length;
-
   return (
-    <div className="lab-container amway-lane">
-      {/* Top Navigation & Mesh Status Header */}
+    <div className={`lab-container ${shell.laneClass}`}>
       <header className="lab-header">
         <div className="amway-brand-heading">
-          <img className="amway-logo" src={amwayLogo} width="142" height="48" alt="Amway" />
+          <img className="amway-logo" src={shell.logo} width={shell.logoWidth} height={shell.logoHeight} alt={shell.logoAlt} />
           <div className="lab-title-group">
-            <h1>Demo workspace</h1>
-            <p className="lab-subtitle">Four federated solutions in one real time view</p>
+            <h1>{shell.heading}</h1>
+            <p className="lab-subtitle">{shell.subtitle}</p>
           </div>
         </div>
 
@@ -516,14 +407,17 @@ export default function Lab() {
             </span>
           </div>
 
-          <a href="#/overview" className="btn btn-secondary sm" style={{ textDecoration: "none" }}>
-            ← Single-Instance App
-          </a>
-
+          <button
+            type="button"
+            className="secondary sm"
+            onClick={() => setThemeMode(nextLabThemeMode(themeMode))}
+            title={`Theme: ${themeMode} (effective ${effectiveTheme})`}
+          >
+            Theme: {themeMode}
+          </button>
         </div>
       </header>
 
-      {/* Booting Banner / Error Notice */}
       {boot !== "live" && (
         <div className={`card ${boot === "booting" ? "" : "state-denied"}`} style={{ marginBottom: "1.25rem", textAlign: "center" }}>
           {boot === "booting" ? (
@@ -536,7 +430,6 @@ export default function Lab() {
         </div>
       )}
 
-      {/* Invitation link (QR): join this lane as a second device */}
       {joinInvite && (
         <div className="card" role="dialog" aria-label="Join with device invitation" style={{ marginBottom: "1.25rem", fontSize: "0.8rem" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
@@ -552,651 +445,121 @@ export default function Lab() {
             </div>
             {joined && (
               <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", fontSize: "0.72rem" }}>
-                <span style={{ color: "var(--amway-muted)" }}>Joined as {TITLES[joined.key].title}:</span>
+                <span style={{ color: "var(--amway-muted)" }}>Joined as {content.roleTitles[joined.key] ?? joined.key}:</span>
                 <span>{joined.person.slice(0, 10)}…{joined.person.slice(-4)}</span>
-                {joined.view.roles.map(role => <RoleBadge key={role} role={role} />)}
                 <button type="button" className="secondary sm" onClick={() => void leaveJoined()}>
                   Leave
                 </button>
               </div>
             )}
+            <div
+              ref={element => {
+                joinMount.current = element;
+              }}
+            />
           </div>
         </div>
       )}
 
-      {/* 4-Node Multi-Worker Grid */}
-      <div className="lab-grid">
-        {LAB_KEYS.map(key => {
-          const column = state[key];
-          const { view } = column;
-          const meta = TITLES[key];
-          const staff = view.roles.includes("admin") || view.roles.includes("manager");
-          const seller = staff || view.roles.includes("seller");
-          const personId = lab.current?.persons[key] ?? "";
-          const activeTab = column.tab;
-          // Both stages belong to the history. Confirmation replaces the
-          // pending version under the same idempotency key in the projection.
-          const orderHistory = [...view.pendingOrders, ...view.orders];
-          const isCustomer = key === "customer";
-          const purchaseCount = isCustomer ? view.orders.length : orderHistory.length;
-
-          // Staff-only meter: sellers and customers project no availability
-          // and must never see a phantom number here.
-          const totalStock = view.availability?.stocked ?? 0;
-          const currentStock = view.availability?.available ?? 0;
-          const stockPct = totalStock > 0 ? Math.max(0, Math.min(100, (currentStock / totalStock) * 100)) : 0;
-          const nameOf = (person: string) =>
-            view.contacts.find(entry => entry.person === person)?.name
-            ?? `${person.slice(0, 10)}…`;
-          const fmtDate = (at: number) =>
-            new Date(at).toLocaleString([], {
-              month: "short", day: "numeric",
-              hour: "2-digit", minute: "2-digit", hour12: false,
-            });
-          const fmtMoney = (value: number, currency: string) =>
-            `${(value / 100).toFixed(2)} ${currency}`;
-          const unitsByCustomer = new Map<string, { units: number; orders: number; lastAt: number; seller: string }>();
-          for (const entry of view.orders) {
-            const agg = unitsByCustomer.get(entry.customer) ?? { units: 0, orders: 0, lastAt: 0, seller: entry.seller };
-            agg.units += entry.quantity;
-            agg.orders += 1;
-            if (entry.admittedAt >= agg.lastAt) {
-              agg.lastAt = entry.admittedAt;
-              agg.seller = entry.seller;
-            }
-            unitsByCustomer.set(entry.customer, agg);
-          }
-
-          return (
-            <div className="lab-device" key={key}>
-            <section
-              aria-label={meta.title}
-              className={`lab-column lab-role-${meta.roleType} ${column.online ? "" : "lab-paused"}`}
-            >
-              {/* Column Header */}
-              <header className="lab-column-header">
-                <div className="lab-column-title-row">
-                  <div className="lab-role-title">
-                    <span>{meta.icon}</span>
-                    <span>{meta.title}</span>
-                  </div>
-                </div>
-
-                {/* Person Cryptographic Identity */}
-                <div className="lab-person-id">
-                  <span title={personId}>
-                    ID: {personId ? `${personId.slice(0, 10)}…${personId.slice(-6)}` : "Initializing…"}
-                  </span>
-                  <button
-                    type="button"
-                    className="lab-copy-btn"
-                    onClick={() => copyPerson(key)}
-                    title="Copy full Person ID hash"
+      {!joinInvite && (
+        <>
+          <div className="lab-grid">
+            {LAB_KEYS.map(key => {
+              const column = columns[key];
+              const title = content.roleTitles[key] ?? key;
+              const ownerId = column.snapshot?.inviteState?.ownerId;
+              const instanceId = column.snapshot?.inviteState?.instanceId;
+              const roles = column.snapshot?.department && column.snapshot.department.known
+                ? column.snapshot.department.roles
+                : [];
+              const registry: PlanRegistry | undefined = clients?.[key].registry;
+              return (
+                <div className="lab-device" key={key}>
+                  <section
+                    aria-label={title}
+                    className={`lab-column ${column.paused ? "lab-paused" : ""}`}
                   >
-                    {copiedKey === key ? "✓ Copied" : "📋 Copy"}
-                  </button>
-                </div>
+                    <header className="lab-column-header">
+                      <div className="lab-column-title-row">
+                        <div className="lab-role-title">
+                          <span>{content.roleIcons[key] ?? ""}</span>
+                          <span>{title}</span>
+                        </div>
+                      </div>
 
-                {/* Role Badges */}
-                <div className="lab-role-tags">
-                  <span style={{ fontSize: "0.72rem", color: "var(--amway-muted)", marginRight: "2px" }}>Roles:</span>
-                  {view.roles.length > 0 ? (
-                    view.roles.map(r => <RoleBadge key={r} role={r} />)
-                  ) : (
-                    <Badge text="None" variant="neutral" />
-                  )}
-                </div>
-              </header>
+                      <div className="lab-person-id">
+                        <span title={ownerId ?? ""}>ID: {shortId(ownerId)}</span>
+                      </div>
+                      <div className="lab-person-id">
+                        <span title={instanceId ?? ""}>Instance: {shortId(instanceId)}</span>
+                      </div>
 
-              {/* Column Body */}
-              <div className="lab-column-body">
-                {/* Notice / Error banner if any */}
-                {column.notice && (
-                  <div className="state-denied" style={{ padding: "0.5rem 0.75rem", fontSize: "0.75rem", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.5rem" }}>
-                    <span style={{ userSelect: "text", flex: 1, minWidth: 0 }}>{column.notice}</span>
-                    <button
-                      type="button"
-                      className="lab-copy-btn"
-                      title="Copy error text"
-                      onClick={() => {
-                        const text = column.notice;
-                        if (navigator.clipboard?.writeText) {
-                          void navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
-                        } else {
-                          fallbackCopy(text);
-                        }
-                      }}
-                    >
-                      ⧉
-                    </button>
-                    <button
-                      type="button"
-                      className="lab-copy-btn"
-                      onClick={() => dispatch({ kind: "clear_notice", key })}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                )}
+                      <div className="lab-role-tags">
+                        <span style={{ fontSize: "0.72rem", color: "var(--amway-muted)", marginRight: "2px" }}>Roles:</span>
+                        {roles.length > 0 ? (
+                          roles.map(role => <RoleBadge key={role} role={role} />)
+                        ) : (
+                          <Badge text="None" variant="neutral" />
+                        )}
+                      </div>
 
-                {/* Metrics Summary Strip */}
-                <div className="lab-metrics-strip">
-                  <div className="lab-metric-mini">
-                    <span className="lab-metric-mini-val">{view.contacts.length}</span>
-                    <span className="lab-metric-mini-lbl">Contacts</span>
-                  </div>
-                  <div className="lab-metric-mini">
-                    <span className="lab-metric-mini-val">{view.offers.length}</span>
-                    <span className="lab-metric-mini-lbl">Offers</span>
-                  </div>
-                  <div className="lab-metric-mini">
-                    <span className="lab-metric-mini-val">{purchaseCount}</span>
-                    <span className="lab-metric-mini-lbl">{isCustomer ? "Purchases" : "Orders"}</span>
-                  </div>
-                  <div className="lab-metric-mini">
-                    <span className="lab-metric-mini-val">{view.availability ? currentStock : "—"}</span>
-                    <span className="lab-metric-mini-lbl">{key === "admin" ? "Avail." : "Stock"}</span>
-                  </div>
-                </div>
+                      <div className="lab-role-tags">
+                        <span style={{ fontSize: "0.72rem", color: "var(--amway-muted)", marginRight: "2px" }}>App:</span>
+                        <span style={{ fontSize: "0.72rem" }}>{appStateOf(column.snapshot)}</span>
+                        {column.seed && (
+                          <span style={{ fontSize: "0.72rem", color: "var(--amway-muted)" }}> · {column.seed}</span>
+                        )}
+                      </div>
 
-                {/* Role Actions Panel */}
-                <div className="lab-actions-section">
-                  <div className="lab-section-title lab-actions-heading">
-                    <span>⚡ Actions</span>
-                    {key === "admin" && (
-                      <button
-                        type="button"
-                        className="btn-accent"
-                        disabled={!view.known || boot !== "live"}
-                        onClick={() =>
-                          void run(key, "assignRole", {
-                            subject: lab.current?.persons.manager,
-                            role: "manager",
-                          })
-                        }
-                      >
-                        Appoint Manager
-                      </button>
-                    )}
+                      {column.notice && (
+                        <div className="state-denied" style={{ padding: "0.5rem 0.75rem", fontSize: "0.75rem" }}>
+                          <span style={{ userSelect: "text" }}>{column.notice}</span>
+                        </div>
+                      )}
 
-                    {key === "manager" && (
-                      <button
-                        type="button"
-                        className="btn-accent"
-                        disabled={!staff || boot !== "live"}
-                        onClick={() =>
-                          void run(key, "assignRole", {
-                            subject: lab.current?.persons.seller,
-                            role: "seller",
-                          })
-                        }
-                      >
-                        Appoint Seller
-                      </button>
-                    )}
+                      <div style={{ display: "flex", gap: "0.4rem", marginTop: "0.4rem" }}>
+                        <button type="button" className="secondary sm" onClick={() => void refresh(key)}>
+                          Refresh
+                        </button>
+                        <button
+                          type="button"
+                          className="secondary sm"
+                          onClick={() => togglePause(key)}
+                          aria-pressed={column.paused}
+                        >
+                          {column.paused ? "Paused — resume" : "Live — pause"}
+                        </button>
+                      </div>
+                    </header>
 
-                    {key === "seller" && (
-                      <button
-                        type="button"
-                        className="btn-accent"
-                        disabled={!seller || boot !== "live"}
-                        onClick={() =>
-                          void run(key, "assignRole", {
-                            subject: lab.current?.persons.customer,
-                            role: "customer",
-                          })
-                        }
-                      >
-                        Appoint Customer
-                      </button>
-                    )}
-                  </div>
-                  <div className="lab-action-buttons">
-                    <ContactNameField
-                      key={view.contacts.find(entry => entry.person === personId)?.name ?? ""}
-                      currentName={view.contacts.find(entry => entry.person === personId)?.name ?? ""}
-                      role={view.roles[0] ?? ""}
-                      disabled={!view.known || view.roles.length === 0 || boot !== "live"}
-                      onSave={(name, role) => void run(key, "publishContact", { name, role })}
-                    />
-
-                    {key === "admin" && (
-                      <StockUpField
-                        disabled={!view.known || boot !== "live"}
-                        onSave={(receiptId, quantity) => void run(key, "stockUp", { receiptId, quantity })}
+                    <div className="lab-column-body">
+                      <div
+                        ref={element => {
+                          mounts.current[key] = element;
+                        }}
                       />
-                    )}
-
-                    {key === "seller" && view.offers.map(offer => (
-                      <button
-                        key={offer.offerId}
-                        type="button"
-                        className="secondary"
-                        disabled={!seller || boot !== "live" || !view.assignments.some(a => a.role === "customer")}
-                        onClick={() =>
-                          void run(key, "shareOffer", {
-                            offerId: offer.offerId,
-                            customer: lab.current?.persons.customer,
-                          })
-                        }
-                      >
-                        Share {offer.offerId} down
-                      </button>
-                    ))}
-
-                    {key === "manager" && view.offers.map(offer => (
-                      <button
-                        key={offer.offerId}
-                        type="button"
-                        className="secondary"
-                        disabled={!staff || boot !== "live" || !view.assignments.some(a => a.role === "seller")}
-                        onClick={() =>
-                          void run(key, "shareOfferWithSeller", {
-                            offerId: offer.offerId,
-                            seller: lab.current?.persons.seller,
-                          })
-                        }
-                      >
-                        Share {offer.offerId} with seller
-                      </button>
-                    ))}
-
-                    {(staff || key === "manager") && (
-                      <>
-                        <button
-                          type="button"
-                          disabled={!staff || boot !== "live"}
-                          onClick={() =>
-                            void run(key, "publishOffer", {
-                              offerId: `offer-glister-${view.offers.length + 1}`,
-                              item: "GLISTER-100@1",
-                              priceList: "demo-retail@2026-09",
-                              unitAmount: 10000,
-                              currency: "EUR",
-                            })
-                          }
-                        >
-                          + Offer (100.00€)
-                        </button>
-                        <button
-                          type="button"
-                          disabled={!staff || boot !== "live"}
-                          onClick={() =>
-                            void run(key, "publishOffer", {
-                              offerId: `offer-nutrilite-${view.offers.length + 1}`,
-                              item: "NUTRILITE-DAILY@1",
-                              priceList: "demo-retail@2026-09",
-                              unitAmount: 4500,
-                              currency: "EUR",
-                            })
-                          }
-                        >
-                          + Offer (45.00€)
-                        </button>
-                      </>
-                    )}
-
-                    {key === "customer" && (
-                      <button
-                        type="button"
-                        disabled={!view.roles.includes("customer") || view.offers.length === 0 || boot !== "live" || buying || view.pendingOrders.length > 0}
-                        onClick={() => void buy(view.offers[0]?.offerId ?? "")}
-                      >
-                        {buying || view.pendingOrders.length > 0 ? "Processing purchase…" : `Buy 1x (${view.offers[0]?.offerId ?? "Offer"})`}
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Admin holds no inventory of its own: network telemetry instead */}
-                {key === "admin" ? (
-                  <div className="lab-stock-meter">
-                    <div className="lab-stock-header">
-                      <span>Network telemetry</span>
-                      <span>{orderHistory.length} orders · {view.assignments.length} members</span>
-                    </div>
-                    {view.assignments.length === 0 ? (
-                      <div className="state-empty" style={{ padding: "0.8rem", fontSize: "0.75rem" }}>
-                        No team assignments replicated yet.
-                      </div>
-                    ) : (
-                      view.assignments.map(entry => (
-                        <div key={entry.subject} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.75rem", padding: "2px 0", gap: "0.5rem" }}>
-                          <span>{nameOf(entry.subject)}<br />
-                            <span style={{ fontSize: "0.65rem", color: "var(--amway-muted)" }}>
-                              authorized by {nameOf(entry.issuer)} · since {fmtDate(entry.validFrom)}
-                            </span>
-                          </span>
-                          <RoleBadge role={entry.role} />
-                        </div>
-                      ))
-                    )}
-                    {[...unitsByCustomer.entries()].map(([customer, agg]) => (
-                      <div key={customer} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", padding: "2px 0", gap: "0.5rem" }}>
-                        <span>{nameOf(customer)}<br />
-                          <span style={{ fontSize: "0.65rem", color: "var(--amway-muted)" }}>
-                            last {fmtDate(agg.lastAt)} · admitted by {nameOf(agg.seller)}
-                          </span>
-                        </span>
-                        <span>{agg.orders} order{agg.orders === 1 ? "" : "s"} · {agg.units} units</span>
-                      </div>
-                    ))}
-                    {view.availability && (
-                      <>
-                        <div className="lab-stock-header" style={{ marginTop: "0.4rem" }}>
-                          <span>Network availability ({view.availability.lot})</span>
-                          <span>{currentStock} / {totalStock} units</span>
-                        </div>
-                        <div className="lab-stock-bar">
-                          <div className="lab-stock-fill" style={{ width: `${stockPct}%` }} />
-                        </div>
-                      </>
-                    )}
-                  </div>
-                ) : (
-                  view.availability && (
-                    <div className="lab-stock-meter">
-                      <div className="lab-stock-header">
-                        <span>Facility Stock ({view.availability.lot})</span>
-                        <span>
-                          {currentStock} / {totalStock} units
-                        </span>
-                      </div>
-                      <div className="lab-stock-bar">
-                        <div className="lab-stock-fill" style={{ width: `${stockPct}%` }} />
-                      </div>
-                    </div>
-                  )
-                )}
-
-                {/* Tabbed Inspector Navigation */}
-                <div className="lab-tab-nav">
-                  <button
-                    type="button"
-                    className={`lab-tab-btn ${activeTab === "overview" ? "active" : ""}`}
-                    onClick={() => dispatch({ kind: "tab", key, tab: "overview" })}
-                  >
-                    All Items
-                  </button>
-                  <button
-                    type="button"
-                    className={`lab-tab-btn ${activeTab === "offers" ? "active" : ""}`}
-                    onClick={() => dispatch({ kind: "tab", key, tab: "offers" })}
-                  >
-                    Offers ({view.offers.length})
-                  </button>
-                  <button
-                    type="button"
-                    className={`lab-tab-btn ${activeTab === "orders" ? "active" : ""}`}
-                    onClick={() => dispatch({ kind: "tab", key, tab: "orders" })}
-                  >
-                    {isCustomer ? "Purchase history" : "Orders"} ({purchaseCount})
-                  </button>
-                  <button
-                    type="button"
-                    className={`lab-tab-btn ${activeTab === "contacts" ? "active" : ""}`}
-                    onClick={() => dispatch({ kind: "tab", key, tab: "contacts" })}
-                  >
-                    Contacts ({view.contacts.length})
-                  </button>
-                  <button
-                    type="button"
-                    className={`lab-tab-btn ${activeTab === "activity" ? "active" : ""}`}
-                    onClick={() => dispatch({ kind: "tab", key, tab: "activity" })}
-                  >
-                    CHUM Feed ({column.feedLog.length})
-                  </button>
-                </div>
-
-                {/* Content View per Tab */}
-                {(activeTab === "overview" || activeTab === "offers") && (
-                  <div className="lab-section">
-                    <div className="lab-section-title">
-                      <span>Catalog Offers</span>
-                      <span style={{ fontSize: "0.7rem", color: "var(--amway-muted)" }}>{view.offers.length} active</span>
-                    </div>
-                    <div className="lab-items-list">
-                      {view.offers.length === 0 ? (
-                        <div className="state-empty" style={{ padding: "0.8rem", fontSize: "0.75rem" }}>
-                          No offers replicated yet.
-                        </div>
-                      ) : (
-                        view.offers.map(entry => {
-                          const isFresh = Boolean(column.fresh[`offer:${entry.offerId}`]);
-                          return (
-                            <div
-                              key={`${entry.offerId}:${column.fresh[`offer:${entry.offerId}`] ?? ""}`}
-                              className={`lab-item-card ${isFresh ? "lab-fresh" : ""}`}
-                            >
-                              <div className="lab-item-main">
-                                <span className="lab-item-title">🏷️ {entry.offerId}</span>
-                                <span className="lab-item-sub">Item: {entry.item}</span>
-                              </div>
-                              <Badge
-                                text={`${(entry.unitAmount / 100).toFixed(2)} ${entry.currency}`}
-                                variant="nutrition"
-                              />
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {(activeTab === "overview" || activeTab === "orders") && (
-                  <section className="lab-section" aria-label={isCustomer ? "Purchase history" : "Orders & Reservations"}>
-                    <div className="lab-section-title">
-                      <span>{isCustomer ? "Purchase history" : "Orders & Reservations"}</span>
-                      <span style={{ fontSize: "0.7rem", color: "var(--amway-muted)" }}>
-                        {purchaseCount} {isCustomer ? (purchaseCount === 1 ? "purchase" : "purchases") : (purchaseCount === 1 ? "order" : "orders")}
-                      </span>
-                    </div>
-                    <div className="lab-items-list">
-                      {orderHistory.length === 0 && view.purchaseFailures.length === 0 ? (
-                        <div className="state-empty" style={{ padding: "0.8rem", fontSize: "0.75rem" }}>
-                          {isCustomer ? "No purchases yet." : "No orders placed."}
-                        </div>
-                      ) : (
-                        orderHistory.map(entry => {
-                          const isFresh = Boolean(column.fresh[`order:${entry.idempotencyKey}`]);
-                          const confirmed = entry.admittedAt > 0;
-                          return (
-                            <div
-                              key={entry.idempotencyKey}
-                              data-order-id={entry.idempotencyKey}
-                              className={`lab-item-card lab-purchase-card ${isFresh ? "lab-fresh" : ""}`}
-                            >
-                              <div className="lab-item-main">
-                                <span className="lab-item-title">{entry.offer}</span>
-                                <span className="lab-item-sub">
-                                  Qty: {entry.quantity} · {fmtMoney(entry.quantity * entry.unitAmount, entry.currency)}
-                                </span>
-                                <span className="lab-item-sub">{entry.idempotencyKey}</span>
-                                {confirmed && <span className="lab-item-sub">Confirmed {fmtDate(entry.admittedAt)}</span>}
-                              </div>
-                              <Badge text={confirmed ? "Confirmed" : "Processing purchase"} variant={confirmed ? "success" : "warning"} />
-                            </div>
-                          );
-                        })
-                      )}
-                      {view.purchaseFailures.map(failure => (
-                        <div key={failure.idempotencyKey} className="state-denied lab-purchase-failure" role="status">
-                          <strong>{failure.reason === "out-of-stock" ? "Out of stock" : "Purchase could not be completed"}</strong>
-                          <div>{failure.offer} · Qty: {failure.quantity}</div>
-                          <div>No purchase was confirmed.</div>
-                        </div>
-                      ))}
                     </div>
                   </section>
-                )}
+                  <LabDeviceInvite
+                    client={boot === "live" ? registry : undefined}
+                    plan="lab"
+                    deviceKey={shell.deviceName(key)}
+                  />
+                </div>
+              );
+            })}
+          </div>
 
-                {(activeTab === "overview" || activeTab === "orders") && (
-                  <div className="lab-section">
-                    <div className="lab-section-title">
-                      <span>Balances</span>
-                      <span style={{ fontSize: "0.7rem", color: "var(--amway-muted)" }}>{view.balances.length} parties</span>
-                    </div>
-                    <div className="lab-items-list">
-                      {view.balances.length === 0 ? (
-                        <div className="state-empty" style={{ padding: "0.8rem", fontSize: "0.75rem" }}>
-                          No receivables or payables yet.
-                        </div>
-                      ) : (
-                        view.balances.map(entry => (
-                          <div key={`${entry.party}:${entry.currency}`} className="lab-item-card">
-                            <div className="lab-item-main">
-                              <span className="lab-item-title">{nameOf(entry.party)}</span>
-                              <span className="lab-item-sub">
-                                Receivable {fmtMoney(entry.receivable, entry.currency)} · Payable {fmtMoney(entry.payable, entry.currency)}
-                              </span>
-                            </div>
-                            <RoleBadge role={entry.role} />
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {(activeTab === "overview" || activeTab === "contacts") && (
-                  <div className="lab-section">
-                    <div className="lab-section-title">
-                      <span>Directory Contacts</span>
-                      <span style={{ fontSize: "0.7rem", color: "var(--amway-muted)" }}>{view.contacts.length} verified</span>
-                    </div>
-                    <div className="lab-items-list">
-                      {view.contacts.length === 0 ? (
-                        <div className="state-empty" style={{ padding: "0.8rem", fontSize: "0.75rem" }}>
-                          No directory contacts.
-                        </div>
-                      ) : (
-                        view.contacts.map(entry => {
-                          const isFresh = Boolean(column.fresh[`contact:${entry.person}`]);
-                          const chatting = column.chatPeer === entry.person;
-                          const peerName = entry.name || `${entry.person.slice(0, 10)}…`;
-                          const unread = column.chatUnread[entry.person] ?? 0;
-                          return (
-                            <div key={`${entry.person}:${column.fresh[`contact:${entry.person}`] ?? ""}`}>
-                              <div
-                                className={`lab-item-card ${isFresh ? "lab-fresh" : ""}`}
-                                role="button"
-                                tabIndex={0}
-                                title="Open chat"
-                                aria-label={`Chat with ${peerName}`}
-                                style={{ cursor: "pointer" }}
-                                onClick={() => dispatch({ kind: "chat", key, peer: chatting ? null : entry.person })}
-                                onKeyDown={event => {
-                                  if (event.key === "Enter" || event.key === " ") {
-                                    event.preventDefault();
-                                    dispatch({ kind: "chat", key, peer: chatting ? null : entry.person });
-                                  }
-                                }}
-                              >
-                                <div className="lab-item-main">
-                                  <span className="lab-item-title">{entry.name}</span>
-                                  <span className="lab-item-sub">
-                                    {entry.person.slice(0, 10)}…{entry.person.slice(-4)}
-                                  </span>
-                                </div>
-                                <RoleBadge role={entry.role} />
-                                {entry.person !== personId && (
-                                  <button
-                                    type="button"
-                                    className="lab-copy-btn lab-chat-icon"
-                                    title="Open chat"
-                                    aria-label={`Open chat with ${peerName}`}
-                                    onClick={event => {
-                                      event.stopPropagation();
-                                      dispatch({ kind: "chat", key, peer: chatting ? null : entry.person });
-                                    }}
-                                  >
-                                    💬
-                                    {unread > 0 && (
-                                      <span className="lab-chat-badge" aria-label={`${unread} unread`}>
-                                        {unread > 9 ? "9+" : unread}
-                                      </span>
-                                    )}
-                                  </button>
-                                )}
-                              </div>
-                              {chatting && (
-                                <ChatPanel
-                                  client={lab.current?.clients[key]}
-                                  me={personId}
-                                  peer={entry.person}
-                                  peerName={peerName}
-                                  onClose={() => dispatch({ kind: "chat", key, peer: null })}
-                                />
-                              )}
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Real-Time CHUM Activity Feed */}
-                {activeTab === "activity" && (
-                  <div className="lab-section">
-                    <div className="lab-section-title">
-                      <span>CHUM Ingress Stream</span>
-                      <span style={{ fontSize: "0.7rem", color: "var(--amway-muted)" }}>Last {column.feedLog.length} events</span>
-                    </div>
-                    <div className="lab-feed-list">
-                      {column.feedLog.length === 0 ? (
-                        <div className="state-empty" style={{ padding: "0.8rem", fontSize: "0.75rem" }}>
-                          No CHUM events recorded yet.
-                        </div>
-                      ) : (
-                        column.feedLog.map((item, idx) => (
-                          <div key={`${item.hash}-${idx}`} className={`lab-feed-item lab-feed-${item.type}`}>
-                            <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                              <span style={{ fontWeight: 600 }}>{item.label}</span>
-                              <span style={{ fontSize: "0.65rem", color: "var(--amway-muted)" }}>
-                                #{item.hash.slice(0, 12)}…
-                              </span>
-                            </div>
-                            <span style={{ fontSize: "0.65rem", color: "var(--amway-muted)" }}>{item.at}</span>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Access Control & Rejection Audit */}
-                {view.rejected.length > 0 && (
-                  <details style={{ marginTop: "0.25rem" }}>
-                    <summary style={{ fontSize: "0.75rem", color: "var(--amway-danger)", cursor: "pointer", fontWeight: 600 }}>
-                      ⚠️ {view.rejected.length} Access Denials / Ingress Rejections
-                    </summary>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem", marginTop: "0.5rem" }}>
-                      {view.rejected.map(rej => (
-                        <div
-                          key={`${rej.type}:${rej.id}`}
-                          className="state-denied"
-                          style={{ padding: "0.4rem 0.6rem", fontSize: "0.72rem" }}
-                        >
-                          <strong>{rej.type}</strong> ({rej.id}): {rej.reason}
-                        </div>
-                      ))}
-                    </div>
-                  </details>
-                )}
-
-              </div>
+          {seedLog.length > 0 && (
+            <section aria-label="Seed log" style={{ marginTop: "1.25rem", fontSize: "0.75rem" }}>
+              <div className="lab-section-title">Seed log</div>
+              <ul style={{ margin: "0.4rem 0", paddingLeft: "1.2rem" }}>
+                {seedLog.map((line, index) => <li key={`${index}-${line}`}>{line}</li>)}
+              </ul>
             </section>
-            <LabDeviceInvite
-              client={boot === "live" ? lab.current?.clients[key] : undefined}
-              plan="lab"
-              deviceKey={key}
-            />
-            </div>
-          );
-        })}
-      </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

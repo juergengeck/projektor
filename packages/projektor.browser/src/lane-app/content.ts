@@ -134,3 +134,20 @@ export const AMWAY_CONTENT: LaneContent = {
   },
   waitingForHost: "Waiting for the lane host to sign in…",
 };
+
+/**
+ * Elektro Klein lane: English chrome like the EK fork had, with German role
+ * titles (Bauleiter/Vorarbeiter/Werker) and the EK catalog. Only the strings
+ * the fork localized differ from AMWAY_CONTENT.
+ */
+export const EK_CONTENT: LaneContent = {
+  ...AMWAY_CONTENT,
+  laneClass: "ek-lane",
+  roleTitles: { admin: "Klein", manager: "Bauleiter", seller: "Vorarbeiter", customer: "Werker" },
+  appoint: { manager: "Appoint Bauleiter", seller: "Appoint Vorarbeiter", customer: "Appoint Werker" },
+  catalog: [
+    { idPrefix: "offer-ek", item: "BMA-WARTUNG@1", priceList: "demo-retail@2026-09", unitAmount: 10000, currency: "EUR", button: "+ Offer (100.00€)" },
+    { idPrefix: "offer-nutrilite", item: "NUTRILITE-DAILY@1", priceList: "demo-retail@2026-09", unitAmount: 4500, currency: "EUR", button: "+ Offer (45.00€)" },
+  ],
+  shareWithSeller: offerId => `Share ${offerId} with Vorarbeiter`,
+};

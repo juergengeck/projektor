@@ -19,7 +19,7 @@ import type { FeedRow } from "@projektor/lab.core/port-ipc.ts";
 import "../../../amway.app/ui/styles.css";
 import "./themes/amway.css";
 import "./themes/ek.css";
-import { AMWAY_CONTENT } from "./content.ts";
+import { AMWAY_CONTENT, EK_CONTENT } from "./content.ts";
 import type { LaneContent } from "./content.ts";
 import { RoleApp } from "./RoleApp";
 import type { LaneClient } from "./feed.ts";
@@ -39,17 +39,23 @@ if (!(LAB_ROLES as readonly string[]).includes(role)) {
 }
 const directory = resolveStorageDirectory(brand, window.location.search);
 
-// Lane peers for the appoint/share subjects, supplied by the host once every
-// role has signed in (`?peers=admin:<hash>,…`). Absent until then: the action
-// buttons that need a subject report it through the plan validation.
-const persons: Record<string, string> = {};
-for (const pair of (params.get("peers") ?? "").split(",")) {
-  const [name, hash] = pair.split(":");
-  if (name && /^[0-9a-f]{64}$/.test(hash ?? "")) persons[name] = hash;
+// Lane peers for the appoint/share subjects. The host pushes them with
+// ui.setLanePeers once every role has signed in; the URL carries an initial
+// set (`?peers=admin:<hash>,…`) for standalone debugging. Absent until then:
+// the action buttons that need a subject report it through the plan
+// validation. A URL renavigation cannot supply them: reloading into the same
+// session-scoped directory wedges CHUM (D4), and a new session reboots with
+// new persons.
+function initialPersons(): Record<string, string> {
+  const persons: Record<string, string> = {};
+  for (const pair of (params.get("peers") ?? "").split(",")) {
+    const [name, hash] = pair.split(":");
+    if (name && /^[0-9a-f]{64}$/.test(hash ?? "")) persons[name] = hash;
+  }
+  return persons;
 }
 
-// EK content plugs into the same shape when the EK shell moves over in Task 13.
-const content: LaneContent = AMWAY_CONTENT;
+const content: LaneContent = brand.id === "ek" ? EK_CONTENT : AMWAY_CONTENT;
 document.documentElement.dataset.brand = brand.id;
 
 const origin = window.location.origin;
@@ -74,41 +80,76 @@ function laneCommServer(): string | undefined {
 }
 
 function laneAppBase(): string {
-  const url = new URL(window.location.pathname, window.location.origin);
-  url.searchParams.set("lane", brand.lane);
-  return url.toString();
+  // The QR-encoded IoM invitation must open the lane host page (which offers
+  // the join flow), never this app iframe.
+  return new URL(`/browser/lab/?lane=${brand.lane}`, window.location.origin).toString();
 }
 
-async function boot(): Promise<void> {
-  const instance = await startLabInstance({
-    brand,
-    port: teePort,
-    key: role,
-    directory,
-    createMessageChannel: () => new MessageChannel(),
-    commServerUrl: laneCommServer(),
-    appBaseUrl: laneAppBase(),
-  });
-  const laneClient: LaneClient = {
-    call: <T,>(plan: string, method: string, callParams?: Record<string, unknown>): Promise<T> =>
-      instance.call(plan, method, callParams) as Promise<T>,
-    onFeed: callback => {
-      feedTaps.add(callback);
-      return () => {
-        feedTaps.delete(callback);
+function LaneAppShell() {
+  const [persons, setPersons] = React.useState<Record<string, string>>(initialPersons);
+  const [client, setClient] = React.useState<LaneClient | null>(null);
+  const [failure, setFailure] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const instance = await startLabInstance({
+        brand,
+        port: teePort,
+        key: role,
+        directory,
+        createMessageChannel: () => new MessageChannel(),
+        commServerUrl: laneCommServer(),
+        appBaseUrl: laneAppBase(),
+        onLanePeers: peers => {
+          if (!cancelled) setPersons({ ...peers });
+        },
+      });
+      if (cancelled) return;
+      const laneClient: LaneClient = {
+        call: <T,>(plan: string, method: string, callParams?: Record<string, unknown>): Promise<T> =>
+          instance.call(plan, method, callParams) as Promise<T>,
+        onFeed: callback => {
+          feedTaps.add(callback);
+          return () => {
+            feedTaps.delete(callback);
+          };
+        },
       };
-    },
-  };
-  exposeRegistry(window, { call: (plan, method, callParams) => laneClient.call(plan, method, callParams) });
-  ReactDOM.createRoot(document.getElementById("lane-app-root")!).render(
-    <React.StrictMode>
-      <RoleApp brand={brand} content={content} role={role} client={laneClient} persons={persons} />
-    </React.StrictMode>,
-  );
+      exposeRegistry(window, {
+        call: (plan: string, method: string, params: unknown) =>
+          laneClient.call(plan, method, params as Record<string, unknown> | undefined),
+      });
+      setClient(laneClient);
+    })().catch(error => {
+      if (!cancelled) setFailure(error instanceof Error ? error.message : String(error));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  if (failure !== null) {
+    return (
+      <div className={content.laneClass}>
+        <div className="card" style={{ margin: "1.25rem", textAlign: "center" }}>
+          <p style={{ margin: 0, fontWeight: 600 }}>Boot Failure: {failure}</p>
+        </div>
+      </div>
+    );
+  }
+  if (!client) {
+    return (
+      <div className={content.laneClass}>
+        <div className="card" style={{ margin: "1.25rem", textAlign: "center" }}>
+          <p style={{ margin: 0, fontWeight: 600 }}>{content.waitingForHost}</p>
+        </div>
+      </div>
+    );
+  }
+  return <RoleApp brand={brand} content={content} role={role} client={client} persons={persons} />;
 }
 
-boot().catch(error => {
-  const root = document.getElementById("lane-app-root");
-  if (root) root.textContent = error instanceof Error ? error.message : String(error);
-  throw error;
-});
+ReactDOM.createRoot(document.getElementById("lane-app-root")!).render(
+  <React.StrictMode>
+    <LaneAppShell />
+  </React.StrictMode>,
+);

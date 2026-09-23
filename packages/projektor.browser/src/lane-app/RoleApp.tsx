@@ -4,7 +4,7 @@
  * `session.*` through the registry), renders the role screens with live
  * data, and runs every lab/chat operation through the registry facade.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { LabBrand } from "@projektor/lab.core/brand.ts";
 import type { LaneUiState } from "@projektor/lab.core/session-plan.ts";
 import type { FeedRow } from "@projektor/lab.core/port-ipc.ts";
@@ -198,6 +198,21 @@ export function RoleApp({ brand, content, role, client, persons }: {
 
   const live = boot === "live";
   const { view } = column;
+
+  // Arm one chat subscription per known contact (except self), exactly like
+  // the old host shell did: without it, incoming messages never notify
+  // until the chat is opened. Retried on failure via set membership.
+  const openedChats = useRef(new Set<string>());
+  useEffect(() => {
+    if (!live || !me) return;
+    for (const contact of view.contacts) {
+      if (contact.person === me || openedChats.current.has(contact.person)) continue;
+      openedChats.current.add(contact.person);
+      client.call("chat", "openChat", { peer: contact.person }).catch(() => {
+        openedChats.current.delete(contact.person);
+      });
+    }
+  });
   const staff = view.roles.includes("admin") || view.roles.includes("manager");
   const seller = staff || view.roles.includes("seller");
   const isCustomer = role === "customer";

@@ -36,7 +36,7 @@ test.afterAll(() => {
   commserver?.kill();
 });
 
-for (const entry of ["/browser/lab/", "/browser/#/lab"]) {
+for (const entry of ["/browser/lab/?lane=amway", "/browser/#/lab"]) {
 test(`amway lane invitation from ${entry} pairs a second device`, async ({ page, browser }) => {
   const errors: string[] = [];
   page.on("console", message => {

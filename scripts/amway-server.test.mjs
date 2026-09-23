@@ -79,30 +79,29 @@ test("React browser app is served same-origin when built", async (t) => {
   assert.match(html, /\/browser\/assets\//);
 });
 
-test("Lab entry is served same-origin when built", async (t) => {
+test("Lab entry redirects to the lane shell with its lane", async (t) => {
   const { server, base } = await started();
   t.after(() => close(server));
-  const html = await (await fetch(`${base}/amway/lab/`)).text();
-  assert.match(html, /<div id="lab-root"><\/div>/);
-  assert.match(html, /Amway · Demo workspace/);
-  assert.match(html, /\/browser\/assets\//);
-  for (const unadvertised of [`${base}/lab/`, `${base}/browser/lab/`]) {
+  const response = await fetch(`${base}/amway/lab/?commServer=ws%3A%2F%2F127.0.0.1%3A9`, { redirect: "manual" });
+  assert.equal(response.status, 302);
+  const location = response.headers.get("location") ?? "";
+  assert.match(location, /\/browser\/lab\/\?/);
+  assert.match(location, /lane=amway/);
+  assert.match(location, /commServer=/);
+  const shell = await (await fetch(`${base}/amway/lab/`)).text();
+  assert.match(shell, /<div id="lab-root"><\/div>/);
+  for (const unadvertised of [`${base}/lab/`, `${base}/eklab/`, `${base}/browser/eklab/`]) {
     const body = await (await fetch(unadvertised)).text();
     assert.doesNotMatch(body, /lab-root/, `${unadvertised} must not serve the lab`);
   }
 });
 
-test("EK lane entry is served same-origin when built", async (t) => {
+test("EK lane entry redirects to the lane shell with its lane", async (t) => {
   const { server, base } = await started();
   t.after(() => close(server));
-  const html = await (await fetch(`${base}/ek/lab/`)).text();
-  assert.match(html, /<div id="eklab-root"><\/div>/);
-  assert.match(html, /Elektro Klein AG · EK Lab/);
-  assert.match(html, /\/browser\/assets\//);
-  for (const unadvertised of [`${base}/eklab/`, `${base}/browser/eklab/`]) {
-    const body = await (await fetch(unadvertised)).text();
-    assert.doesNotMatch(body, /eklab-root/, `${unadvertised} must not serve the EK lane`);
-  }
+  const response = await fetch(`${base}/ek/lab/`, { redirect: "manual" });
+  assert.equal(response.status, 302);
+  assert.match(response.headers.get("location") ?? "", /\/browser\/lab\/\?.*lane=ek/);
 });
 
 test("Lab pairing is not served by a Projektor relay", async (t) => {

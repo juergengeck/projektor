@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import type { PortApiClient } from "@projektor/lab.core/port-ipc.ts";
+import { callPlan, type PlanRegistry } from "@projektor/lab.core/shell/plan-client.ts";
 import "./LabDeviceInvite.css";
 
 /** The device invitation belongs below the app frame, independent of its tabs. */
 export function LabDeviceInvite({ client, plan, deviceKey }: {
-  client: Pick<PortApiClient, "call"> | undefined;
+  client: PlanRegistry | undefined;
   plan: string;
   deviceKey: string;
 }) {
@@ -24,19 +24,21 @@ export function LabDeviceInvite({ client, plan, deviceKey }: {
 
   useEffect(() => {
     if (!client) return;
+    const controller = new AbortController();
     let cancelled = false;
     setInvite({ url: "", status: "Creating invitation…", busy: true });
     setCopyStatus("");
     void (async () => {
       try {
-        const result = await client.call<{ invitationUrl: string; token: string }>(plan, "createIoMInvite", {});
+        const result = await callPlan<{ invitationUrl: string; token: string }>(
+          client, controller.signal, plan, "createIoMInvite", {}, 30_000);
         if (cancelled) return;
         const url = result.invitationUrl;
         setInvite({ url, status: "Scan to connect a second device", busy: false });
         // Observe this exact token's completion; no status polling or stale
         // completion updates after a replacement invitation or unmount.
         try {
-          await client.call(plan, "awaitIoMInvite", { token: result.token, timeoutMs: 600_000 });
+          await callPlan(client, controller.signal, plan, "awaitIoMInvite", { token: result.token, timeoutMs: 600_000 }, 660_000);
           if (!cancelled) setInvite({ url: "", status: "device paired ✓", busy: false });
         } catch (error) {
           if (!cancelled) setInvite({ url: "", status: `Pairing failed: ${error instanceof Error ? error.message : String(error)}`, busy: false });
@@ -45,7 +47,7 @@ export function LabDeviceInvite({ client, plan, deviceKey }: {
         if (!cancelled) setInvite({ url: "", status: `Invite failed: ${error instanceof Error ? error.message : String(error)}`, busy: false });
       }
     })();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; controller.abort(); };
   }, [client, plan, generation]);
 
   async function copy() {

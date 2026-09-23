@@ -36,7 +36,7 @@ test.afterAll(() => {
   commserver?.kill();
 });
 
-for (const entry of ["/browser/eklab/", "/browser/#/eklab"]) {
+for (const entry of ["/browser/lab/?lane=ek", "/browser/#/eklab"]) {
 test(`ek lane invitation from ${entry} pairs a second device`, async ({ page, browser }) => {
   const errors: string[] = [];
   page.on("console", message => {

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LaneClient } from "../feed.ts";
 import type { LaneContent } from "../content.ts";
+import type { ChatMessageView } from "@projektor/lab.core/chat-plan.ts";
 
 export interface ChatMsg {
   id: string;
@@ -35,12 +36,20 @@ export function ChatPanel({ client, me, peer, peerName, content, onClose }: {
 
   const read = useCallback(async () => {
     try {
-      const rows: ChatMsg[] = await client.call("chat", "readChat", { peer });
-      setMessages(rows);
+      const result = await client.call<{ messages: ChatMessageView[] }>("chat", "readChat", { peer });
+      setMessages(
+        result.messages.map(entry => ({
+          id: `${entry.sender}:${entry.sentAt}:${entry.text}`,
+          sender: entry.sender,
+          text: entry.text,
+          at: entry.sentAt,
+          incoming: entry.sender !== me,
+        })),
+      );
     } catch {
       // The chat opens optimistically; rows arrive on the next refresh.
     }
-  }, [client, peer]);
+  }, [client, peer, me]);
 
   useEffect(() => {
     void read();

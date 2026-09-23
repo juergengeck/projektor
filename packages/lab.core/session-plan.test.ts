@@ -36,3 +36,16 @@ test("loadPendingInvitation rejects URLs that are not lane invitations", async (
   const { ui } = createSessionPlans({ boot });
   await assert.rejects(ui.loadPendingInvitation({ url: "https://example.com/" }), /not a lane invitation/);
 });
+
+test("setLanePeers stores validated peers and notifies the app", async () => {
+  const { boot } = fakeBoot();
+  const seen: Record<string, string>[] = [];
+  const { ui } = createSessionPlans({ boot, onLanePeers: peers => { seen.push(peers); } });
+  assert.deepEqual((await ui.getLanePeers()).peers, {});
+  const peers = { admin: "a".repeat(64), seller: "b".repeat(64) };
+  assert.deepEqual((await ui.setLanePeers({ peers })).peers, peers);
+  assert.deepEqual((await ui.getLanePeers()).peers, peers);
+  assert.deepEqual(seen, [peers]);
+  await assert.rejects(ui.setLanePeers({ peers: { admin: "short" } }), /bad person for admin/);
+  await assert.rejects(ui.setLanePeers({ peers: "nope" as unknown as Record<string, string> }), /must be a role map/);
+});

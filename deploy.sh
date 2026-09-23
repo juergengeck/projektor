@@ -56,19 +56,30 @@ fi
 (cd "$SCRIPT_DIR/packages/projektor.browser" && npm run build)
 mkdir -p "$BUILD_DIR/browser"
 cp -R "$SCRIPT_DIR/packages/projektor.browser/dist/." "$BUILD_DIR/browser/"
-# Serve the lab from the amway lane at /amway/lab/: the entry uses absolute
-# /browser/assets/... URLs, so it loads from any path. The build-output copy
-# under browser/lab is removed so the lane route stays the single address and
-# is never linked from any page.
-mkdir -p "$BUILD_DIR/amway/lab"
-cp "$SCRIPT_DIR/packages/projektor.browser/dist/lab/index.html" "$BUILD_DIR/amway/lab/index.html"
-rm -rf "$BUILD_DIR/browser/lab"
-# Second lane, same contract: the entry uses absolute /browser/assets/... URLs,
-# so it loads from any path. The build-output copy under browser/eklab is
-# removed so the lane route stays the single address and is never linked.
-mkdir -p "$BUILD_DIR/ek/lab"
-cp "$SCRIPT_DIR/packages/projektor.browser/dist/eklab/index.html" "$BUILD_DIR/ek/lab/index.html"
-rm -rf "$BUILD_DIR/browser/eklab"
+# One lane shell for both brands (?lane= selects the brand at runtime). The
+# lane routes stay the advertised addresses and redirect to the shell, which
+# ships under browser/lab.
+lane_stub() {
+    local lane="$1"
+    local dir="$2"
+    mkdir -p "$dir"
+    cat > "$dir/index.html" <<EOF
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="refresh" content="0;url=/browser/lab/?lane=${lane}" />
+    <link rel="canonical" href="/browser/lab/?lane=${lane}" />
+    <title>Lab lane</title>
+  </head>
+  <body>
+    <p><a href="/browser/lab/?lane=${lane}">Open the lab lane</a></p>
+  </body>
+</html>
+EOF
+}
+lane_stub "amway" "$BUILD_DIR/amway/lab"
+lane_stub "ek" "$BUILD_DIR/ek/lab"
 
 if [ -d "$SCRIPT_DIR/docs" ]; then
     cp -R "$SCRIPT_DIR/docs" "$BUILD_DIR/docs"
@@ -112,8 +123,13 @@ if [ ! -f "$BUILD_DIR/amway/lab/index.html" ]; then
     exit 1
 fi
 
-if [ -e "$BUILD_DIR/browser/lab" ]; then
-    echo -e "${RED}✗ Build verification failed: browser/lab must not ship (lane route is /amway/lab)${NC}"
+if ! grep -q "lane=amway" "$BUILD_DIR/amway/lab/index.html"; then
+    echo -e "${RED}✗ Build verification failed: amway/lab must redirect to the amway lane${NC}"
+    exit 1
+fi
+
+if [ ! -f "$BUILD_DIR/browser/lab/index.html" ]; then
+    echo -e "${RED}✗ Build verification failed: browser/lab/index.html not found${NC}"
     exit 1
 fi
 
@@ -122,8 +138,8 @@ if [ ! -f "$BUILD_DIR/ek/lab/index.html" ]; then
     exit 1
 fi
 
-if [ -e "$BUILD_DIR/browser/eklab" ]; then
-    echo -e "${RED}✗ Build verification failed: browser/eklab must not ship (lane route is /ek/lab)${NC}"
+if ! grep -q "lane=ek" "$BUILD_DIR/ek/lab/index.html"; then
+    echo -e "${RED}✗ Build verification failed: ek/lab must redirect to the ek lane${NC}"
     exit 1
 fi
 

@@ -2,9 +2,6 @@ import { useEffect, useState } from "react";
 import { EMAIL_KEY, currentDepartment, operation, setDepartment } from "./api";
 import { applyTheme, setLanguage, t, useLang } from "./i18n";
 import Auth from "./screens/Auth";
-import Lab from "./lab/Lab";
-import EkLab from "./eklab/Lab";
-import ekFavicon from "./lane-app/assets/ek/favicon.png";
 import Chat from "./screens/Chat";
 import { Earnings, Returns } from "./screens/Finance";
 import Inventory from "./screens/Inventory";
@@ -24,17 +21,15 @@ function screenFromHash(): Screen {
   return (SCREENS as readonly string[]).includes(hash) ? (hash as Screen) : "overview";
 }
 
-function isLabHash(): boolean {
-  return window.location.hash.replace(/^#\/?/, "").startsWith("lab") || isLaneInvite("amway");
-}
-
-function isEkLabHash(): boolean {
-  return window.location.hash.replace(/^#\/?/, "").startsWith("eklab") || isLaneInvite("ek");
-}
-
-function isLaneInvite(lane: string): boolean {
-  const params = new URLSearchParams(window.location.search);
-  return params.get("invited") === "true" && params.get("lane") === lane && window.location.hash.length > 1;
+/**
+ * The lab lanes live in their own shell (`/browser/lab/?lane=`); hash routes
+ * only redirect there, preserving the query (notably `?commServer=`).
+ */
+function laneFromHash(): "amway" | "ek" | null {
+  const hash = window.location.hash.replace(/^#\/?/, "");
+  if (hash.startsWith("eklab")) return "ek";
+  if (hash.startsWith("lab")) return "amway";
+  return null;
 }
 
 function ScopeBanner({ department, onScope }: { department: string; onScope: (dept: string) => void }) {
@@ -104,53 +99,39 @@ export default function App() {
   useLang();
   const [email, setEmail] = useState(localStorage.getItem(EMAIL_KEY) || "");
   const [screen, setScreen] = useState<Screen>(screenFromHash());
-  const [isLab, setIsLab] = useState(isLabHash());
-  const [isEkLab, setIsEkLab] = useState(isEkLabHash());
   const [department, setDept] = useState(currentDepartment());
   const [refresh, setRefresh] = useState(0);
 
   useEffect(() => {
-    const onHash = () => { setScreen(screenFromHash()); setIsLab(isLabHash()); setIsEkLab(isEkLabHash()); };
+    const lane = laneFromHash();
+    if (lane) {
+      const params = new URLSearchParams(window.location.search);
+      params.set("lane", lane);
+      window.location.replace(`/browser/lab/?${params}`);
+      return;
+    }
+    const onHash = () => { setScreen(screenFromHash()); };
     window.addEventListener("hashchange", onHash);
     document.title = t("app.title");
     setLanguage(document.documentElement.lang === "fr" || document.documentElement.lang === "en"
       ? document.documentElement.lang : "de");
     applyTheme();
-    // The lab is deliberately sessionless; do not issue a guaranteed 401 from
-    // the single-instance shell when it is opened directly.
-    if (!isLabHash() && !isEkLabHash()) {
-      operation<{ values: { language: string; theme: string } }>("getSettings", {})
-        .then(({ values }) => {
-          localStorage.setItem("amway.lang", values.language);
-          localStorage.setItem("amway.theme", values.theme);
-          setLanguage(values.language);
-          applyTheme();
-        })
-        .catch(() => {});
-    }
+    operation<{ values: { language: string; theme: string } }>("getSettings", {})
+      .then(({ values }) => {
+        localStorage.setItem("amway.lang", values.language);
+        localStorage.setItem("amway.theme", values.theme);
+        setLanguage(values.language);
+        applyTheme();
+      })
+      .catch(() => {});
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
-  useEffect(() => { document.title = isEkLab ? "Elektro Klein AG · EK Lab" : isLab ? "Amway · Demo workspace" : t("app.title"); });
+  useEffect(() => { document.title = t("app.title"); });
 
-  useEffect(() => {
-    if (!isEkLab) return;
-    const icon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
-    if (!icon) return;
-    const previous = icon.href;
-    icon.href = ekFavicon;
-    return () => { icon.href = previous; };
-  }, [isEkLab]);
-
-  // The lab is a separate shell: each column carries its own worker-owned
-  // session, so the global single-instance login must not gate or leak into it.
-  if (isLab) {
-    return <Lab />;
-  }
-
-  // Second lane, same contract: Elektro Klein columns, worker-owned sessions.
-  if (isEkLab) {
-    return <EkLab />;
+  // The lab lanes live in their own shell (see the redirect above).
+  if (laneFromHash()) {
+    return <p>Opening the lab lane…</p>;
   }
 
   if (!email) {
