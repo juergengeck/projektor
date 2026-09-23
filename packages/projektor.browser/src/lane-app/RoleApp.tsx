@@ -8,7 +8,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { LabBrand } from "@projektor/lab.core/brand.ts";
 import type { LaneUiState } from "@projektor/lab.core/session-plan.ts";
 import type { FeedRow } from "@projektor/lab.core/port-ipc.ts";
-import { LabDeviceInvite } from "../components/LabDeviceInvite";
 import {
   EMPTY_FEED_VIEW,
   SNAPSHOT_TRIGGER_KINDS,
@@ -17,6 +16,8 @@ import {
 } from "./feed.ts";
 import type { FeedColumn, LaneClient, View } from "./feed.ts";
 import type { CatalogItem, LaneContent } from "./content.ts";
+import amwayLogo from "../../../amway.app/assets/amway-logo-black.svg";
+import ekLogo from "./assets/ek/elektro-klein-logo.jpg";
 import { Directory } from "./screens/Directory";
 import { Offers } from "./screens/Offers";
 import { Orders } from "./screens/Orders";
@@ -44,21 +45,21 @@ function fallbackCopy(text: string): void {
 
 function ContactNameField({ currentName, role, disabled, onSave, content }: {
   currentName: string;
+  /** The lane's predetermined role: contacts never self-declare it. */
   role: string;
   disabled: boolean;
   onSave: (name: string, role: string) => void;
   content: LaneContent["contactField"];
 }) {
   const [name, setName] = useState(currentName);
-  const [roleValue, setRoleValue] = useState(role);
   return (
     <form
       className="lab-inline-form"
       title={content.title}
       onSubmit={event => {
         event.preventDefault();
-        if (!name.trim() || !roleValue.trim()) return;
-        onSave(name.trim(), roleValue.trim());
+        if (!name.trim()) return;
+        onSave(name.trim(), role);
       }}
     >
       <input
@@ -69,15 +70,7 @@ function ContactNameField({ currentName, role, disabled, onSave, content }: {
         aria-label={content.namePlaceholder}
         disabled={disabled}
       />
-      <input
-        type="text"
-        value={roleValue}
-        onChange={event => setRoleValue(event.target.value)}
-        placeholder={content.rolePlaceholder}
-        aria-label={content.rolePlaceholder}
-        disabled={disabled}
-      />
-      <button type="submit" className="secondary" disabled={disabled || !name.trim() || !roleValue.trim()}>
+      <button type="submit" className="secondary" disabled={disabled || !name.trim()}>
         {currentName ? content.update : content.save}
       </button>
     </form>
@@ -260,10 +253,17 @@ export function RoleApp({ brand, content, role, client, persons }: {
     );
   }
 
+  const title = content.roleTitles[role] ?? role;
+  const logo = brand.id === "ek" ? ekLogo : amwayLogo;
+  const logoAlt = brand.id === "ek" ? "Elektro Klein AG" : "Amway";
   return (
     <div className={content.laneClass}>
-      <section aria-label={content.roleTitles[role] ?? role} className="lab-column">
-        <div className="lab-column-body">
+      <section aria-label={title} className="lane-app">
+        <div className="lane-app-body">
+          <div className="lab-app-title">
+            <img src={logo} alt={logoAlt} className="lab-app-logo" />
+            <h2 className="lab-app-title-text">{title}</h2>
+          </div>
           {column.notice && (
             <div className="state-denied" style={{ padding: "0.5rem 0.75rem", fontSize: "0.75rem", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.5rem" }}>
               <span style={{ userSelect: "text", flex: 1, minWidth: 0 }}>{column.notice}</span>
@@ -349,7 +349,7 @@ export function RoleApp({ brand, content, role, client, persons }: {
               <ContactNameField
                 key={view.contacts.find(entry => entry.person === me)?.name ?? ""}
                 currentName={view.contacts.find(entry => entry.person === me)?.name ?? ""}
-                role={view.roles[0] ?? ""}
+                role={role}
                 disabled={!view.known || view.roles.length === 0 || !live}
                 onSave={(name, contactRole) => void run("publishContact", { name, role: contactRole })}
                 content={content.contactField}
@@ -462,11 +462,6 @@ export function RoleApp({ brand, content, role, client, persons }: {
           <RejectedAudit view={view} content={content} />
         </div>
       </section>
-      <LabDeviceInvite
-        client={live ? client : undefined}
-        plan="lab"
-        deviceKey={role}
-      />
     </div>
   );
 }

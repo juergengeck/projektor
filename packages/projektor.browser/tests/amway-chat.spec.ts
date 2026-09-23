@@ -60,17 +60,23 @@ test("amway lane contact chat icon opens 1:1 chat", async ({ page }) => {
   // No generic pairing section: invites live only as QR codes under the apps.
   await expect(page.getByText("Device pairing")).toHaveCount(0);
 
-  // Fixed-size app frames: every iframe keeps its height; the lane app scrolls inside.
+  // App frames keep their height; columns grow with the content and only the page scrolls.
   const frameHeight = await columns.nth(0).locator("iframe").evaluate(el => getComputedStyle(el).height);
   expect(frameHeight).toBe("720px");
-  const bodyOverflow = await frames.nth(0).locator(".lab-column-body").evaluate(el => getComputedStyle(el).overflowY);
-  expect(bodyOverflow).toBe("auto");
+  const bodyOverflow = await frames.nth(0).locator(".lane-app-body").evaluate(el => getComputedStyle(el).overflowY);
+  expect(bodyOverflow).toBe("visible");
+  // Lane apps never pan horizontally inside their iframes.
+  const lanePan = await frames.nth(0).locator("body").evaluate(el => {
+    const lane = el.ownerDocument.querySelector(".amway-lane, .ek-lane");
+    return { overflowX: getComputedStyle(el).overflowX, touchAction: lane ? getComputedStyle(lane).touchAction : "missing" };
+  });
+  expect(lanePan).toEqual({ overflowX: "hidden", touchAction: "pan-y" });
 
-  // Automatically generated IoM QRs remain below the fixed app frames.
+  // Automatically generated IoM QRs remain below the app frames.
   for (const key of ["admin", "manager", "seller", "customer"]) {
     await expect(page.getByRole("img", { name: `Device invitation QR for ${key}`, exact: true })).toBeVisible({ timeout: 60_000 });
   }
-  await expect(page.locator(".lab-column-body .lab-device-invite")).toHaveCount(0);
+  await expect(page.locator(".lab-column-frame .lab-device-invite")).toHaveCount(0);
 
   await admin.getByRole("button", { name: "Appoint Manager" }).click();
   await expect(columns.nth(1).locator(".badge-accent").first()).toBeVisible({ timeout: 90_000 });
@@ -79,10 +85,8 @@ test("amway lane contact chat icon opens 1:1 chat", async ({ page }) => {
   await seller.getByRole("button", { name: "Appoint Customer" }).click();
 
   await seller.getByLabel("Display name").fill("Seller One");
-  await seller.getByLabel("Role (admin, manager, seller, customer)").fill("seller");
   await seller.getByRole("button", { name: "Save name" }).click();
   await customer.getByLabel("Display name").fill("Customer One");
-  await customer.getByLabel("Role (admin, manager, seller, customer)").fill("customer");
   await customer.getByRole("button", { name: "Save name" }).click();
   await expect(seller.getByText("Customer One").first()).toBeVisible({ timeout: 90_000 });
   await expect(customer.getByText("Seller One").first()).toBeVisible({ timeout: 90_000 });

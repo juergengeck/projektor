@@ -120,22 +120,6 @@ html[data-theme="dark"] .amway-logo {
   overflow-wrap: anywhere;
 }
 
-.amway-lane .lab-column-header::before {
-  background: var(--amway-blue);
-}
-
-.amway-lane .lab-role-admin .lab-column-header::before {
-  background: var(--amway-blue-deep);
-}
-
-.amway-lane .lab-role-seller .lab-column-header::before {
-  background: var(--amway-home);
-}
-
-.amway-lane .lab-role-customer .lab-column-header::before {
-  background: var(--amway-nutrition);
-}
-
 .amway-lane .lab-feed-AmwayOffer,
 .amway-lane .lab-feed-AmwayRoleAssignment {
   border-left-color: var(--amway-blue);

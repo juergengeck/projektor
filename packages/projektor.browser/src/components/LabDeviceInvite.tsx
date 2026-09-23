@@ -90,8 +90,11 @@ export function LabDeviceInvite({ client, plan, deviceKey }: {
         <dialog ref={qrDialog} className="lab-device-qr-dialog" aria-label={`Device invitation for ${deviceKey}`}
           onCancel={event => { event.preventDefault(); setExpanded(false); }}>
           <button type="button" className="secondary sm" onClick={() => setExpanded(false)}>Close QR</button>
-          <QRCodeSVG value={invite.url} size={480} marginSize={4} bgColor="#ffffff" fgColor="#000000" />
-          <p>Scan to connect a second device</p>
+          <button type="button" className="lab-device-qr-dialog-qr" aria-label="Close device invitation QR"
+            onClick={() => setExpanded(false)}>
+            <QRCodeSVG value={invite.url} size={480} marginSize={4} bgColor="#ffffff" fgColor="#000000" />
+          </button>
+          <p>Scan to connect a second device — or click the code to close</p>
         </dialog>
       )}
     </section>

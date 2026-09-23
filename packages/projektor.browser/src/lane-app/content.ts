@@ -16,7 +16,6 @@ export interface CatalogItem {
 export interface LaneContent {
   laneClass: string;
   roleTitles: Record<string, string>;
-  roleIcons: Record<string, string>;
   appoint: Record<string, string>;
   actionsTitle: string;
   catalog: CatalogItem[];
@@ -53,7 +52,7 @@ export interface LaneContent {
   stockUnits: (current: number, total: number) => string;
   customerOrders: (orders: number, units: number) => string;
   auditTitle: (count: number) => string;
-  contactField: { namePlaceholder: string; rolePlaceholder: string; save: string; update: string; title: string };
+  contactField: { namePlaceholder: string; save: string; update: string; title: string };
   stockField: { receiptPlaceholder: string; quantityLabel: string; save: string; title: string };
   chat: {
     messageLabel: (peerName: string) => string;
@@ -69,10 +68,9 @@ export interface LaneContent {
 
 export const AMWAY_CONTENT: LaneContent = {
   laneClass: "amway-lane",
-  roleTitles: { admin: "Org Admin", manager: "Manager", seller: "Seller", customer: "Customer" },
-  roleIcons: { admin: "🏛️", manager: "🏢", seller: "💼", customer: "👤" },
+  roleTitles: { admin: "Organization", manager: "Manager", seller: "Seller", customer: "Customer" },
   appoint: { manager: "Appoint Manager", seller: "Appoint Seller", customer: "Appoint Customer" },
-  actionsTitle: "⚡ Actions",
+  actionsTitle: "Actions",
   catalog: [
     { idPrefix: "offer-glister", item: "GLISTER-100@1", priceList: "demo-retail@2026-09", unitAmount: 10000, currency: "EUR", button: "+ Offer (100.00€)" },
     { idPrefix: "offer-nutrilite", item: "NUTRILITE-DAILY@1", priceList: "demo-retail@2026-09", unitAmount: 4500, currency: "EUR", button: "+ Offer (45.00€)" },
@@ -109,10 +107,9 @@ export const AMWAY_CONTENT: LaneContent = {
   networkAvailability: "Network availability",
   stockUnits: (current, total) => `${current} / ${total} units`,
   customerOrders: (orders, units) => `${orders} order${orders === 1 ? "" : "s"} · ${units} units`,
-  auditTitle: count => `⚠️ ${count} Access Denials / Ingress Rejections`,
+  auditTitle: count => `${count} Access Denials / Ingress Rejections`,
   contactField: {
     namePlaceholder: "Display name",
-    rolePlaceholder: "Role (admin, manager, seller, customer)",
     save: "Save name",
     update: "Update name",
     title: "Publish contact name",

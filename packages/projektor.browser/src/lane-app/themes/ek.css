@@ -137,10 +137,6 @@ html[data-theme="dark"]:root:has(.ek-lane) {
   background: var(--amway-surface-subtle);
 }
 
-.ek-lane .lab-column-header::before {
-  background: var(--ek-red);
-}
-
 .ek-lane .lab-role-tags .badge-info,
 .ek-lane .lab-role-tags .badge-success {
   color: var(--amway-ink);

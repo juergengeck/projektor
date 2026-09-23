@@ -46,11 +46,7 @@ test("buy confirms automatically, decrements inventory, and refuses overselling"
 
   await page.goto(process.env.AMWAY_DEMO_URL ?? `/browser/lab/?lane=amway&commServer=${encodeURIComponent(`ws://127.0.0.1:${COMM_SERVER_PORT}`)}`);
   await expect(page.getByText("Mesh: 4/4 Nodes Online")).toBeVisible({ timeout: 180_000 });
-  // One partition toggle per column, live by default.
-  await expect(page.getByRole("button", { name: "Live — pause" })).toHaveCount(4);
-
   const header = page.locator("header.lab-header");
-  await expect(header.getByRole("img", { name: "Amway", exact: true })).toBeVisible();
   await expect(header.getByRole("heading", { name: "Demo workspace", exact: true })).toBeVisible();
   await expect(header.getByText("Four federated solutions in one real time view", { exact: true })).toBeVisible();
   const brand = header.locator(".amway-brand-heading");

@@ -51,11 +51,11 @@ test(`amway lane invitation from ${entry} pairs a second device`, async ({ page,
   const columns = page.locator(".lab-device");
   const seller = columns.nth(2);
 
-  // Each role gets a real invite without clicking or scrolling its app body.
+  // Each role gets a real invite below its app frame.
   for (const key of ["admin", "manager", "seller", "customer"]) {
     await expect(page.getByRole("img", { name: `Device invitation QR for ${key}`, exact: true })).toBeVisible({ timeout: 60_000 });
   }
-  await expect(page.locator(".lab-column-body .lab-device-invite")).toHaveCount(0);
+  await expect(page.locator(".lab-column-frame .lab-device-invite")).toHaveCount(0);
   const appBounds = await seller.locator(".lab-column").boundingBox();
   const inviteBounds = await seller.locator(".lab-device-invite").boundingBox();
   expect(inviteBounds!.y).toBeGreaterThanOrEqual(appBounds!.y + appBounds!.height);
@@ -67,7 +67,12 @@ test(`amway lane invitation from ${entry} pairs a second device`, async ({ page,
   expect(invitation.identityRelation).toBe("same-person");
   await seller.getByRole("button", { name: "Enlarge device invitation QR for seller" }).click();
   await expect(seller.getByRole("dialog", { name: "Device invitation for seller" })).toBeVisible();
+  await seller.getByRole("button", { name: "Close device invitation QR" }).click();
+  await expect(seller.getByRole("dialog", { name: "Device invitation for seller" })).toBeHidden();
+  await seller.getByRole("button", { name: "Enlarge device invitation QR for seller" }).click();
+  await expect(seller.getByRole("dialog", { name: "Device invitation for seller" })).toBeVisible();
   await seller.getByRole("button", { name: "Close QR" }).click();
+  await expect(seller.getByRole("dialog", { name: "Device invitation for seller" })).toBeHidden();
 
 
   // Opening the QR link on a second device offers the join while the

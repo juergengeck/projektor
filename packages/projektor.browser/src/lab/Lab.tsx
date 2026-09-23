@@ -99,13 +99,12 @@ function inviteLinkFromLocation(): string | null {
 interface ColumnState {
   snapshot: LabSnapshot | null;
   notice: string;
-  paused: boolean;
   seed: string;
 }
 
 function initialColumns(): Record<LabKey, ColumnState> {
   return Object.fromEntries(
-    LAB_KEYS.map(key => [key, { snapshot: null, notice: "", paused: false, seed: "" }]),
+    LAB_KEYS.map(key => [key, { snapshot: null, notice: "", seed: "" }]),
   ) as Record<LabKey, ColumnState>;
 }
 
@@ -288,27 +287,6 @@ export default function Lab() {
 
   const onlineCount = LAB_KEYS.filter(key => columns[key].snapshot?.inviteState?.authState === "logged_in").length;
 
-  async function refresh(key: LabKey) {
-    const client = clients?.[key];
-    if (!client) return;
-    try {
-      const snapshot = await client.snapshot(new AbortController().signal);
-      setColumns(current => ({ ...current, [key]: { ...current[key], snapshot, notice: "" } }));
-    } catch (error) {
-      setColumns(current => ({ ...current, [key]: { ...current[key], notice: error instanceof Error ? error.message : String(error) } }));
-    }
-  }
-
-  function togglePause(key: LabKey) {
-    const paused = !columns[key].paused;
-    try {
-      handle.current?.setSwitch(key, !paused);
-      setColumns(current => ({ ...current, [key]: { ...current[key], paused } }));
-    } catch (error) {
-      setColumns(current => ({ ...current, [key]: { ...current[key], notice: error instanceof Error ? error.message : String(error) } }));
-    }
-  }
-
   /** Join link opened from a QR invitation: boot a same-person device and pair it. */
   async function joinWithInviteLink(invitationUrl: string) {
     if (joinHandle.current) {
@@ -388,7 +366,9 @@ export default function Lab() {
     <div className={`lab-container ${shell.laneClass}`}>
       <header className="lab-header">
         <div className="amway-brand-heading">
-          <img className="amway-logo" src={shell.logo} width={shell.logoWidth} height={shell.logoHeight} alt={shell.logoAlt} />
+          {brand.id !== "amway" && (
+            <img className="amway-logo" src={shell.logo} width={shell.logoWidth} height={shell.logoHeight} alt={shell.logoAlt} />
+          )}
           <div className="lab-title-group">
             <h1>{shell.heading}</h1>
             <p className="lab-subtitle">{shell.subtitle}</p>
@@ -477,15 +457,21 @@ export default function Lab() {
                 <div className="lab-device" key={key}>
                   <section
                     aria-label={title}
-                    className={`lab-column ${column.paused ? "lab-paused" : ""}`}
+                    className="lab-column"
                   >
-                    <header className="lab-column-header">
-                      <div className="lab-column-title-row">
-                        <div className="lab-role-title">
-                          <span>{content.roleIcons[key] ?? ""}</span>
-                          <span>{title}</span>
+                    <div className="lab-column-frame">
+                      <div
+                        ref={element => {
+                          mounts.current[key] = element;
+                        }}
+                      />
+                    </div>
+                    <div className="lab-column-meta">
+                      {column.notice && (
+                        <div className="state-denied" style={{ padding: "0.5rem 0.75rem", fontSize: "0.75rem" }}>
+                          <span style={{ userSelect: "text" }}>{column.notice}</span>
                         </div>
-                      </div>
+                      )}
 
                       <div className="lab-person-id">
                         <span title={ownerId ?? ""}>ID: {shortId(ownerId)}</span>
@@ -510,34 +496,6 @@ export default function Lab() {
                           <span style={{ fontSize: "0.72rem", color: "var(--amway-muted)" }}> · {column.seed}</span>
                         )}
                       </div>
-
-                      {column.notice && (
-                        <div className="state-denied" style={{ padding: "0.5rem 0.75rem", fontSize: "0.75rem" }}>
-                          <span style={{ userSelect: "text" }}>{column.notice}</span>
-                        </div>
-                      )}
-
-                      <div style={{ display: "flex", gap: "0.4rem", marginTop: "0.4rem" }}>
-                        <button type="button" className="secondary sm" onClick={() => void refresh(key)}>
-                          Refresh
-                        </button>
-                        <button
-                          type="button"
-                          className="secondary sm"
-                          onClick={() => togglePause(key)}
-                          aria-pressed={column.paused}
-                        >
-                          {column.paused ? "Paused — resume" : "Live — pause"}
-                        </button>
-                      </div>
-                    </header>
-
-                    <div className="lab-column-body">
-                      <div
-                        ref={element => {
-                          mounts.current[key] = element;
-                        }}
-                      />
                     </div>
                   </section>
                   <LabDeviceInvite
