@@ -28,6 +28,7 @@ import type { LaneContent } from "../lane-app/content";
 import { brandById, type LabBrand } from "@projektor/lab.core/brand.ts";
 import { callPlan, type PlanRegistry } from "@projektor/lab.core/shell/plan-client.ts";
 import { observeAppTransitions } from "@projektor/lab.core/shell/transitions.ts";
+import { laneFromHostPath } from "@projektor/lab.core/shell/urls.ts";
 import {
   nextLabThemeMode,
   parseLabThemeMode,
@@ -121,7 +122,7 @@ function shortId(id: string | null | undefined): string {
 }
 
 export default function Lab() {
-  const [brand] = useState<LabBrand>(() => brandById(new URLSearchParams(window.location.search).get("lane") ?? ""));
+  const [brand] = useState<LabBrand>(() => brandById(laneFromHostPath(window.location.pathname) ?? ""));
   const shell = SHELL[brand.id];
   const content = shell.content;
   const [boot, setBoot] = useState<"booting" | "live" | string>("booting");

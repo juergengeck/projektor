@@ -36,7 +36,7 @@ test.afterAll(() => {
   commserver?.kill();
 });
 
-for (const entry of ["/browser/lab/?lane=amway", "/browser/#/lab"]) {
+for (const entry of ["/lab/amway", "/browser/lab/?lane=amway", "/browser/#/lab"]) {
 test(`amway lane invitation from ${entry} pairs a second device`, async ({ page, browser }) => {
   const errors: string[] = [];
   page.on("console", message => {
@@ -47,6 +47,8 @@ test(`amway lane invitation from ${entry} pairs a second device`, async ({ page,
   const entryUrl = new URL(entry, "http://127.0.0.1:4276");
   entryUrl.searchParams.set("commServer", commServerUrl);
   await page.goto(entryUrl.toString());
+  // Every entry lands on the canonical lane host, keeping the commserver override.
+  await expect(page).toHaveURL(url => url.pathname === "/lab/amway" && url.searchParams.get("commServer") === commServerUrl);
   await expect(page.getByText("Mesh: 4/4 Nodes Online")).toBeVisible({ timeout: 180_000 });
   const columns = page.locator(".lab-device");
   const seller = columns.nth(2);
@@ -62,6 +64,7 @@ test(`amway lane invitation from ${entry} pairs a second device`, async ({ page,
 
   await expect(seller.getByRole("img", { name: "Device invitation QR for seller" })).toBeVisible({ timeout: 60_000 });
   const invitationUrl = await seller.getByLabel("Device invitation URL").inputValue();
+  expect(new URL(invitationUrl).pathname).toBe("/lab/amway");
   const invitation = JSON.parse(decodeURIComponent(new URL(invitationUrl).hash.slice(1)));
   expect(invitation.mode).toBe("IoM");
   expect(invitation.identityRelation).toBe("same-person");

@@ -44,7 +44,7 @@ test("buy confirms automatically, decrements inventory, and refuses overselling"
   });
   page.on("pageerror", error => errors.push(String(error)));
 
-  await page.goto(process.env.AMWAY_DEMO_URL ?? `/browser/lab/?lane=amway&commServer=${encodeURIComponent(`ws://127.0.0.1:${COMM_SERVER_PORT}`)}`);
+  await page.goto(process.env.AMWAY_DEMO_URL ?? `/lab/amway?commServer=${encodeURIComponent(`ws://127.0.0.1:${COMM_SERVER_PORT}`)}`);
   await expect(page.getByText("Mesh: 4/4 Nodes Online")).toBeVisible({ timeout: 180_000 });
   const header = page.locator("header.lab-header");
   await expect(header.getByRole("heading", { name: "Demo workspace", exact: true })).toBeVisible();

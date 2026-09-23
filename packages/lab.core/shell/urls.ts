@@ -16,3 +16,14 @@ export function labAppUrl(href: string, brand: LabBrand, key: string, session: s
   if (/^wss?:\/\//.test(commServer)) url.searchParams.set("commServer", commServer);
   return url.href;
 }
+
+/** Canonical lane host address (`/lab/amway`, `/lab/ek`): the page that boots
+ * the four role iframes and that IoM invitations open. */
+export function laneHostUrl(origin: string, brand: LabBrand): string {
+  return new URL(`/lab/${brand.lane}`, origin).href;
+}
+
+/** Lane named by a lane host path (`/lab/<lane>`, trailing slash allowed). */
+export function laneFromHostPath(pathname: string): string | null {
+  return /^\/lab\/([a-z]+)\/?$/.exec(pathname)?.[1] ?? null;
+}

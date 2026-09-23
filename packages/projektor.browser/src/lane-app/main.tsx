@@ -13,6 +13,7 @@ import { LAB_ROLES } from "@projektor/lab.core/recipes.ts";
 import { startLabInstance } from "@projektor/lab.core/worker/lab-instance.ts";
 import { iframeChildPort } from "@projektor/lab.core/iframe-port.ts";
 import { resolveStorageDirectory } from "@projektor/lab.core/storage.ts";
+import { laneHostUrl } from "@projektor/lab.core/shell/urls.ts";
 import { exposeRegistry } from "@projektor/lab.core/registry-bridge.ts";
 import type { LabPort } from "@projektor/lab.core/port-ipc.ts";
 import type { FeedRow } from "@projektor/lab.core/port-ipc.ts";
@@ -82,7 +83,7 @@ function laneCommServer(): string | undefined {
 function laneAppBase(): string {
   // The QR-encoded IoM invitation must open the lane host page (which offers
   // the join flow), never this app iframe.
-  return new URL(`/browser/lab/?lane=${brand.lane}`, window.location.origin).toString();
+  return laneHostUrl(window.location.origin, brand);
 }
 
 function LaneAppShell() {

@@ -1,14 +1,29 @@
 import path from "node:path";
-import { defineConfig } from "vite";
+import { defineConfig, type Connect, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 
 const ONE = "/Users/gecko/src/one/packages";
 const VGER_BROWSER_UI = "/Users/gecko/src/vger/packages/vger.browser/browser-ui/src";
 const HERE = __dirname;
 
+/** `/lab/<lane>` is the lane host address. Dev and preview serve it the lab
+ * entry, as the deployed static site does (deploy.sh writes lab/<lane>.html). */
+function laneHostRoute(): Plugin {
+  const rewrite: Connect.NextHandleFunction = (req, _res, next) => {
+    const match = /^\/lab\/[a-z]+\/?(\?.*)?$/.exec(req.url ?? "");
+    if (match) req.url = `/browser/lab/index.html${match[1] ?? ""}`;
+    next();
+  };
+  return {
+    name: "lane-host-route",
+    configureServer: server => { server.middlewares.use(rewrite); },
+    configurePreviewServer: server => { server.middlewares.use(rewrite); },
+  };
+}
+
 export default defineConfig({
   base: "/browser/",
-  plugins: [react()],
+  plugins: [react(), laneHostRoute()],
   // Single React identity: every copy resolves to the local install.
   resolve: {
     alias: [

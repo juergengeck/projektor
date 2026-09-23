@@ -28,7 +28,7 @@ import { startCommServer } from "./test/commserver.ts";
 
 const brand = testBrand();
 const COMM_SERVER_PORT = commServerPortFor(brand);
-const laneEntry = brand.id === "amway" ? "/browser/lab/" : "/browser/eklab/";
+const laneEntry = `/lab/${brand.lane}`;
 
 /** Fixed lane logins: the same email always reproduces the same Person. */
 const loginFor = (key: string) => ({ email: `${key}@${brand.emailDomain}`, secret: `lab-${key}`, instanceName: key });

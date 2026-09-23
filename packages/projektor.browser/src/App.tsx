@@ -22,7 +22,7 @@ function screenFromHash(): Screen {
 }
 
 /**
- * The lab lanes live in their own shell (`/browser/lab/?lane=`); hash routes
+ * The lab lanes live in their own shell (`/lab/<lane>`); hash routes
  * only redirect there, preserving the query (notably `?commServer=`).
  */
 function laneFromHash(): "amway" | "ek" | null {
@@ -105,9 +105,7 @@ export default function App() {
   useEffect(() => {
     const lane = laneFromHash();
     if (lane) {
-      const params = new URLSearchParams(window.location.search);
-      params.set("lane", lane);
-      window.location.replace(`/browser/lab/?${params}`);
+      window.location.replace(`/lab/${lane}${window.location.search}`);
       return;
     }
     const onHash = () => { setScreen(screenFromHash()); };

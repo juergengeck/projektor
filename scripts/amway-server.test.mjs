@@ -79,14 +79,13 @@ test("React browser app is served same-origin when built", async (t) => {
   assert.match(html, /\/browser\/assets\//);
 });
 
-test("Lab entry redirects to the lane shell with its lane", async (t) => {
+test("Lab entry redirects to the lane host at /lab/<lane>", async (t) => {
   const { server, base } = await started();
   t.after(() => close(server));
   const response = await fetch(`${base}/amway/lab/?commServer=ws%3A%2F%2F127.0.0.1%3A9`, { redirect: "manual" });
   assert.equal(response.status, 302);
   const location = response.headers.get("location") ?? "";
-  assert.match(location, /\/browser\/lab\/\?/);
-  assert.match(location, /lane=amway/);
+  assert.match(location, /^\/lab\/amway\?/);
   assert.match(location, /commServer=/);
   const shell = await (await fetch(`${base}/amway/lab/`)).text();
   assert.match(shell, /<div id="lab-root"><\/div>/);
@@ -96,12 +95,14 @@ test("Lab entry redirects to the lane shell with its lane", async (t) => {
   }
 });
 
-test("EK lane entry redirects to the lane shell with its lane", async (t) => {
+test("EK lane entry redirects to the lane host at /lab/ek", async (t) => {
   const { server, base } = await started();
   t.after(() => close(server));
   const response = await fetch(`${base}/ek/lab/`, { redirect: "manual" });
   assert.equal(response.status, 302);
-  assert.match(response.headers.get("location") ?? "", /\/browser\/lab\/\?.*lane=ek/);
+  assert.equal(response.headers.get("location"), "/lab/ek");
+  const shell = await (await fetch(`${base}/lab/ek`)).text();
+  assert.match(shell, /<div id="lab-root"><\/div>/);
 });
 
 test("Lab pairing is not served by a Projektor relay", async (t) => {

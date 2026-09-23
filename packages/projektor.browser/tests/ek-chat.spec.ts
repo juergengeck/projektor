@@ -45,7 +45,7 @@ test("ek lane contact chat icon opens 1:1 chat", async ({ page }) => {
   });
   page.on("pageerror", error => errors.push(String(error)));
 
-  await page.goto(process.env.EK_DEMO_URL ?? `/browser/lab/?lane=ek&commServer=${encodeURIComponent(`ws://127.0.0.1:${COMM_SERVER_PORT}`)}`);
+  await page.goto(process.env.EK_DEMO_URL ?? `/lab/ek?commServer=${encodeURIComponent(`ws://127.0.0.1:${COMM_SERVER_PORT}`)}`);
   await expect(page.getByText("Mesh: 4/4 Nodes Online")).toBeVisible({ timeout: 180_000 });
   const columns = page.locator("section.lab-column");
   await expect(columns).toHaveCount(4);

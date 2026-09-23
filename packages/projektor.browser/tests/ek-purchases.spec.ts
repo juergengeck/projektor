@@ -44,7 +44,7 @@ test("buy confirms automatically, decrements inventory, and refuses overselling"
   });
   page.on("pageerror", error => errors.push(String(error)));
 
-  await page.goto(process.env.EK_DEMO_URL ?? `/browser/lab/?lane=ek&commServer=${encodeURIComponent(`ws://127.0.0.1:${COMM_SERVER_PORT}`)}`);
+  await page.goto(process.env.EK_DEMO_URL ?? `/lab/ek?commServer=${encodeURIComponent(`ws://127.0.0.1:${COMM_SERVER_PORT}`)}`);
   await expect(page.getByText("Mesh: 4/4 Nodes Online")).toBeVisible({ timeout: 180_000 });
   const header = page.locator("header.lab-header");
   await expect(header.getByText("EK lab", { exact: true })).toBeVisible();

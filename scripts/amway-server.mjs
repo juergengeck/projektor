@@ -501,21 +501,16 @@ export function createAmwayServer({ directory, instanceDir, shop, journal } = {}
         res.writeHead(200, { "Content-Type": MIME[".html"], "Cache-Control": "no-store" });
         return res.end(html);
       }
-      // One lane shell for both brands; the lane travels in the query so the
-      // page boots the right brand, preserving overrides like ?commServer=.
-      if (req.method === "GET" && (url.pathname === "/amway/lab/" || url.pathname === "/amway/lab")) {
-        url.searchParams.set("lane", "amway");
-        res.writeHead(302, { Location: `/browser/lab/?${url.searchParams}` });
+      // Former lane routes move to the lane host, preserving overrides like ?commServer=.
+      const formerLane = { "/amway/lab": "amway", "/ek/lab": "ek" }[url.pathname.replace(/\/$/, "")];
+      if (req.method === "GET" && formerLane) {
+        res.writeHead(302, { Location: `/lab/${formerLane}${url.search}` });
         return res.end();
       }
-      // Second lane, same contract: Elektro Klein columns, unlinked like /amway/lab.
-      if (req.method === "GET" && (url.pathname === "/ek/lab/" || url.pathname === "/ek/lab")) {
-        url.searchParams.set("lane", "ek");
-        res.writeHead(302, { Location: `/browser/lab/?${url.searchParams}` });
-        return res.end();
-      }
-      // The built lane shell (?lane= selects the brand at runtime).
-      if (req.method === "GET" && (url.pathname === "/browser/lab/" || url.pathname === "/browser/lab")) {
+      // One lane shell for both brands at /lab/<lane> (the path selects the
+      // brand at runtime); the former /browser/lab/?lane= address redirects
+      // client-side from the same shell.
+      if (req.method === "GET" && /^\/(lab\/(amway|ek)|browser\/lab)\/?$/.test(url.pathname)) {
         const html = await readFile(path.join(BROWSER_DIR, "lab", "index.html"), "utf8");
         res.writeHead(200, { "Content-Type": MIME[".html"], "Cache-Control": "no-store" });
         return res.end(html);

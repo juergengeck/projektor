@@ -34,22 +34,25 @@ Open: the socket-level handshake (`ConnectionPlan` over a browser one.core
 runtime) still lives in the vger stack — the acceptance seam is ready for it,
 but live peer pairing has not been driven from this app yet.
 
-## Lab (`/browser/lab/?lane=`)
+## Lab (`/lab/<lane>`)
 
-One lane shell for both brands (`?lane=amway` or `?lane=ek`), serving one
+One lane shell for both brands (`/lab/amway` or `/lab/ek`; the path
+selects the brand), serving one
 full lane-app iframe per role (admin, manager, seller, customer). Each
 iframe boots its own ONE instance from `packages/lab.core` (brand-selected
 at runtime) and is seeded through real mesh invites; role appointments stay
 manual through the in-iframe UI. The `#/lab` and `#/eklab` workspace hashes
-only redirect to the shell, preserving the query.
+only redirect to the shell, preserving the query, as does the former
+`/browser/lab/?lane=` address.
 
 The lab is a dedicated build entry (`lab/index.html`, mirroring
 flexibel.browser): `npm run build` emits `dist/lab/index.html` next to the
 workspace `dist/index.html`, so the lab has its own URL instead of living
-behind the workspace hash. It is served locally at `/amway/lab/` and
-`/ek/lab/` by `scripts/amway-server.mjs` (both redirect to the shell with
-their lane) and deployed live at `https://projektor.one/amway/lab/` and
-`.../ek/lab/` by the root `deploy.sh`, which writes lane redirect stubs.
+behind the workspace hash. Vite dev/preview (`laneHostRoute` in
+`vite.config.ts`) and `scripts/amway-server.mjs` serve it at `/lab/<lane>`;
+the root `deploy.sh` copies it to `lab/<lane>.html`, live at
+`https://projektor.one/lab/amway` and `.../lab/ek`. The former
+`/amway/lab/` and `/ek/lab/` routes redirect there.
 The routes are deliberately not linked from any page.
 
 ## Lane sessions and storage

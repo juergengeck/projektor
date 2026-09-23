@@ -15,7 +15,7 @@ export interface LabBrand {
   department: { id: string; name: string };
   /** IndexedDB directory prefix; unique per brand because lanes share an origin. */
   storagePrefix: string;
-  /** Lane query value the IoM invitation carries back (`?lane=`). */
+  /** Lane id: the host path segment (`/lab/<lane>`) and the lane-app `?lane=`. */
   lane: string;
 }
 

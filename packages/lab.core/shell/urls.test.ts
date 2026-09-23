@@ -2,7 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { AMWAY, EK } from "../brand.ts";
-import { labAppUrl } from "./urls.ts";
+import { labAppUrl, laneFromHostPath, laneHostUrl } from "./urls.ts";
 
 test("addresses the lane app with instance and session", () => {
   assert.equal(
@@ -31,4 +31,13 @@ test("forwards a commserver override to the iframe, rejecting non-ws values", ()
     labAppUrl("https://example.com/browser/lab/?commServer=https%3A%2F%2Fexample.com", AMWAY, "admin", "abc12345"),
     "https://example.com/browser/app/?lane=amway&labInstance=admin&labSession=abc12345",
   );
+});
+
+test("lane host lives at /lab/<lane>", () => {
+  assert.equal(laneHostUrl("https://projektor.one", AMWAY), "https://projektor.one/lab/amway");
+  assert.equal(laneHostUrl("http://127.0.0.1:4276", EK), "http://127.0.0.1:4276/lab/ek");
+  assert.equal(laneFromHostPath("/lab/amway"), "amway");
+  assert.equal(laneFromHostPath("/lab/ek/"), "ek");
+  assert.equal(laneFromHostPath("/browser/lab/"), null);
+  assert.equal(laneFromHostPath("/lab/"), null);
 });

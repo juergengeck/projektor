@@ -18,7 +18,7 @@ the app.
   snapshot chrome.
 - Invite-aligned seeding with the protocol's core identity assertion
   (owner is the exact invited Person), session-scoped fresh boots (D4).
-- No worker engine, no EK fork: one shell, `?lane=` selects the brand.
+- No worker engine, no EK fork: one shell, `/lab/<lane>` selects the brand.
 
 ## 3. Non-goals (this PRD)
 
@@ -42,8 +42,8 @@ the app.
 
 ### 5.1 Lab entry and hosting
 
-- `lab/index.html` is the lane build entry, served at `/browser/lab/`;
-  `?lane=amway|ek` selects the brand at runtime (title, favicon,
+- `lab/index.html` is the lane build entry, served at `/lab/amway` and
+  `/lab/ek`; the path selects the brand at runtime (title, favicon,
   theme-color, role titles, catalog). Unknown lanes fail loudly.
 - `Lab.tsx` renders four columns (admin, manager, seller, customer)
   with: owner/instance short ids, active roles, app state, per-column
@@ -55,10 +55,11 @@ the app.
   resolved light/dark value reaches the host document and each iframe
   document (same-origin write). The in-lane apps only understand
   light/dark.
-- `#/lab` and `#/eklab` redirect to `/browser/lab/?lane=…`, preserving
-  the query (notably `?commServer=`). `/amway/lab` and `/ek/lab`
-  redirect to the shell with their lane, on the demo server and in the
-  static deploy (redirect stubs).
+- `#/lab` and `#/eklab` redirect to `/lab/<lane>`, preserving the
+  query (notably `?commServer=`), as does the former
+  `/browser/lab/?lane=…` address. `/amway/lab` and `/ek/lab` redirect
+  there too, on the demo server and in the static deploy (redirect
+  stubs). IoM invitations open `/lab/<lane>`.
 
 ### 5.2 Instance isolation
 
@@ -140,7 +141,7 @@ registering every plan while the one needed arrived long ago.
 ## 6. Architecture
 
 ```
-browser/lab/?lane=amway|ek (lab/index.html)
+lab/amway | lab/ek (lab/index.html)
 └─ src/lab/main.tsx → Lab.tsx (4 columns + seed orchestration)
    └─ src/lab/transport.ts: bootLab / ensureLabAccount / seedDepartment /
       createRoleInvite / acceptRoleInvite / seedRole / pairMesh /
@@ -238,8 +239,8 @@ switch, §5.5).
 
 ## 11. Operator manual
 
-- Open `/browser/lab/?lane=amway` (or `ek`); `#/lab` / `#/eklab`
-  redirect there, as do `/amway/lab` and `/ek/lab`.
+- Open `/lab/amway` (or `/lab/ek`); `#/lab` / `#/eklab`,
+  `/browser/lab/?lane=…`, `/amway/lab` and `/ek/lab` redirect there.
 - `?commServer=ws://127.0.0.1:<port>` overrides IoM discovery and
   pairing (tests spawn a local commserver per spec file); the lane
   forwards it into every iframe.

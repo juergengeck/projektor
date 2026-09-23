@@ -45,7 +45,7 @@ test("amway lane contact chat icon opens 1:1 chat", async ({ page }) => {
   });
   page.on("pageerror", error => errors.push(String(error)));
 
-  await page.goto(process.env.AMWAY_DEMO_URL ?? `/browser/lab/?lane=amway&commServer=${encodeURIComponent(`ws://127.0.0.1:${COMM_SERVER_PORT}`)}`);
+  await page.goto(process.env.AMWAY_DEMO_URL ?? `/lab/amway?commServer=${encodeURIComponent(`ws://127.0.0.1:${COMM_SERVER_PORT}`)}`);
   await expect(page.getByText("Mesh: 4/4 Nodes Online")).toBeVisible({ timeout: 180_000 });
   const columns = page.locator("section.lab-column");
   await expect(columns).toHaveCount(4);
