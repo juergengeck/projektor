@@ -34,7 +34,9 @@ try {
     owner,
     hashGroup: rosterV1.hash,
   });
-  const afterV1 = groupV1.timestamp;
+  // storeVersionedObject no longer reports a timestamp for every version;
+  // sample the wall clock once the version is durably stored.
+  const afterV1 = Date.now();
   const rosterV2 = await storeUnversionedObject({$type$: "HashGroup", person: new Set()});
   const groupV2 = await storeVersionedObject({
     $type$: "Group",
@@ -42,7 +44,7 @@ try {
     owner,
     hashGroup: rosterV2.hash,
   });
-  const afterV2 = groupV2.timestamp;
+  const afterV2 = Date.now();
 
   const living = {
     $type$: PROJECT_ACCESS_ASSERTION_TYPE,

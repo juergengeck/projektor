@@ -6,7 +6,7 @@ import {
   storeVersionedObject,
 } from "../../../one/packages/one.core/lib/storage-versioned-objects.js";
 import { getOnlyLatestReferencingObjsHashAndId } from "../../../one/packages/one.core/lib/reverse-map-query.js";
-import { groupVersionAsOf } from "../group.core/index.js";
+import { groupVersionAsOf } from "../../../one/packages/group.core/dist/roster.js";
 import {
   EFFECTIVE_GROUP_MEMBERSHIP_TYPE,
   GROUP_DISCLOSURE_BUNDLE_TYPE,

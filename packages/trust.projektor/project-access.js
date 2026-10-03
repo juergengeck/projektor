@@ -1,5 +1,5 @@
 import { getObject } from "../../../one/packages/one.core/lib/storage-unversioned-objects.js";
-import { rosterAsOf } from "../group.core/index.js";
+import { rosterAsOf } from "../../../one/packages/group.core/dist/roster.js";
 
 export const PROJECT_ACCESS_ASSERTION_TYPE = "ProjectAccessAssertion";
 
