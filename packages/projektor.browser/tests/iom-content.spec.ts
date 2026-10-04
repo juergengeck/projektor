@@ -33,8 +33,8 @@ for (const lane of LANES) {
   test(`${lane.id} joined device displays received content and resolves its owner and recipients`, async ({ page, browser }) => {
     const entry = new URL(lane.entry, process.env.LAB_DEMO_ORIGIN ?? "http://127.0.0.1:4276");
     entry.searchParams.set("commServer", commServer);
-    await page.goto(entry.toString());
-    await runLaneCeremony(page, lane, expect);
+    await runLaneCeremony(page, { ...lane, entry: entry.toString() }, expect);
+    expect(new URL(page.url()).origin).toBe(entry.origin);
     const seller = page.frameLocator("section.lab-column iframe").nth(2);
     const invitation = await page.locator(".lab-device").nth(2).getByLabel("Device invitation URL").inputValue();
     const joinUrl = new URL(invitation);
