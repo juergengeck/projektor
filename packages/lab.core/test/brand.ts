@@ -10,5 +10,5 @@ export function testBrand(): LabBrand {
 
 /** Lanes may run side by side; each brand gets its own local commserver port. */
 export function commServerPortFor(brand: LabBrand): number {
-  return brand.id === "amway" ? 18331 : 18332;
+  return { amway: 18331, ek: 18332, igm: 18333 }[brand.id];
 }

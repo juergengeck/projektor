@@ -134,10 +134,9 @@ before(async () => {
   const membersReached = ["seller", "customer"].map(key =>
     feedUntil(clients()[key], row => row.type === types.Department, `${key} receives department`));
   const sellerAppointed = feedUntil(clients().seller, row => row.type === types.RoleAssignment && row.id === persons().seller, "seller receives appointment");
-  await manager.call("lab", "assignRole", { department: brand.department.id, subject: persons().seller, role: "seller" });
-  // Appointment chain: customers are appointed by the seller, not the manager.
+  await (brand.appointmentAuthority === "admin" ? admin : manager).call("lab", "assignRole", { department: brand.department.id, subject: persons().seller, role: "seller" });
   await sellerAppointed;
-  await clients().seller.call("lab", "assignRole", { department: brand.department.id, subject: persons().customer, role: "customer" });
+  await (brand.appointmentAuthority === "admin" ? admin : clients().seller).call("lab", "assignRole", { department: brand.department.id, subject: persons().customer, role: "customer" });
   await Promise.all(membersReached);
 }, { timeout: 120_000 });
 
@@ -213,8 +212,18 @@ test("inventory reaches the customer only through the seller", async () => {
   assert.ok(view.offers.some(entry => entry.offerId === "lab-offer-1"));
 });
 
-test("customers are appointed by the seller, not the manager", async () => {
+test("role appointments obey the brand authority", async () => {
   const stranger = "f".repeat(64);
+  if (brand.appointmentAuthority === "admin") {
+    for (const [issuer, role] of [["manager", "seller"], ["seller", "customer"], ["manager", "customer"]]) {
+      await assert.rejects(
+        clients()[issuer].call("lab", "assignRole", { department: brand.department.id, subject: stranger, role }),
+        /only (AG|the department admin) may appoint roles/,
+      );
+    }
+    await clients().admin.call("lab", "assignRole", { department: brand.department.id, subject: stranger, role: "customer" });
+    return;
+  }
   await assert.rejects(
     clients().manager.call("lab", "assignRole", { department: brand.department.id, subject: stranger, role: "customer" }),
     /only the seller may appoint customers/,
@@ -273,6 +282,7 @@ test("a purchase exists only after the customer places and the seller admits", a
   const sellerView = await clients().seller.call<DepartmentView>("lab", "getDepartment", { department: brand.department.id });
   assert.deepEqual(sellerView.pendingOrders.map(entry => entry.idempotencyKey), ["lab-order-t1"], "the seller sees what to admit");
   const toCustomer = feedUntil(clients().customer, admittedRow("lab-order-t1"), "customer order");
+  const toManager = feedUntil(clients().manager, admittedRow("lab-order-t1"), "manager receives admission");
   await clients().seller.call("lab", "admitOrder", { department: brand.department.id, idempotencyKey: "lab-order-t1" });
   await toCustomer;
   const view = await clients().customer.call<DepartmentView>("lab", "getDepartment", { department: brand.department.id });
@@ -280,7 +290,7 @@ test("a purchase exists only after the customer places and the seller admits", a
   assert.deepEqual(view.pendingOrders, [], "admitting clears the pending order");
   assert.equal(view.availability, null, "customers never see stock");
   // 20 purchased − 2 admitted here; the staff meter agrees.
-  await feedUntil(clients().manager, row => row.type === types.Order && row.id === "lab-order-t1" && (row.obj?.admittedAt as number) > 0, "manager receives admission");
+  await toManager;
   const staffView = await clients().manager.call<DepartmentView>("lab", "getDepartment", { department: brand.department.id });
   assert.equal(staffView.availability?.available, 18);
 });
@@ -360,12 +370,13 @@ test("only purchasing stocks up, and stocking funds later purchases", async () =
     clients().seller.call("lab", "stockUp", { department: brand.department.id, receiptId: "lab-stock-no", quantity: 5 }),
     /only the department admin \(purchasing\) may stock up/,
   );
+  const receiptArrived = (row: FeedRow): boolean => row.type === types.StockReceipt && row.id === "lab-stock-1";
+  const toSeller = feedUntil(clients().seller, receiptArrived, "seller replicates receipts");
+  const toManager = feedUntil(clients().manager, receiptArrived, "manager replicates receipts");
   await clients().admin.call("lab", "stockUp", { department: brand.department.id, receiptId: "lab-stock-1", quantity: 20 });
   // Re-recording the same receipt replaces it instead of counting twice.
   await clients().admin.call("lab", "stockUp", { department: brand.department.id, receiptId: "lab-stock-1", quantity: 20 });
-  const receiptArrived = (row: FeedRow): boolean => row.type === types.StockReceipt && row.id === "lab-stock-1";
-  await feedUntil(clients().seller, receiptArrived, "seller replicates receipts");
-  await feedUntil(clients().manager, receiptArrived, "manager replicates receipts");
+  await Promise.all([toSeller, toManager]);
   type Balance = DepartmentView & {
     orders: { idempotencyKey: string; quantity: number }[];
   };
@@ -485,13 +496,14 @@ test("persisted workers feed an admitted purchase back after restart", async () 
 
 test("only the department admin may appoint admins", async () => {
   const stranger = "9".repeat(64);
+  const rejection = brand.appointmentAuthority === "admin" ? /only (AG|the department admin) may appoint roles/ : /only the department admin may appoint admins/;
   await assert.rejects(
     clients().manager.call("lab", "assignRole", { department: brand.department.id, subject: persons().customer, role: "admin" }),
-    /only the department admin may appoint admins/,
+    rejection,
   );
   await assert.rejects(
     clients().seller.call("lab", "assignRole", { department: brand.department.id, subject: stranger, role: "admin" }),
-    /only the department admin may appoint admins/,
+    rejection,
   );
   // The manager-promoted customer from the defect report holds no admin
   // authority: publishing an offer still fails.
@@ -626,11 +638,11 @@ test("buy with no stock receipts terminates as out of stock", async () => {
   await managerAppointed;
   const sellerAppointed = feedUntil(clients().seller, row => row.type === types.RoleAssignment && row.id === persons().seller,
     "seller receives empty department appointment");
-  await clients().manager.call("lab", "assignRole", { department: "empty-de", subject: persons().seller, role: "seller" });
+  await clients()[brand.appointmentAuthority === "admin" ? "admin" : "manager"].call("lab", "assignRole", { department: "empty-de", subject: persons().seller, role: "seller" });
   await sellerAppointed;
   const customerAppointed = feedUntil(clients().customer, row => row.type === types.RoleAssignment && row.id === persons().customer,
     "customer receives empty department appointment");
-  await clients().seller.call("lab", "assignRole", { department: "empty-de", subject: persons().customer, role: "customer" });
+  await clients()[brand.appointmentAuthority === "admin" ? "admin" : "seller"].call("lab", "assignRole", { department: "empty-de", subject: persons().customer, role: "customer" });
   await customerAppointed;
   await clients().manager.call("lab", "publishOffer", {
     department: "empty-de", offerId: "empty-offer", item: "EMPTY@1", priceList: "demo", unitAmount: 100, currency: "EUR",

@@ -8,7 +8,7 @@ import type { LabBrand } from "./brand.ts";
 
 export const LAB_ROLES = ["admin", "manager", "seller", "customer"] as const;
 export type LabRole = (typeof LAB_ROLES)[number];
-export const LAB_KINDS = ["Department", "RoleAssignment", "Contact", "Offer", "Order", "PurchaseRequest", "PurchaseDecision", "StockReceipt"] as const;
+export const LAB_KINDS = ["Department", "RoleAssignment", "Contact", "Offer", "Order", "PurchaseRequest", "PurchaseDecision", "StockReceipt", "OfferShare"] as const;
 export type LabKind = (typeof LAB_KINDS)[number];
 
 interface RecipeRule {
@@ -43,6 +43,7 @@ export function createLabRecipes(brand: LabBrand) {
     { $type$: "Recipe", name: types.PurchaseRequest, rule: [departmentRef, text("idempotencyKey", true), person("customer"), person("seller", true), integer("requestedAt")] },
     { $type$: "Recipe", name: types.PurchaseDecision, rule: [departmentRef, text("idempotencyKey", true), person("customer"), person("seller"), text("outcome"), text("reason"), integer("decidedAt")] },
     { $type$: "Recipe", name: types.StockReceipt, rule: [departmentRef, text("receiptId", true), text("lot"), text("facility"), integer("quantity"), person("receivedBy"), integer("receivedAt")] },
+    { $type$: "Recipe", name: types.OfferShare, rule: [departmentRef, { itemprop: "offer", isId: true, itemtype: { type: "referenceToId", allowedTypes: new Set([types.Offer]) } }, person("sharedBy", true), person("recipient", true), text("recipientRole"), integer("sharedAt")] },
   ];
   const reverseMapsForIdObjects: [string, Set<string>][] = LAB_KINDS
     .filter(kind => kind !== "Department")
@@ -63,7 +64,8 @@ export interface LabOrder {
 export interface LabStockReceipt { $type$: string; department: string; receiptId: string; lot: string; facility: string; quantity: number; receivedBy: string; receivedAt: number }
 export interface LabPurchaseRequest { $type$: string; department: string; idempotencyKey: string; customer: string; seller: string; requestedAt: number }
 export interface LabPurchaseDecision { $type$: string; department: string; idempotencyKey: string; customer: string; seller: string; outcome: "rejected"; reason: "out-of-stock"; decidedAt: number }
-export type LabObject = LabDepartment | LabRoleAssignment | LabContact | LabOffer | LabOrder | LabPurchaseRequest | LabPurchaseDecision | LabStockReceipt;
+export interface LabOfferShare { $type$: string; department: string; offer: string; sharedBy: string; recipient: string; recipientRole: "seller" | "customer"; sharedAt: number }
+export type LabObject = LabDepartment | LabRoleAssignment | LabContact | LabOffer | LabOrder | LabPurchaseRequest | LabPurchaseDecision | LabStockReceipt | LabOfferShare;
 
 const HASH = /^[0-9a-f]{64}$/;
 
@@ -111,6 +113,12 @@ export function createLabObjects(brand: LabBrand) {
     } = {}): LabOffer {
       const amount = positive(unitAmount, "unitAmount must be a positive integer (minor units).");
       return { $type$: types.Offer, department: hash(department, "department"), offerId: nonEmpty(offerId, "offerId"), item: nonEmpty(item, "item"), priceList: nonEmpty(priceList, "priceList"), channel: nonEmpty(channel, "channel"), unitAmount: amount, currency: nonEmpty(currency, "currency"), publishedBy: hash(publishedBy, "publishedBy") };
+    },
+    createOfferShare({ department, offer, sharedBy, recipient, recipientRole, sharedAt }: {
+      department?: unknown; offer?: unknown; sharedBy?: unknown; recipient?: unknown; recipientRole?: unknown; sharedAt?: unknown;
+    } = {}): LabOfferShare {
+      if (recipientRole !== "seller" && recipientRole !== "customer") fail("offer recipient role must be seller or customer.");
+      return { $type$: types.OfferShare, department: hash(department, "department"), offer: hash(offer, "offer"), sharedBy: hash(sharedBy, "sharedBy"), recipient: hash(recipient, "recipient"), recipientRole: recipientRole as "seller" | "customer", sharedAt: timestamp(sharedAt, "sharedAt") };
     },
     createStockReceipt({ department, receiptId, lot, facility, quantity, receivedBy, receivedAt }: {
       department?: unknown; receiptId?: unknown; lot?: unknown; facility?: unknown; quantity?: unknown; receivedBy?: unknown; receivedAt?: unknown;

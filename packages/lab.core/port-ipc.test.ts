@@ -30,7 +30,7 @@ test("plan errors reject the call", async () => {
   const { port1, port2, client } = pair();
   try {
     await assert.rejects(client.call("echo", "boom", {}), /kaboom/);
-    await assert.rejects(client.call("nope", "say", {}), /not found/);
+    await assert.rejects(client.call("nope", "say", {}), /Operation 'nope' or method 'say' is not public/);
   } finally { port1.close(); port2.close(); }
 });
 

@@ -1,7 +1,7 @@
 // packages/lab.core/recipes.test.ts
 import test from "node:test";
 import assert from "node:assert/strict";
-import { AMWAY, EK } from "./brand.ts";
+import { AMWAY, EK, IGM } from "./brand.ts";
 import { LAB_KINDS, createLabObjects, createLabRecipes, labTypes } from "./recipes.ts";
 import { testBrand } from "./test/brand.ts";
 
@@ -13,9 +13,11 @@ const { types } = createLabRecipes(brand);
 
 test("stored recipe names are exactly today's names", () => {
   assert.deepEqual(createLabRecipes(AMWAY).recipes.map(recipe => recipe.name),
-    ["AmwayDepartment", "AmwayRoleAssignment", "AmwayContact", "AmwayOffer", "AmwayOrder", "AmwayPurchaseRequest", "AmwayPurchaseDecision", "AmwayStockReceipt"]);
+    ["AmwayDepartment", "AmwayRoleAssignment", "AmwayContact", "AmwayOffer", "AmwayOrder", "AmwayPurchaseRequest", "AmwayPurchaseDecision", "AmwayStockReceipt", "AmwayOfferShare"]);
   assert.deepEqual(createLabRecipes(EK).recipes.map(recipe => recipe.name),
-    ["EkDepartment", "EkRoleAssignment", "EkContact", "EkOffer", "EkOrder", "EkPurchaseRequest", "EkPurchaseDecision", "EkStockReceipt"]);
+    ["EkDepartment", "EkRoleAssignment", "EkContact", "EkOffer", "EkOrder", "EkPurchaseRequest", "EkPurchaseDecision", "EkStockReceipt", "EkOfferShare"]);
+  assert.deepEqual(createLabRecipes(IGM).recipes.map(recipe => recipe.name),
+    ["IgmDepartment", "IgmRoleAssignment", "IgmContact", "IgmOffer", "IgmOrder", "IgmPurchaseRequest", "IgmPurchaseDecision", "IgmStockReceipt", "IgmOfferShare"]);
 });
 
 test("department references allow only the brand's department type", () => {
@@ -70,5 +72,6 @@ test("constructors fail fast on invalid input", () => {
 test("labTypes covers every kind with the brand prefix", () => {
   assert.deepEqual(labTypes(AMWAY).Order, "AmwayOrder");
   assert.deepEqual(labTypes(EK).Order, "EkOrder");
+  assert.deepEqual(labTypes(IGM).Order, "IgmOrder");
   assert.equal(Object.keys(labTypes(brand)).length, LAB_KINDS.length);
 });

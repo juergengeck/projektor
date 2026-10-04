@@ -96,10 +96,7 @@ function rolesOf({ department, assignments, subject, atTime }: {
   const managers = new Set(assignments
     .filter(entry => entry.role === "manager" && entry.issuer === department.admin && entry.validFrom <= atTime)
     .map(entry => entry.subject));
-  // Appointment chain: admin appoints managers, managers appoint sellers,
-  // sellers appoint customers. Admin authority itself is never delegated
-  // down the chain: only the root admin grants it, so a manager-issued
-  // admin assignment confers nothing anywhere it replicates.
+  // Admin-driven appointments all come from the root admin. Amway retains its delegated chain.
   const sellers = new Set(assignments
     .filter(entry => entry.role === "seller" && entry.validFrom <= atTime &&
       (entry.issuer === department.admin || managers.has(entry.issuer)))
@@ -107,7 +104,7 @@ function rolesOf({ department, assignments, subject, atTime }: {
   for (const entry of assignments) {
     if (entry.subject !== subject || entry.validFrom > atTime) continue;
     const issuerIsAdmin = entry.issuer === department.admin;
-    const appointed =
+    const appointed = brand.appointmentAuthority === "admin" ? issuerIsAdmin :
       entry.role === "manager" ? issuerIsAdmin :
       entry.role === "admin" ? issuerIsAdmin :
       entry.role === "seller" ? issuerIsAdmin || managers.has(entry.issuer) :
@@ -118,6 +115,17 @@ function rolesOf({ department, assignments, subject, atTime }: {
     }
   }
   return roles;
+}
+
+function owningSellers(department: LabDepartment, assignments: LabRoleAssignment[], customer: string, atTime: number): string[] {
+  if (!rolesOf({ department, assignments, subject: customer, atTime }).has("customer")) return [];
+  if (brand.appointmentAuthority === "admin") {
+    const sellers = [...new Set(assignments.filter(entry => entry.role === "seller" && entry.validFrom <= atTime)
+      .map(entry => entry.subject))].filter(subject => rolesOf({ department, assignments, subject, atTime }).has("seller"));
+    return sellers.length === 1 ? sellers : [];
+  }
+  return [...new Set(assignments.filter(entry => entry.role === "customer" && entry.subject === customer && entry.validFrom <= atTime)
+    .map(entry => entry.issuer))].filter(subject => rolesOf({ department, assignments, subject, atTime }).has("seller"));
 }
 
 function canPublish(kind: string, { department, assignments, author, subject, atTime }: AuthorityContext): boolean {
@@ -135,9 +143,9 @@ function canPublish(kind: string, { department, assignments, author, subject, at
     // Preferred-customer self-service: a customer may buy for themselves only.
     return roles.has("customer") && author === subject;
   }
-  // Sellers may only ever issue customer appointments; assignRole gates the
-  // exact chain and rolesOf re-validates it on every read.
-  if (kind === "assignment") return roles.has("admin") || roles.has("manager") || roles.has("seller");
+  // Amway follows its delegated chain; admin-driven lanes accept only the root admin.
+  if (kind === "assignment") return brand.appointmentAuthority === "admin" ? author === department.admin :
+    roles.has("admin") || roles.has("manager") || roles.has("seller");
   throw new Error(`${brand.label}: unknown publish kind ${kind}.`);
 }
 
@@ -187,8 +195,9 @@ function audience(kind: string, { department, assignments, row }: {
     if (contact.role === "customer" && typeof contact.person === "string") {
       const holders = new Set<string>([contact.person]);
       for (const entry of assignments) {
-        if (entry.role === "customer" && entry.subject === contact.person) holders.add(entry.issuer);
+        if (brand.appointmentAuthority !== "admin" && entry.role === "customer" && entry.subject === contact.person) holders.add(entry.issuer);
       }
+      for (const seller of owningSellers(department, assignments, contact.person, Number.MAX_SAFE_INTEGER)) holders.add(seller);
       return [...holders].sort();
     }
     for (const entry of assignments) people.add(entry.subject);
@@ -228,14 +237,16 @@ function projectDepartment({ department, assignments, contacts, offers, orders, 
     return false;
   };
   const validAssignments = assignments.filter(entry =>
+    (brand.appointmentAuthority !== "admin" || entry.issuer === department.admin) &&
     rolesOf({ department, assignments, subject: entry.subject, atTime }).has(entry.role));
-  // Customer address books stay with their seller: map every appointed
-  // customer to the parties that appointed them.
+  // Customer address books stay with their purchasing seller. Amway's
+  // appointer is that seller; an admin-driven lane's appointer is the root admin and does not receive them.
   const customerAppointers = new Map<string, Set<string>>();
   for (const entry of validAssignments) {
     if (entry.role !== "customer") continue;
     const issuers = customerAppointers.get(entry.subject) ?? new Set<string>();
-    issuers.add(entry.issuer);
+    if (brand.appointmentAuthority !== "admin") issuers.add(entry.issuer);
+    for (const seller of owningSellers(department, assignments, entry.subject, atTime)) issuers.add(seller);
     customerAppointers.set(entry.subject, issuers);
   }
   const viewerRoles = rolesOf({ department, assignments, subject: viewer, atTime });
@@ -244,18 +255,14 @@ function projectDepartment({ department, assignments, contacts, offers, orders, 
   const authorizedRequests = purchaseRequests.filter(entry => {
     const matchingOrder = authorizedOrders.find(order =>
       order.idempotencyKey === entry.idempotencyKey && order.customer === entry.customer);
-    const ownsCustomer = assignments.some(assignment => assignment.role === "customer" &&
-      assignment.subject === entry.customer && assignment.issuer === entry.seller) &&
-      rolesOf({ department, assignments, subject: entry.seller, atTime }).has("seller");
+    const ownsCustomer = owningSellers(department, assignments, entry.customer, atTime).includes(entry.seller);
     return Boolean(matchingOrder) && ownsCustomer &&
       admit("purchase-request", types.PurchaseRequest, entry.idempotencyKey, entry.customer, entry.customer);
   });
   const authorizedDecisions = purchaseDecisions.filter(entry => {
     const matchingRequest = authorizedRequests.find(request =>
       request.idempotencyKey === entry.idempotencyKey && request.customer === entry.customer && request.seller === entry.seller);
-    const ownsCustomer = assignments.some(assignment =>
-      assignment.role === "customer" && assignment.subject === entry.customer && assignment.issuer === entry.seller) &&
-      rolesOf({ department, assignments, subject: entry.seller, atTime }).has("seller");
+    const ownsCustomer = owningSellers(department, assignments, entry.customer, atTime).includes(entry.seller);
     if (matchingRequest && ownsCustomer) return true;
     rejected.push({ type: types.PurchaseDecision, id: entry.idempotencyKey, reason: "publisher-not-authorized" });
     return false;
@@ -345,5 +352,5 @@ function projectDepartment({ department, assignments, contacts, offers, orders, 
     rejected,
   };
 }
-  return { stock: stockIdentity, rolesOf, canPublish, audience, projectDepartment };
+  return { stock: stockIdentity, rolesOf, owningSellers, canPublish, audience, projectDepartment };
 }

@@ -4,7 +4,8 @@
  *
  * Two seller instances hold the same Person (same deterministic lab email,
  * separate storage directories) on separate worker runtimes. Instance A
- * creates a same-person pairing invitation (registering its pairing listener
+ * restores grant-free persisted domain roots and creates a same-person pairing
+ * invitation (registering its pairing listener
  * on the commserver); instance B accepts it with the standard pairing
  * handshake routed there. Afterwards B projects the department through
  * person-scoped grants, and A sees the link as the same person (the native
@@ -25,9 +26,11 @@ import { PortApiClient } from "./port-ipc.ts";
 import { decodeIoMInvite, PAIRING_PROTOCOL_VERSION } from "./iom.ts";
 import { testBrand, commServerPortFor } from "./test/brand.ts";
 import { startCommServer } from "./test/commserver.ts";
+import { startLabHost } from "./worker/host-switch.ts";
+import { labTypes } from "./recipes.ts";
 
 const brand = testBrand();
-const COMM_SERVER_PORT = commServerPortFor(brand);
+const COMM_SERVER_PORT = Number(process.env.LAB_IOM_PORT ?? commServerPortFor(brand));
 const laneEntry = `/lab/${brand.lane}`;
 
 /** Fixed lane logins: the same email always reproduces the same Person. */
@@ -36,7 +39,7 @@ const loginFor = (key: string) => ({ email: `${key}@${brand.emailDomain}`, secre
 let root = "";
 let commServerUrl = "";
 
-function spawnInstance(key: string, directory: string) {
+function spawnWorker(key: string, directory: string) {
   const worker = new Worker(new URL("./test/node-worker.ts", import.meta.url), {
     workerData: {
       key,
@@ -53,6 +56,11 @@ function spawnInstance(key: string, directory: string) {
     start() {},
     close() {},
   };
+  return { worker, port };
+}
+
+function spawnInstance(key: string, directory: string) {
+  const { worker, port } = spawnWorker(key, directory);
   const client = new PortApiClient(port);
   // Shells post `ready` unbooted; sign-in runs through the session plan below.
   const ready = new Promise<void>((resolve, reject) => {
@@ -65,7 +73,7 @@ function spawnInstance(key: string, directory: string) {
     });
     worker.on("error", reject);
   });
-  return { worker, client, ready };
+  return { worker, client, ready, port };
 }
 
 async function settle(): Promise<void> {
@@ -89,20 +97,36 @@ async function removeTree(root: string): Promise<void> {
   }
 }
 
-test("same-person second instance pairs over the commserver and projects the department", async (t) => {
+test("boot restores owner access to persisted roots before same-person IoM pairing", async (t) => {
   root = await mkdtemp(path.join(tmpdir(), `${brand.storagePrefix}-iom-`));
 
   const commserver = await startCommServer(COMM_SERVER_PORT);
   commServerUrl = commserver.url;
 
-  const deviceA = spawnInstance("seller", path.join(root, "device-a"));
-  const deviceB = spawnInstance("seller", path.join(root, "device-b"));
+  const workers: Worker[] = [];
   t.after(async () => {
-    await Promise.all([deviceA.worker.terminate(), deviceB.worker.terminate()]);
+    await Promise.all(workers.map(worker => worker.terminate()));
     await settle();
     await commserver.stop();
     await removeTree(root);
   });
+  const history = new Worker(new URL("./test/iom-history-worker.ts", import.meta.url), {
+    workerData: { brand: brand.id, directory: path.join(root, "device-a") },
+  });
+  workers.push(history);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const guard = setTimeout(() => reject(new Error("grant-free history fixture did not finish")), 30_000);
+      history.once("message", () => { clearTimeout(guard); resolve(); });
+      history.once("error", error => { clearTimeout(guard); reject(error); });
+    });
+  } finally {
+    await history.terminate();
+  }
+
+  const deviceA = spawnInstance("seller", path.join(root, "device-a"));
+  const deviceB = spawnInstance("seller", path.join(root, "device-b"));
+  workers.push(deviceA.worker, deviceB.worker);
   await Promise.all([deviceA.ready, deviceB.ready]);
   const setupA = await deviceA.client.call<{ readyState: { ownerId: string | null } }>("session", "registerAndSetup", loginFor("seller"));
   const setupB = await deviceB.client.call<{ readyState: { ownerId: string | null } }>("session", "registerAndSetup", loginFor("seller"));
@@ -110,9 +134,6 @@ test("same-person second instance pairs over the commserver and projects the dep
   const personB = setupB.readyState.ownerId;
   assert.ok(personA && personB, "both devices boot with an owner");
   assert.equal(personB, personA, "same email reproduces the same Person on the second device");
-
-  await deviceA.client.call("lab", "createDepartment", { department: brand.department.id, name: brand.department.name });
-  await deviceA.client.call("lab", "assignRole", { department: brand.department.id, subject: personA, role: "seller" });
 
   const invite = await deviceA.client.call("lab", "createIoMInvite", {}) as { invitationUrl: string; token: string; person: string };
   assert.equal(invite.person, personA);
@@ -139,22 +160,191 @@ test("same-person second instance pairs over the commserver and projects the dep
   await deviceB.client.call("lab", "acceptIoMInvite", { invitationUrl: invite.invitationUrl, timeoutMs: 60_000 });
   await paired;
 
-  // Under full-suite load CHUM replication lags; poll the real condition.
-  const deadline = Date.now() + 90_000;
-  let view: { known?: boolean; roles?: string[] } | undefined;
-  while (Date.now() < deadline) {
-    view = await deviceB.client.call("lab", "getDepartment", { department: brand.department.id }) as typeof view;
-    if (view?.known && view?.roles?.includes("seller")) break;
-    await new Promise(resolve => setTimeout(resolve, 500));
-  }
-  assert.equal(view?.known, true, "department replicates to the second device");
-  assert.ok(view?.roles?.includes("seller"), "seller role projects on the second device");
+  const view = await departmentUntil(deviceB.client, view => view.known && view.roles?.includes("seller"), "second device receives department and seller role");
+  assert.equal(view.known, true, "department replicates to the second device");
+  assert.ok(view.roles?.includes("seller"), "seller role projects on the second device");
 
   const connections = await deviceA.client.call("connection", "listConnections", {}) as { remotePersonId?: string }[];
   assert.ok(
     connections.some(entry => entry.remotePersonId === personA),
     "inviter sees the joiner as the same person (native IoM condition)",
   );
+});
+
+interface DepartmentView {
+  known: boolean;
+  roles: string[];
+  offers: { offerId: string; unitAmount: number }[];
+  contacts: { person: string; name: string }[];
+  orders: { idempotencyKey: string; quantity: number }[];
+  availability: { stocked: number; available: number } | null;
+}
+
+/** A bounded deterministic watcher waits for the actual readable projection. */
+async function departmentUntil(client: PortApiClient, predicate: (view: DepartmentView) => boolean, label: string): Promise<DepartmentView> {
+  const deadline = Date.now() + 30_000;
+  let view: DepartmentView;
+  do {
+    view = await client.call<DepartmentView>("lab", "getDepartment", { department: brand.department.id });
+    if (predicate(view)) return view;
+    await new Promise(resolve => setTimeout(resolve, 100));
+  } while (Date.now() < deadline);
+  throw new Error(`${label}: ${JSON.stringify(view)}`);
+}
+
+test("IoM forwards received mesh content historically and live in both directions", async (t) => {
+  const localRoot = await mkdtemp(path.join(tmpdir(), `${brand.storagePrefix}-iom-mesh-`));
+  const commserver = await startCommServer(COMM_SERVER_PORT);
+  commServerUrl = commserver.url;
+  const host = await startLabHost({
+    keys: ["admin", "manager", "seller", "customer"],
+    spawn(key) {
+      const instance = spawnWorker(key, path.join(localRoot, key));
+      return { port: instance.port, terminate: () => instance.worker.terminate(), onError: listener => instance.worker.on("error", listener) };
+    },
+  });
+  const deviceB = spawnInstance("seller", path.join(localRoot, "seller-device-b"));
+  t.after(async () => {
+    await Promise.all([host.stop(), deviceB.worker.terminate()]);
+    await commserver.stop();
+    await removeTree(localRoot);
+  });
+  await deviceB.ready;
+  const people: Record<string, string> = {};
+  for (const key of ["admin", "manager", "seller", "customer"]) {
+    const setup = await host.clients[key].call<{ readyState: { ownerId: string } }>("session", "registerAndSetup", loginFor(key));
+    people[key] = setup.readyState.ownerId;
+  }
+  const setupB = await deviceB.client.call<{ readyState: { ownerId: string } }>("session", "registerAndSetup", loginFor("seller"));
+  assert.equal(setupB.readyState.ownerId, people.seller);
+  await host.pairAll();
+  const { admin, manager, seller, customer } = host.clients;
+  const receivedA: string[] = [];
+  const receivedB: string[] = [];
+  const privateStaffContacts: string[] = [];
+  const stopStaff = [admin, manager].map((client, index) => client.onFeed(row => {
+    if (row.type === labTypes(brand).Contact && row.id === people.customer) privateStaffContacts.push(index === 0 ? "admin" : "manager");
+  }));
+  const stopA = seller.onFeed(row => receivedA.push(row.type));
+  const stopB = deviceB.client.onFeed(row => receivedB.push(row.type));
+  t.after(() => { stopA(); stopB(); for (const stop of stopStaff) stop(); });
+  const stockType = labTypes(brand).StockReceipt;
+  const department = brand.department.id;
+  await admin.call("lab", "createDepartment", { department, name: brand.department.name });
+  await admin.call("lab", "assignRole", { department, subject: people.manager, role: "manager" });
+  await departmentUntil(manager, view => view.roles?.includes("manager"), "manager receives appointment");
+  if (brand.appointmentAuthority === "admin") {
+    await admin.call("lab", "assignRole", { department, subject: people.customer, role: "customer" });
+    await departmentUntil(customer, view => view.roles?.includes("customer"), "customer receives early appointment");
+    await customer.call("lab", "publishContact", { department, name: "Early customer", role: "customer" });
+  }
+  await (brand.appointmentAuthority === "admin" ? admin : manager).call("lab", "assignRole", { department, subject: people.seller, role: "seller" });
+  await departmentUntil(seller, view => view.roles?.includes("seller"), "first seller device receives appointment");
+  if (brand.appointmentAuthority === "admin") {
+    await departmentUntil(seller, view => view.contacts?.some(row => row.person === people.customer && row.name === "Early customer"),
+      "late seller appointment discloses the customer-owned contact");
+    const staff = await admin.call<DepartmentView>("lab", "getDepartment", { department });
+    assert.equal(staff.contacts.some(row => row.person === people.customer), false, "private customer contact stays out of the staff directory");
+  }
+  await admin.call("lab", "stockUp", { department, receiptId: "iom-received-stock", quantity: 10 });
+  const offer = { department, offerId: "iom-received-offer", item: "ITEM@1", priceList: "iom-test", unitAmount: 100, currency: "EUR" };
+  await manager.call("lab", "publishOffer", offer);
+  await manager.call("lab", "shareOfferWithSeller", { department, offerId: offer.offerId, seller: people.seller });
+  await departmentUntil(seller, view => view.offers?.some(row => row.offerId === offer.offerId) && receivedA.includes(stockType),
+    "first seller device receives offer and stock");
+
+  const invite = await seller.call<{ invitationUrl: string; token: string }>("lab", "createIoMInvite", {});
+  const paired = seller.call("lab", "awaitIoMInvite", { token: invite.token, timeoutMs: 60_000 });
+  await deviceB.client.call("lab", "acceptIoMInvite", { invitationUrl: invite.invitationUrl, timeoutMs: 60_000 });
+  await paired;
+  const historical = await departmentUntil(deviceB.client, view => view.roles?.includes("seller") &&
+    view.offers?.some(row => row.offerId === offer.offerId) && receivedB.includes(stockType),
+  "second device receives historical department, assignments, offer and stock");
+  assert.equal(historical.known, true);
+
+  // Manager edits received content after the IoM connection is live.
+  await manager.call("lab", "publishOffer", { ...offer, unitAmount: 250 });
+  await departmentUntil(deviceB.client, view => view.offers?.some(row => row.offerId === offer.offerId && row.unitAmount === 250),
+    "second device receives live offer edit through the first device");
+  if (brand.appointmentAuthority !== "admin") {
+    await deviceB.client.call("lab", "assignRole", { department, subject: people.customer, role: "customer" });
+    await departmentUntil(customer, view => view.roles?.includes("customer"),
+      "second seller device appointment forwards department and membership to the mesh customer");
+  }
+  await deviceB.client.call("lab", "shareOffer", { department, offerId: offer.offerId, customer: people.customer });
+  await departmentUntil(customer, view => view.offers?.some(row => row.offerId === offer.offerId && row.unitAmount === 250),
+    "second seller device shares a new offer through its first device to the mesh customer");
+
+  const customerB = spawnInstance("customer", path.join(localRoot, "customer-device-b"));
+  t.after(() => customerB.worker.terminate());
+  await customerB.ready;
+  await customerB.client.call("session", "registerAndSetup", loginFor("customer"));
+  const customerInvite = await customer.call<{ invitationUrl: string; token: string }>("lab", "createIoMInvite", {});
+  const customerPaired = customer.call("lab", "awaitIoMInvite", { token: customerInvite.token, timeoutMs: 60_000 });
+  await customerB.client.call("lab", "acceptIoMInvite", { invitationUrl: customerInvite.invitationUrl, timeoutMs: 60_000 });
+  await customerPaired;
+  await departmentUntil(customerB.client, view => view.roles?.includes("customer") && view.offers?.some(row => row.offerId === offer.offerId),
+    "second customer device receives membership and shared offer");
+  await customerB.client.call("lab", "buy", { department, offer: offer.offerId, quantity: 2, idempotencyKey: "iom-customer-b-buy" });
+  await departmentUntil(seller, view => view.orders?.some(row => row.idempotencyKey === "iom-customer-b-buy"),
+    "second customer device purchase reaches the mesh seller for automatic admission");
+  await departmentUntil(customerB.client, view => view.orders?.some(row => row.idempotencyKey === "iom-customer-b-buy"),
+    "admission returns through the first customer device to the second");
+
+  // The first contact originates on B: A has no older audience grant to reuse.
+  await deviceB.client.call("lab", "publishContact", { department, name: "Device B", role: "seller" });
+  await departmentUntil(seller, view => view.contacts?.some(row => row.person === people.seller && row.name === "Device B"),
+    "first device receives second device write");
+  await departmentUntil(manager, view => view.contacts?.some(row => row.person === people.seller && row.name === "Device B"),
+    "first device forwards its own second-device contact to its mesh audience");
+  await seller.call("lab", "publishContact", { department, name: "Device A", role: "seller" });
+  await departmentUntil(deviceB.client, view => view.contacts?.some(row => row.person === people.seller && row.name === "Device A"),
+    "second device receives first device write");
+  assert.deepEqual(privateStaffContacts, [], "private customer contact never enters admin or manager storage via the raw feed");
+});
+
+test("an IoM manager's new offer forwards through its first device to the admin", async (t) => {
+  const localRoot = await mkdtemp(path.join(tmpdir(), `${brand.storagePrefix}-iom-manager-`));
+  const commserver = await startCommServer(COMM_SERVER_PORT);
+  commServerUrl = commserver.url;
+  const host = await startLabHost({
+    keys: ["admin", "manager"],
+    spawn(key) {
+      const instance = spawnWorker(key, path.join(localRoot, key));
+      return { port: instance.port, terminate: () => instance.worker.terminate(), onError: listener => instance.worker.on("error", listener) };
+    },
+  });
+  const deviceB = spawnInstance("manager", path.join(localRoot, "manager-device-b"));
+  t.after(async () => {
+    await Promise.all([host.stop(), deviceB.worker.terminate()]);
+    await commserver.stop();
+    await removeTree(localRoot);
+  });
+  await deviceB.ready;
+  const people: Record<string, string> = {};
+  for (const key of ["admin", "manager"]) {
+    const setup = await host.clients[key].call<{ readyState: { ownerId: string } }>("session", "registerAndSetup", loginFor(key));
+    people[key] = setup.readyState.ownerId;
+  }
+  await deviceB.client.call("session", "registerAndSetup", loginFor("manager"));
+  await host.pairAll();
+  const { admin, manager } = host.clients;
+  const department = brand.department.id;
+  await admin.call("lab", "createDepartment", { department, name: brand.department.name });
+  await admin.call("lab", "assignRole", { department, subject: people.manager, role: "manager" });
+  await departmentUntil(manager, view => view.roles?.includes("manager"), "first manager device receives appointment");
+  const invite = await manager.call<{ invitationUrl: string; token: string }>("lab", "createIoMInvite", {});
+  const paired = manager.call("lab", "awaitIoMInvite", { token: invite.token, timeoutMs: 60_000 });
+  await deviceB.client.call("lab", "acceptIoMInvite", { invitationUrl: invite.invitationUrl, timeoutMs: 60_000 });
+  await paired;
+  await departmentUntil(deviceB.client, view => view.roles?.includes("manager"), "second manager device receives appointment");
+  await deviceB.client.call("lab", "publishOffer", {
+    department, offerId: "iom-manager-b-offer", item: "ITEM@1", priceList: "iom-test", unitAmount: 300, currency: "EUR",
+  });
+  await departmentUntil(manager, view => view.offers?.some(row => row.offerId === "iom-manager-b-offer"),
+    "first manager device receives second device offer");
+  await departmentUntil(admin, view => view.offers?.some(row => row.offerId === "iom-manager-b-offer"),
+    "first manager device forwards its own second-device offer to admin");
 });
 
 test("invitation URLs validate strictly and reject impostors", () => {

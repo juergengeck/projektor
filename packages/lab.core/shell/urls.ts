@@ -17,7 +17,7 @@ export function labAppUrl(href: string, brand: LabBrand, key: string, session: s
   return url.href;
 }
 
-/** Canonical lane host address (`/lab/amway`, `/lab/ek`): the page that boots
+/** Canonical lane host address (`/lab/<lane>`): the page that boots
  * the four role iframes and that IoM invitations open. */
 export function laneHostUrl(origin: string, brand: LabBrand): string {
   return new URL(`/lab/${brand.lane}`, origin).href;

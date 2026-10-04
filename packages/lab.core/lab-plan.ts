@@ -27,6 +27,7 @@ import type {
   LabDepartment,
   LabObject,
   LabOffer,
+  LabOfferShare,
   LabOrder,
   LabPurchaseDecision,
   LabPurchaseRequest,
@@ -71,16 +72,18 @@ export function createLabPlan({ brand, connections, iomConnections, now = () => 
 }) {
   const { types } = createLabRecipes(brand);
   const objects = createLabObjects(brand);
-  const { stock, audience, canPublish, projectDepartment, rolesOf } = createProjection(brand);
+  const { stock, audience, canPublish, projectDepartment, rolesOf, owningSellers } = createProjection(brand);
   const KIND_OF_TYPE: Record<string, string> = {
     [types.Department]: "department", [types.RoleAssignment]: "assignment", [types.Contact]: "contact",
     [types.Offer]: "offer", [types.Order]: "order", [types.PurchaseRequest]: "purchase-request",
     [types.PurchaseDecision]: "purchase-decision", [types.StockReceipt]: "stock",
+    [types.OfferShare]: "offer-share",
   };
   const ID_FIELD: Record<string, string> = {
     [types.Department]: "department", [types.RoleAssignment]: "subject", [types.Contact]: "person",
     [types.Offer]: "offerId", [types.Order]: "idempotencyKey", [types.PurchaseRequest]: "idempotencyKey",
     [types.PurchaseDecision]: "idempotencyKey", [types.StockReceipt]: "receiptId",
+    [types.OfferShare]: "offer",
   };
   const fail = (message: string): never => { throw new Error(`${brand.label}: ${message}`); };
   const self = (): string => {
@@ -274,8 +277,8 @@ export function createLabPlan({ brand, connections, iomConnections, now = () => 
         const placed = state.orders.find(entry => entry.idempotencyKey === request.idempotencyKey);
         if (!placed || placed.customer !== request.customer) continue;
         const customerRoles = rolesOf({ department: state.department, assignments: state.assignments, subject: request.customer, atTime: now() });
-        const ownsCustomer = request.seller === self() && state.assignments.some(entry =>
-          entry.role === "customer" && entry.subject === request.customer && entry.issuer === request.seller && entry.validFrom <= now());
+        const ownsCustomer = request.seller === self() &&
+          owningSellers(state.department, state.assignments, request.customer, now()).includes(self());
         const sellerRoles = rolesOf({ department: state.department, assignments: state.assignments, subject: self(), atTime: now() });
         if (!customerRoles.has("customer") || !sellerRoles.has("seller") || !ownsCustomer) continue;
         if (decision) {
@@ -316,6 +319,95 @@ export function createLabPlan({ brand, connections, iomConnections, now = () => 
     }
   }
 
+  async function replayOfferShares(state: DepartmentState & { department: LabDepartment }): Promise<void> {
+    const shares = await latest<LabOfferShare>(await getAllIdObjectEntries(idHashOf(state.deptIdHash), typeNameOf(types.OfferShare)));
+    const roles = rolesOf({ department: state.department, assignments: state.assignments, subject: self(), atTime: now() });
+    for (const share of shares) {
+      // Only the sharing person's devices apply this private intent. Recheck
+      // the same authority as the command before creating any local grant.
+      if (share.sharedBy !== self()) continue;
+      const required = share.recipientRole === "seller" ? "manager" : share.recipientRole === "customer" ? "seller" : null;
+      if (!required || (!roles.has(required) && self() !== state.department.admin)) continue;
+      const recipientRoles = rolesOf({ department: state.department, assignments: state.assignments, subject: share.recipient, atTime: now() });
+      if (!recipientRoles.has(share.recipientRole)) continue;
+      if (await hasVersionHead(idHashOf(share.offer))) await grant(share.offer, [share.recipient]);
+    }
+  }
+
+  async function recordOfferShare(state: DepartmentState & { department: LabDepartment }, offer: string, recipient: string, recipientRole: "seller" | "customer"): Promise<void> {
+    const intent = objects.createOfferShare({
+      department: state.deptIdHash, offer, recipient, recipientRole, sharedBy: self(), sharedAt: now(),
+    });
+    await grant(await calculateIdHashOfObj(versioned(intent)), [self()]);
+    await storeVersionedObject(versioned(intent));
+  }
+
+  async function grantMembership(state: DepartmentState & { department: LabDepartment }, assignment: LabRoleAssignment): Promise<void> {
+    const team = audience("assignment", { department: state.department, assignments: state.assignments, row: assignment });
+    await grant(state.deptIdHash, team);
+    for (const row of state.assignments) await grant(await calculateIdHashOfObj(versioned(row)), team);
+    // Membership disclosure belongs to the appointing person. Private contacts
+    // retain their own audience rather than becoming a team-wide directory.
+    for (const row of [...state.contacts, ...state.offers, ...state.orders, ...state.purchaseRequests, ...state.purchaseDecisions]) {
+      await grant(await calculateIdHashOfObj(versioned(row)), audience(KIND_OF_TYPE[row.$type$], {
+        department: state.department, assignments: state.assignments, row,
+      }));
+    }
+    const holders = new Set<string>([state.department.admin]);
+    for (const entry of state.assignments) {
+      const roles = rolesOf({ department: state.department, assignments: state.assignments, subject: entry.subject, atTime: now() });
+      if (roles.has("manager") || roles.has("seller")) holders.add(entry.subject);
+    }
+    for (const row of state.stock) await grant(await calculateIdHashOfObj(versioned(row)), [...holders]);
+  }
+
+  async function processDisclosures(result: FeedRowInput): Promise<void> {
+    const type = String(result.obj.$type$);
+    if (!KIND_OF_TYPE[type]) return;
+    const deptIdHash = type === types.Department ? result.idHash : String(result.obj.department);
+    const state = await loadByIdHash(deptIdHash);
+    if (!state.department) return;
+    const author = self();
+    if (type === types.RoleAssignment && result.obj.issuer === author) {
+      const assignment = result.obj as unknown as LabRoleAssignment;
+      if (rolesOf({ department: state.department, assignments: state.assignments, subject: assignment.subject, atTime: now() }).has(assignment.role)) {
+        await grantMembership(state as DepartmentState & { department: LabDepartment }, assignment);
+      }
+    }
+    const owns = (row: LabObject): boolean => {
+      switch (row.$type$) {
+        case types.Department: return (row as LabDepartment).admin === author;
+        case types.RoleAssignment: return (row as LabRoleAssignment).issuer === author;
+        case types.Contact: return (row as LabContact).person === author && (row as LabContact).publishedBy === author;
+        case types.Offer: return (row as LabOffer).publishedBy === author;
+        case types.StockReceipt: return (row as LabStockReceipt).receivedBy === author;
+        case types.PurchaseRequest: return (row as LabPurchaseRequest).customer === author;
+        case types.PurchaseDecision: return (row as LabPurchaseDecision).seller === author;
+        case types.Order: {
+          const order = row as LabOrder;
+          return order.customer === author || (order.admittedAt !== 0 && order.seller === author);
+        }
+        default: return false;
+      }
+    };
+    // Another device publishes as this same person, but its local grants do
+    // not travel with the object. Replay only the publisher's domain audience.
+    // Membership arrivals also revisit owned roots (including private contacts
+    // published before their seller was appointed). Foreign rows keep their
+    // existing disclosure; an offer audience never includes explicit shares.
+    const rows: LabObject[] = [types.Department, types.RoleAssignment].includes(type)
+      ? [state.department, ...state.assignments, ...state.contacts, ...state.offers, ...state.orders,
+        ...state.purchaseRequests, ...state.purchaseDecisions, ...state.stock]
+      : [result.obj as unknown as LabObject];
+    for (const row of rows) {
+      if (!owns(row)) continue;
+      await grant(await calculateIdHashOfObj(versioned(row)), audience(KIND_OF_TYPE[row.$type$], {
+        department: state.department, assignments: state.assignments, row,
+      }));
+    }
+    await replayOfferShares(state as DepartmentState & { department: LabDepartment });
+  }
+
   const plan = {
     whoAmI(): { person: string } {
       return { person: self() };
@@ -330,10 +422,11 @@ export function createLabPlan({ brand, connections, iomConnections, now = () => 
     async assignRole({ department, subject, role }: { department: string; subject: string; role: string }): Promise<{ idHash: string }> {
       const state = await requireDepartment(department);
       const obj = objects.createRoleAssignment({ department: state.deptIdHash, subject, role, issuer: self(), validFrom: now() });
-      // Appointment chain: admin appoints managers, managers appoint
-      // sellers, sellers appoint customers. Admin authority itself is never
-      // delegated down: only the root admin appoints admins.
+      // Admin-driven appointments belong to the root admin; Amway keeps its delegated chain.
       const issuerRoles = rolesOf({ department: state.department, assignments: state.assignments, subject: self(), atTime: now() });
+      if (brand.appointmentAuthority === "admin" && self() !== state.department.admin) {
+        fail(brand.id === "ek" ? "only AG may appoint roles." : "only the department admin may appoint roles.");
+      }
       if (role === "admin" && self() !== state.department.admin) {
         fail("only the department admin may appoint admins.");
       }
@@ -348,41 +441,7 @@ export function createLabPlan({ brand, connections, iomConnections, now = () => 
       }
       const result = await publish("assignment", state, obj, subject);
       const next = await requireDepartment(department);
-      // Disclosure follows the chain, never broadcasts: appointments share
-      // the department, team and directory with the newcomer, but inventory
-      // (offers) and purchases keep the audience each row already carries.
-      // A membership change must never leak a level's rows to another level.
-      const team = audience("assignment", { department: next.department, assignments: next.assignments, row: obj });
-      await grant(next.deptIdHash, team);
-      for (const type of [types.RoleAssignment, types.Contact] as const) {
-        for (const idHash of await getAllIdObjectEntries(idHashOf(next.deptIdHash), typeNameOf(type))) await grant(idHash, team);
-      }
-      // Stock receipts follow the inventory audience, never the whole team:
-      // staff and sellers replicate them so admissions settle, customers
-      // never hold inventory rows. A newcomer starts with no shared offers.
-      const holders = new Set<string>([next.department.admin]);
-      for (const entry of next.assignments) {
-        const subjectRoles = rolesOf({ department: next.department, assignments: next.assignments, subject: entry.subject, atTime: now() });
-        if (subjectRoles.has("manager") || subjectRoles.has("seller")) holders.add(entry.subject);
-      }
-      for (const idHash of await getAllIdObjectEntries(idHashOf(next.deptIdHash), typeNameOf(types.StockReceipt))) {
-        await grant(idHash, [...holders]);
-      }
-      for (const type of [types.Offer, types.Order, types.PurchaseRequest, types.PurchaseDecision] as const) {
-        for (const idHash of await getAllIdObjectEntries(idHashOf(next.deptIdHash), typeNameOf(type))) {
-          let row: LabObject;
-          try {
-            row = (await getObjectByIdHash(idHash)).obj as LabObject;
-          } catch (error) {
-            // Same transient as latest(): skip this grant pass; the next
-            // membership change re-grants every entry.
-            if (!isMissingVersionHeadError(error)) throw error;
-            continue;
-          }
-          const kind = KIND_OF_TYPE[type];
-          await grant(idHash, audience(kind, { department: next.department, assignments: next.assignments, row }));
-        }
-      }
+      await grantMembership(next, obj);
       return result;
     },
 
@@ -425,7 +484,7 @@ export function createLabPlan({ brand, connections, iomConnections, now = () => 
      * The seller shares a published offer down with an appointed customer.
      * This is the only way inventory reaches customers: publishing discloses
      * to sellers through their manager, never further. Pure disclosure, no
-     * new object; repeating it is harmless.
+     * price change; the private sharing intent also reaches our other devices.
      */
     async shareOffer({ department, offerId, customer }: {
       department: string; offerId: string; customer: string;
@@ -445,6 +504,7 @@ export function createLabPlan({ brand, connections, iomConnections, now = () => 
       const idHash = await offerIdHash(state, offerId);
       if (!idHash) throw new Error(`${brand.label}: offer ${offerId} has not reached this instance.`);
       await grant(idHash, [customer]);
+      await recordOfferShare(state, idHash, customer, "customer");
       return { idHash };
     },
 
@@ -452,7 +512,7 @@ export function createLabPlan({ brand, connections, iomConnections, now = () => 
      * The manager shares a published offer down with a chosen seller.
      * Publishing alone never reaches sellers: this explicit step is the
      * only way inventory arrives at a seller, mirroring shareOffer.
-     * Pure disclosure, no new object; repeating it is harmless.
+     * The private sharing intent lets other devices apply the same disclosure.
      */
     async shareOfferWithSeller({ department, offerId, seller }: {
       department: string; offerId: string; seller: string;
@@ -472,6 +532,7 @@ export function createLabPlan({ brand, connections, iomConnections, now = () => 
       const idHash = await offerIdHash(state, offerId);
       if (!idHash) throw new Error(`${brand.label}: offer ${offerId} has not reached this instance.`);
       await grant(idHash, [seller]);
+      await recordOfferShare(state, idHash, seller, "seller");
       return { idHash };
     },
 
@@ -496,14 +557,11 @@ export function createLabPlan({ brand, connections, iomConnections, now = () => 
       department: string; offer: string; quantity: number; idempotencyKey?: string;
     }): Promise<{ idHash: string; requestIdHash: string; idempotencyKey: string }> {
       let state = await requireDepartment(department);
-      const owningSellers = state.assignments
-        .filter(entry => entry.role === "customer" && entry.subject === self() && entry.validFrom <= now())
-        .map(entry => entry.issuer)
-        .filter(seller => rolesOf({ department: state.department, assignments: state.assignments, subject: seller, atTime: now() }).has("seller"));
-      if (owningSellers.length !== 1) {
-        fail(`customer must have exactly one owning seller, found ${owningSellers.length}.`);
+      const sellers = owningSellers(state.department, state.assignments, self(), now());
+      if (sellers.length !== 1) {
+        fail(`customer must have exactly one owning seller, found ${sellers.length}.`);
       }
-      const seller = owningSellers[0];
+      const seller = sellers[0];
       const placed = await placeOrderRecord({ state, offer, quantity, idempotencyKey, allowExisting: true });
       state = await requireDepartment(department);
       const existingRequest = state.purchaseRequests.find(entry => entry.idempotencyKey === placed.idempotencyKey);
@@ -580,6 +638,7 @@ export function createLabPlan({ brand, connections, iomConnections, now = () => 
 
     processAutomaticPurchase,
     recoverAutomaticPurchases,
+    processDisclosures,
 
     async setOnline({ online }: { online: boolean }): Promise<{ online: boolean }> {
       if (online) await connections.enableAllConnections();

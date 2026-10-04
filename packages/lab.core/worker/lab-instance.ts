@@ -31,9 +31,10 @@ import { getInstanceIdHash, getInstanceOwnerIdHash } from "../../../../one/packa
 import { OperationRegistry } from "../../../../one/packages/refinio.api/dist/src/registry/index.js";
 import { IpcTransport } from "../../../../one/packages/refinio.api/dist/src/transports/IpcTransport.js";
 import { OneConnectionPlan } from "../../../../one/packages/refinio.api/dist/src/plans/OneConnectionPlan.js";
-import { AccessRightsRecipes } from "../../../../one/packages/refinio.api/dist/src/helpers/AccessRightsHelper.js";
+import { AccessCertificateRecipe } from "../../../../one/packages/trust.abac/dist/recipes/AccessCertificate.js";
 import { createLabRecipes } from "../recipes.ts";
 import { createLabPlan } from "../lab-plan.ts";
+import { createIoMContentAccess } from "../iom-content.ts";
 import { createChatPlan } from "../chat-plan.ts";
 import { DEFAULT_COMM_SERVER_URL } from "../iom.ts";
 import { decodeMeshInvite, inviteMode } from "../invite-url.ts";
@@ -113,13 +114,13 @@ export async function startLabInstance({ brand, port, key, directory, createMess
   // during browser startup (and losing a MessagePort before it can be accepted).
   port.postMessage({ kind: "routing-ready", key });
 
-  const boot = async ({ email, secret }: { email: string; secret: string; instanceName: string }): Promise<BootedInstance> => {
+  const boot = async ({ email, secret, instanceName }: { email: string; secret: string; instanceName: string }): Promise<BootedInstance> => {
     const multiUser = new MultiUser({
       directory,
-      // AccessRightsRecipes registers the pairing audit certificate that
+      // Register the canonical pairing audit certificate recipe that
       // OneConnectionPlan.connectWithInvite mints via grantAccessRightsAfterPairing.
       // Without it every pairing throws (node) or logs SVO-SO2 noise (browser).
-      recipes: [...RecipesStable, ...RecipesExperimental, ...AccessRightsRecipes, ...(labRecipes as unknown as Recipe[])],
+      recipes: [...RecipesStable, ...RecipesExperimental, AccessCertificateRecipe, ...(labRecipes as unknown as Recipe[])],
       reverseMaps: merge(ReverseMapsStable, ReverseMapsExperimental),
       reverseMapsForIdObjects: merge(ReverseMapsForIdObjectsStable, ReverseMapsForIdObjectsExperimental, labReverseMaps),
     });
@@ -149,20 +150,28 @@ export async function startLabInstance({ brand, port, key, directory, createMess
       noExport: false,
     });
     await leuteModel.init();
+    // Pairing exchanges this authenticated profile. Publish the name supplied
+    // at registration before enabling listeners so contact creation receives
+    // the required PersonName with the profile itself.
+    const profile = await (await leuteModel.me()).mainProfile();
+    if (profile.descriptionsOfType("PersonName").length === 0) {
+      profile.personDescriptions.push({ $type$: "PersonName", name: instanceName });
+      await profile.saveAndLoad();
+    }
     await channelManager.init();
     await connections.init();
     await connections.waitForIncomingConnectionReady();
 
-    // OneConnectionPlan.connectWithInvite rebuilds its invitation from
-    // {url, publicKey, token} and drops pairingProtocolVersion, which
-    // PairingManager.connectUsingInvitation asserts. Restore the local protocol
-    // version on the way through (instance-only; the wire token already carries it).
+    // OneConnectionPlan's generic invite request carries only url/key/token.
+    // This connection model owns the lab mesh: every mesh invitation uses the
+    // primed socket for CHUM. Supply that product policy and the protocol
+    // version required by PairingManager at the model boundary.
     const pairing = connections.pairing as unknown as {
       connectUsingInvitation(invitation: Record<string, unknown>, ...rest: unknown[]): Promise<unknown>;
     };
     const connectUsingInvitation = pairing.connectUsingInvitation.bind(pairing);
     pairing.connectUsingInvitation = (invitation: Record<string, unknown>, ...rest: unknown[]) =>
-      connectUsingInvitation({ pairingProtocolVersion: PAIRING_PROTOCOL_VERSION, ...invitation }, ...rest);
+      connectUsingInvitation({ ...invitation, pairingProtocolVersion: PAIRING_PROTOCOL_VERSION, pairingMode: "primed" }, ...rest);
 
     // IoM discovery and pairing ride a commserver (browsers cannot listen and
     // the mesh lab:// endpoints are unreachable across devices) through a
@@ -264,6 +273,10 @@ export async function startLabInstance({ brand, port, key, directory, createMess
     // commserver for IoM below. The status surface covers both, so the IoM
     // link is visible next to the mesh lanes.
     const connectionPlan = new OneConnectionPlan(leuteModel, connections, channelManager);
+    // The generic plan creates standard invitations. Mesh invitations must
+    // record primed intent at their producer so both endpoints hand the live
+    // pairing socket to CHUM; use the pairing owner's supported API.
+    connectionPlan.createInvite = () => connections.pairing.createInvitation(undefined, undefined, { mode: "primed" });
     const meshListConnections = connectionPlan.listConnections.bind(connectionPlan);
     connectionPlan.listConnections = () => [
       ...meshListConnections(),
@@ -290,13 +303,19 @@ export async function startLabInstance({ brand, port, key, directory, createMess
     // dispatched after the version head is selected. The bytes-available event
     // (onVersionedObjStored) fires while CHUM is still materializing the version
     // graph, so rows derived from it are not yet readable via getObjectByIdHash.
+    const iomContent = createIoMContentAccess(brand);
     const stopFeed = onVersionedObj.addListener(result => {
-      const row = plan.feedRow(result);
-      if (row) postFeed(port, row);
-      void plan.processAutomaticPurchase(result).catch(error => {
-        console.error(`${label}: automatic purchase processing failed.`, error);
+      void (async () => {
+        await iomContent.grantOwner(result);
+        await plan.processDisclosures(result);
+        const row = plan.feedRow(result);
+        if (row) postFeed(port, row);
+        await plan.processAutomaticPurchase(result);
+      })().catch(error => {
+        console.error(`${label}: domain arrival processing failed.`, error);
       });
     });
+    await iomContent.recover(plan.processDisclosures);
     // Semantic object events are live-only. Replay the seller's typed request
     // roots once after attaching the listener so a crash between request
     // persistence and admission cannot leave a purchase pending forever.
@@ -334,7 +353,6 @@ export async function startLabInstance({ brand, port, key, directory, createMess
           url: invite.url,
           publicKey: invite.publicKey,
           token: invite.token,
-          pairingMode: invite.pairingMode,
         });
       },
     };

@@ -15,7 +15,7 @@ const ADMIN = P("a"), MANAGER = P("b"), SELLER = P("c"), CUSTOMER = P("d"), DEPT
 const department: LabDepartment = { $type$: types.Department, department: brand.department.id, name: brand.department.name, admin: ADMIN };
 const assign = (subject: string, role: string, issuer: string): LabRoleAssignment =>
   ({ $type$: types.RoleAssignment, department: DEPT, subject, role, issuer, validFrom: 1 });
-const assignments = [assign(MANAGER, "manager", ADMIN), assign(SELLER, "seller", MANAGER), assign(CUSTOMER, "customer", SELLER)];
+const assignments = [assign(MANAGER, "manager", ADMIN), assign(SELLER, "seller", brand.appointmentAuthority === "admin" ? ADMIN : MANAGER), assign(CUSTOMER, "customer", brand.appointmentAuthority === "admin" ? ADMIN : SELLER)];
 
 test("roles derive from the department admin chain", () => {
   assert.deepEqual([...rolesOf({ department, assignments, subject: ADMIN, atTime: 5 })], ["admin"]);
@@ -25,7 +25,18 @@ test("roles derive from the department admin chain", () => {
   assert.deepEqual([...rolesOf({ department, assignments: forged, subject: CUSTOMER, atTime: 5 })], ["customer"]);
 });
 
-test("appointment chain runs admin to manager to seller to customer", () => {
+test("role appointments obey the brand authority", () => {
+  if (brand.appointmentAuthority === "admin") {
+    const ctx = { department, atTime: 5 };
+    assert.deepEqual([...rolesOf({ ...ctx, assignments, subject: SELLER })], ["seller"]);
+    assert.deepEqual([...rolesOf({ ...ctx, assignments: [...assignments, assign(P("f"), "seller", MANAGER)], subject: P("f") })], []);
+    assert.deepEqual([...rolesOf({ ...ctx, assignments: [...assignments, assign(P("f"), "customer", SELLER)], subject: P("f") })], []);
+    assert.deepEqual([...rolesOf({ ...ctx, assignments: [...assignments, assign(P("f"), "customer", ADMIN)], subject: P("f") })], ["customer"]);
+    assert.equal(canPublish("assignment", { ...ctx, assignments, author: ADMIN }), true);
+    assert.equal(canPublish("assignment", { ...ctx, assignments, author: MANAGER }), false);
+    assert.equal(canPublish("assignment", { ...ctx, assignments, author: SELLER }), false);
+    return;
+  }
   const ctx = { department, atTime: 5 };
   assert.deepEqual([...rolesOf({ ...ctx, assignments, subject: SELLER })], ["seller"]);
   const sellerIssued = [...assignments, assign(P("f"), "customer", SELLER)];
@@ -189,9 +200,9 @@ test("customer contacts stay with their seller", () => {
   assert.deepEqual(names(SELLER), ["Seller", "Customer"], "the appointing seller keeps the address book");
   assert.deepEqual(names(CUSTOMER), ["Seller", "Customer"], "customers see team contacts and their own");
   assert.deepEqual(names(MANAGER), ["Seller"], "managers never see customer contacts");
-  assert.deepEqual(names(ADMIN), ["Seller"], "even the org admin never sees customer contacts");
-  assert.deepEqual(audience("contact", { department, assignments, row: customerContact }), [CUSTOMER, SELLER].sort(),
-    "customer contacts replicate only to the customer and their seller");
+  assert.deepEqual(names(ADMIN), ["Seller"], "the org admin never sees customer contacts");
+  assert.deepEqual(audience("contact", { department, assignments, row: customerContact }),
+    [CUSTOMER, SELLER].sort(), "customer contacts reach only the customer and purchasing seller");
   assert.deepEqual(audience("contact", { department, assignments, row: sellerContact }),
     [ADMIN, MANAGER, SELLER, CUSTOMER].sort(), "other contacts still reach the whole team");
 });
