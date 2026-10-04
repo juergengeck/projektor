@@ -261,7 +261,7 @@ export async function startLabInstance({ brand, port, key, directory, createMess
     });
     registry.register("lab", plan, {
       description: `${label} department operations over ONE storage`,
-      methods: ["whoAmI", "createDepartment", "assignRole", "publishContact", "publishOffer", "stockUp", "shareOffer", "shareOfferWithSeller", "placeOrder", "buy", "admitOrder", "getDepartment", "setOnline", "createIoMInvite", "awaitIoMInvite", "acceptIoMInvite"]
+      methods: ["whoAmI", "createDepartment", "assignRole", "publishContact", "publishOffer", "stockUp", "shareOffer", "shareOfferWithSeller", "acceptOffer", "placeOrder", "buy", "admitOrder", "getDepartment", "setOnline", "createIoMInvite", "awaitIoMInvite", "acceptIoMInvite"]
         .map(name => ({ name, description: `lab.${name}` })),
     });
     registry.register("chat", chatPlan, {

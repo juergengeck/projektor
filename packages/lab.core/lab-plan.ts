@@ -6,6 +6,7 @@
  * re-project authority locally. Nothing here knows about other workers.
  */
 import { storeVersionedObject, getObjectByIdHash, hasVersionHead, isMissingVersionHeadError } from "../../../one/packages/one.core/lib/storage-versioned-objects.js";
+import { getObject } from "../../../one/packages/one.core/lib/storage-unversioned-objects.js";
 import { calculateIdHashOfObj } from "../../../one/packages/one.core/lib/util/object.js";
 import { getAllIdObjectEntries } from "../../../one/packages/one.core/lib/reverse-map-query.js";
 import { createAccess } from "../../../one/packages/one.core/lib/access.js";
@@ -28,6 +29,7 @@ import type {
   LabObject,
   LabOffer,
   LabOfferShare,
+  LabOfferAcceptance,
   LabOrder,
   LabPurchaseDecision,
   LabPurchaseRequest,
@@ -48,6 +50,11 @@ interface DepartmentState {
   contacts: LabContact[];
   offers: LabOffer[];
   orders: LabOrder[];
+  offerAcceptances: LabOfferAcceptance[];
+  offerShares: LabOfferShare[];
+  offerHandoffs: Record<string, LabOfferShare>;
+  offerIdHashes: Record<string, string>;
+  offerVersions: Record<string, { offer: LabOffer; idHash: string }>;
   purchaseRequests: LabPurchaseRequest[];
   purchaseDecisions: LabPurchaseDecision[];
   stock: LabStockReceipt[];
@@ -72,18 +79,18 @@ export function createLabPlan({ brand, connections, iomConnections, now = () => 
 }) {
   const { types } = createLabRecipes(brand);
   const objects = createLabObjects(brand);
-  const { stock, audience, canPublish, projectDepartment, rolesOf, owningSellers } = createProjection(brand);
+  const { stock, audience, canPublish, projectDepartment, rolesOf, owningSellers, validSellerOfferShare } = createProjection(brand);
   const KIND_OF_TYPE: Record<string, string> = {
     [types.Department]: "department", [types.RoleAssignment]: "assignment", [types.Contact]: "contact",
     [types.Offer]: "offer", [types.Order]: "order", [types.PurchaseRequest]: "purchase-request",
     [types.PurchaseDecision]: "purchase-decision", [types.StockReceipt]: "stock",
-    [types.OfferShare]: "offer-share",
+    [types.OfferShare]: "offer-share", [types.OfferAcceptance]: "offer-acceptance",
   };
   const ID_FIELD: Record<string, string> = {
     [types.Department]: "department", [types.RoleAssignment]: "subject", [types.Contact]: "person",
     [types.Offer]: "offerId", [types.Order]: "idempotencyKey", [types.PurchaseRequest]: "idempotencyKey",
     [types.PurchaseDecision]: "idempotencyKey", [types.StockReceipt]: "receiptId",
-    [types.OfferShare]: "offer",
+    [types.OfferShare]: "offer", [types.OfferAcceptance]: "idempotencyKey",
   };
   const fail = (message: string): never => { throw new Error(`${brand.label}: ${message}`); };
   const self = (): string => {
@@ -130,7 +137,7 @@ export function createLabPlan({ brand, connections, iomConnections, now = () => 
   }
 
   async function loadByIdHash(deptIdHash: string): Promise<DepartmentState> {
-    const [assignments, contacts, offers, orders, purchaseRequests, purchaseDecisions, stock] = await Promise.all([
+    const [assignments, contacts, offers, orders, purchaseRequests, purchaseDecisions, stock, offerAcceptances, offerShares] = await Promise.all([
       latest<LabRoleAssignment>(await getAllIdObjectEntries(idHashOf(deptIdHash), typeNameOf(types.RoleAssignment))),
       latest<LabContact>(await getAllIdObjectEntries(idHashOf(deptIdHash), typeNameOf(types.Contact))),
       latest<LabOffer>(await getAllIdObjectEntries(idHashOf(deptIdHash), typeNameOf(types.Offer))),
@@ -138,7 +145,20 @@ export function createLabPlan({ brand, connections, iomConnections, now = () => 
       latest<LabPurchaseRequest>(await getAllIdObjectEntries(idHashOf(deptIdHash), typeNameOf(types.PurchaseRequest))),
       latest<LabPurchaseDecision>(await getAllIdObjectEntries(idHashOf(deptIdHash), typeNameOf(types.PurchaseDecision))),
       latest<LabStockReceipt>(await getAllIdObjectEntries(idHashOf(deptIdHash), typeNameOf(types.StockReceipt))),
+      latest<LabOfferAcceptance>(await getAllIdObjectEntries(idHashOf(deptIdHash), typeNameOf(types.OfferAcceptance))),
+      latest<LabOfferShare>(await getAllIdObjectEntries(idHashOf(deptIdHash), typeNameOf(types.OfferShare))),
     ]);
+    const offerVersions: DepartmentState["offerVersions"] = {};
+    const offerHandoffs: DepartmentState["offerHandoffs"] = {};
+    const offerIdHashes: DepartmentState["offerIdHashes"] = {};
+    for (const offer of offers) offerIdHashes[offer.offerId] = await calculateIdHashOfObj(versioned(offer));
+    for (const acceptance of offerAcceptances) {
+      const offer = await getObject(acceptance.offerVersion) as unknown as LabOffer;
+      offerVersions[acceptance.offerVersion] = { offer, idHash: await calculateIdHashOfObj(versioned(offer)) };
+      if (acceptance.handoff !== acceptance.offerVersion) {
+        offerHandoffs[acceptance.handoff] = await getObject(acceptance.handoff) as unknown as LabOfferShare;
+      }
+    }
     // Not yet replicated is a normal state, asked explicitly — no error swallowing.
     let departmentObj: LabDepartment | null = null;
     if (await hasVersionHead(idHashOf(deptIdHash))) {
@@ -151,9 +171,9 @@ export function createLabPlan({ brand, connections, iomConnections, now = () => 
       }
     }
     if (!departmentObj) {
-      return { deptIdHash, department: null, assignments, contacts, offers, orders, purchaseRequests, purchaseDecisions, stock };
+      return { deptIdHash, department: null, assignments, contacts, offers, orders, purchaseRequests, purchaseDecisions, stock, offerAcceptances, offerShares, offerVersions, offerHandoffs, offerIdHashes };
     }
-    return { deptIdHash, department: departmentObj, assignments, contacts, offers, orders, purchaseRequests, purchaseDecisions, stock };
+    return { deptIdHash, department: departmentObj, assignments, contacts, offers, orders, purchaseRequests, purchaseDecisions, stock, offerAcceptances, offerShares, offerVersions, offerHandoffs, offerIdHashes };
   }
 
   async function load(department: string): Promise<DepartmentState> {
@@ -330,7 +350,11 @@ export function createLabPlan({ brand, connections, iomConnections, now = () => 
       if (!required || (!roles.has(required) && self() !== state.department.admin)) continue;
       const recipientRoles = rolesOf({ department: state.department, assignments: state.assignments, subject: share.recipient, atTime: now() });
       if (!recipientRoles.has(share.recipientRole)) continue;
-      if (await hasVersionHead(idHashOf(share.offer))) await grant(share.offer, [share.recipient]);
+      if (brand.id === "igm" && share.recipientRole === "seller" && !validSellerOfferShare({ department: state.department, assignments: state.assignments, share, recipient: share.recipient, offer: share.offer, atTime: now() })) continue;
+      if (await hasVersionHead(idHashOf(share.offer))) {
+        if (brand.id === "igm" && share.recipientRole === "seller") await grant(await calculateIdHashOfObj(versioned(share)), [share.recipient]);
+        await grant(share.offer, [share.recipient]);
+      }
     }
   }
 
@@ -338,7 +362,7 @@ export function createLabPlan({ brand, connections, iomConnections, now = () => 
     const intent = objects.createOfferShare({
       department: state.deptIdHash, offer, recipient, recipientRole, sharedBy: self(), sharedAt: now(),
     });
-    await grant(await calculateIdHashOfObj(versioned(intent)), [self()]);
+    await grant(await calculateIdHashOfObj(versioned(intent)), brand.id === "igm" && recipientRole === "seller" ? [self(), recipient] : [self()]);
     await storeVersionedObject(versioned(intent));
   }
 
@@ -348,7 +372,7 @@ export function createLabPlan({ brand, connections, iomConnections, now = () => 
     for (const row of state.assignments) await grant(await calculateIdHashOfObj(versioned(row)), team);
     // Membership disclosure belongs to the appointing person. Private contacts
     // retain their own audience rather than becoming a team-wide directory.
-    for (const row of [...state.contacts, ...state.offers, ...state.orders, ...state.purchaseRequests, ...state.purchaseDecisions]) {
+    for (const row of [...state.contacts, ...state.offers, ...state.orders, ...state.offerAcceptances, ...state.purchaseRequests, ...state.purchaseDecisions]) {
       await grant(await calculateIdHashOfObj(versioned(row)), audience(KIND_OF_TYPE[row.$type$], {
         department: state.department, assignments: state.assignments, row,
       }));
@@ -380,6 +404,7 @@ export function createLabPlan({ brand, connections, iomConnections, now = () => 
         case types.RoleAssignment: return (row as LabRoleAssignment).issuer === author;
         case types.Contact: return (row as LabContact).person === author && (row as LabContact).publishedBy === author;
         case types.Offer: return (row as LabOffer).publishedBy === author;
+        case types.OfferAcceptance: return (row as LabOfferAcceptance).acceptedBy === author;
         case types.StockReceipt: return (row as LabStockReceipt).receivedBy === author;
         case types.PurchaseRequest: return (row as LabPurchaseRequest).customer === author;
         case types.PurchaseDecision: return (row as LabPurchaseDecision).seller === author;
@@ -396,7 +421,7 @@ export function createLabPlan({ brand, connections, iomConnections, now = () => 
     // published before their seller was appointed). Foreign rows keep their
     // existing disclosure; an offer audience never includes explicit shares.
     const rows: LabObject[] = [types.Department, types.RoleAssignment].includes(type)
-      ? [state.department, ...state.assignments, ...state.contacts, ...state.offers, ...state.orders,
+      ? [state.department, ...state.assignments, ...state.contacts, ...state.offers, ...state.orders, ...state.offerAcceptances,
         ...state.purchaseRequests, ...state.purchaseDecisions, ...state.stock]
       : [result.obj as unknown as LabObject];
     for (const row of rows) {
@@ -534,6 +559,63 @@ export function createLabPlan({ brand, connections, iomConnections, now = () => 
       await grant(idHash, [seller]);
       await recordOfferShare(state, idHash, seller, "seller");
       return { idHash };
+    },
+
+    /** Acknowledges an upstream IGM offer without settling inventory or money. */
+    async acceptOffer({ department, offerId, quantity, idempotencyKey }: {
+      department: string; offerId: string; quantity: number; idempotencyKey?: string;
+    }): Promise<{ idHash: string; idempotencyKey: string }> {
+      return serializedAdmit(async () => {
+        const state = await requireDepartment(department);
+        const author = self();
+        const roleContext = { department: state.department, assignments: state.assignments, atTime: now() };
+        if (!canPublish("offer-acceptance", { ...roleContext, author })) fail("only IGM managers or sellers may accept upstream offers.");
+        if (!state.offers.some(entry => entry.offerId === offerId)) return fail(`offer ${offerId} is not known in ${department}.`);
+        const offerHash = await offerIdHash(state, offerId);
+        if (!offerHash) return fail(`offer ${offerId} has not reached this instance.`);
+        const key = idempotencyKey ?? `accept-${offerHash}-${author}`;
+        const existing = state.offerAcceptances.find(entry => entry.idempotencyKey === key);
+        if (existing) {
+          if (existing.acceptedBy !== author || existing.offer !== offerHash || existing.quantity !== quantity) fail(`acceptance retry ${key} does not match the original acceptance.`);
+          const idHash = await calculateIdHashOfObj(versioned(existing));
+          await grant(idHash, audience("offer-acceptance", { department: state.department, assignments: state.assignments, row: existing }));
+          return { idHash, idempotencyKey: key };
+        }
+        const roles = rolesOf({ ...roleContext, subject: author });
+        const offerRoot = await getObjectByIdHash(idHashOf(offerHash));
+        const offer = offerRoot.obj as unknown as LabOffer;
+        const offerVersion = offerRoot.hash;
+        if (!canPublish("offer", { ...roleContext, author: offer.publishedBy })) return fail(`offer ${offerId} publisher is not authorized.`);
+        if (offer.publishedBy === author) fail("an offer publisher may not accept their own offer.");
+        let acceptedFrom: string;
+        let handoff: string;
+        if (roles.has("manager")) {
+          if (offer.publishedBy !== state.department.admin) fail("managers may accept only department-admin offers.");
+          acceptedFrom = offer.publishedBy;
+          handoff = offerVersion;
+        } else {
+          const shares: { share: LabOfferShare; hash: string }[] = [];
+          for (const candidate of state.offerShares) {
+            const root = await getObjectByIdHash(idHashOf(await calculateIdHashOfObj(versioned(candidate))));
+            const share = root.obj as unknown as LabOfferShare;
+            if (share.department === state.deptIdHash && validSellerOfferShare({
+              department: state.department, assignments: state.assignments, share, recipient: author, offer: offerHash, atTime: roleContext.atTime,
+            })) shares.push({ share, hash: root.hash });
+          }
+          shares.sort((a, b) => b.share.sharedAt - a.share.sharedAt || a.share.sharedBy.localeCompare(b.share.sharedBy));
+          const selected = shares[0];
+          if (!selected) return fail("sellers may accept only offers shared by an upstream manager or admin.");
+          acceptedFrom = selected.share.sharedBy;
+          handoff = selected.hash;
+        }
+        const acceptance = objects.createOfferAcceptance({ department: state.deptIdHash, idempotencyKey: key,
+          offer: offerHash, offerVersion, handoff, offerId, quantity, acceptedBy: author, acceptedFrom,
+          acceptedAt: roleContext.atTime, unitAmount: offer.unitAmount, currency: offer.currency });
+        const idHash = await calculateIdHashOfObj(versioned(acceptance));
+        await grant(idHash, audience("offer-acceptance", { department: state.department, assignments: state.assignments, row: acceptance }));
+        await storeVersionedObject(versioned(acceptance));
+        return { idHash, idempotencyKey: key };
+      });
     },
 
     /**

@@ -13,11 +13,11 @@ const { types } = createLabRecipes(brand);
 
 test("stored recipe names are exactly today's names", () => {
   assert.deepEqual(createLabRecipes(AMWAY).recipes.map(recipe => recipe.name),
-    ["AmwayDepartment", "AmwayRoleAssignment", "AmwayContact", "AmwayOffer", "AmwayOrder", "AmwayPurchaseRequest", "AmwayPurchaseDecision", "AmwayStockReceipt", "AmwayOfferShare"]);
+    ["AmwayDepartment", "AmwayRoleAssignment", "AmwayContact", "AmwayOffer", "AmwayOrder", "AmwayPurchaseRequest", "AmwayPurchaseDecision", "AmwayStockReceipt", "AmwayOfferShare", "AmwayOfferAcceptance"]);
   assert.deepEqual(createLabRecipes(EK).recipes.map(recipe => recipe.name),
-    ["EkDepartment", "EkRoleAssignment", "EkContact", "EkOffer", "EkOrder", "EkPurchaseRequest", "EkPurchaseDecision", "EkStockReceipt", "EkOfferShare"]);
+    ["EkDepartment", "EkRoleAssignment", "EkContact", "EkOffer", "EkOrder", "EkPurchaseRequest", "EkPurchaseDecision", "EkStockReceipt", "EkOfferShare", "EkOfferAcceptance"]);
   assert.deepEqual(createLabRecipes(IGM).recipes.map(recipe => recipe.name),
-    ["IgmDepartment", "IgmRoleAssignment", "IgmContact", "IgmOffer", "IgmOrder", "IgmPurchaseRequest", "IgmPurchaseDecision", "IgmStockReceipt", "IgmOfferShare"]);
+    ["IgmDepartment", "IgmRoleAssignment", "IgmContact", "IgmOffer", "IgmOrder", "IgmPurchaseRequest", "IgmPurchaseDecision", "IgmStockReceipt", "IgmOfferShare", "IgmOfferAcceptance"]);
 });
 
 test("department references allow only the brand's department type", () => {

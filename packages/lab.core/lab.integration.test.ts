@@ -700,3 +700,53 @@ test("seller and customer chat over the topic channel", async () => {
     /cannot chat with yourself/,
   );
 });
+
+
+test("IGM accepts upstream offers idempotently without stock settlement", { skip: brand.id !== "igm", timeout: 60_000 }, async () => {
+  const department = brand.department.id;
+  const offerId = "acceptance-upstream";
+  type AcceptanceView = DepartmentView & {
+    acceptableOffers: string[];
+    balances: unknown[];
+    offerAcceptances: { idempotencyKey: string; offer: string; quantity: number; acceptedBy: string; acceptedFrom: string; acceptedAt: number; unitAmount: number }[];
+  };
+  const before = await clients().admin.call<AcceptanceView>("lab", "getDepartment", { department });
+  const managerOffer = feedUntil(clients().manager, row => row.type === types.Offer && row.id === offerId, "admin publication reaches manager");
+  await clients().admin.call("lab", "publishOffer", { department, offerId, item: "ITEM", priceList: "acceptance", unitAmount: 350, currency: "EUR" });
+  await managerOffer;
+  const managerReady = await clients().manager.call<AcceptanceView>("lab", "getDepartment", { department });
+  assert.ok(managerReady.acceptableOffers.includes(offerId));
+  assert.equal((await clients().seller.call<AcceptanceView>("lab", "getDepartment", { department })).acceptableOffers.includes(offerId), false);
+  for (const role of ["admin", "customer"]) await assert.rejects(clients()[role].call("lab", "acceptOffer", { department, offerId, quantity: 2 }), /only IGM managers or sellers/);
+  await clients().manager.call("lab", "publishOffer", { department, offerId: "acceptance-own", item: "ITEM", priceList: "own", unitAmount: 100, currency: "EUR" });
+  await assert.rejects(clients().manager.call("lab", "acceptOffer", { department, offerId: "acceptance-own", quantity: 2 }), /own offer/);
+  await assert.rejects(clients().manager.call("lab", "acceptOffer", { department, offerId, quantity: 0 }), /quantity/);
+  const upstream = feedUntil(clients().admin, row => row.type === types.OfferAcceptance && row.obj.acceptedBy === persons().manager, "manager acceptance reports upstream");
+  const [accepted, duplicate] = await Promise.all([1, 2].map(() => clients().manager.call<{ idHash: string; idempotencyKey: string }>("lab", "acceptOffer", { department, offerId, quantity: 2 })));
+  assert.deepEqual(duplicate, accepted);
+  await upstream;
+  await assert.rejects(clients().manager.call("lab", "acceptOffer", { department, offerId, quantity: 3 }), /does not match/);
+  const sellerReady = feedUntil(clients().seller, row => row.type === types.OfferShare && row.obj.recipient === persons().seller && row.obj.offer !== undefined, "seller receives typed handoff provenance");
+  await clients().manager.call("lab", "shareOfferWithSeller", { department, offerId, seller: persons().seller });
+  await sellerReady;
+  const ready = await clients().seller.call<AcceptanceView>("lab", "getDepartment", { department });
+  assert.ok(ready.acceptableOffers.includes(offerId));
+  const sellerUpstream = ["admin", "manager"].map(role => feedUntil(clients()[role], row => row.type === types.OfferAcceptance && row.obj.acceptedBy === persons().seller, `${role} receives seller acceptance`));
+  const sellerAccepted = await clients().seller.call("lab", "acceptOffer", { department, offerId, quantity: 4 });
+  await Promise.all(sellerUpstream);
+  const admin = await clients().admin.call<AcceptanceView>("lab", "getDepartment", { department });
+  const rows = admin.offerAcceptances.filter(row => row.offer === offerId);
+  assert.equal(rows.length, 2);
+  assert.deepEqual(rows.map(row => [row.acceptedBy, row.acceptedFrom, row.quantity]), [[persons().manager, persons().admin, 2], [persons().seller, persons().manager, 4]]);
+  assert.deepEqual(admin.availability, before.availability);
+  assert.deepEqual(admin.balances, before.balances);
+  assert.deepEqual(admin.orders, before.orders);
+  assert.equal((await clients().customer.call<AcceptanceView>("lab", "getDepartment", { department })).offerAcceptances.length, 0);
+  const seller = await clients().seller.call<AcceptanceView>("lab", "getDepartment", { department });
+  assert.equal(seller.offerAcceptances.filter(row => row.offer === offerId).length, 1);
+  await clients().admin.call("lab", "publishOffer", { department, offerId, item: "ITEM", priceList: "new-price", unitAmount: 700, currency: "EUR" });
+  await clients().manager.call("lab", "shareOfferWithSeller", { department, offerId, seller: persons().seller });
+  assert.deepEqual(await clients().seller.call("lab", "acceptOffer", { department, offerId, quantity: 4 }), sellerAccepted);
+  const after = await clients().admin.call<AcceptanceView>("lab", "getDepartment", { department });
+  assert.deepEqual(after.offerAcceptances.filter(row => row.offer === offerId), rows, "price edits and re-sharing do not rewrite accepted history");
+});

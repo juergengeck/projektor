@@ -9,6 +9,8 @@ import type {
   LabDepartment,
   LabObject,
   LabOffer,
+  LabOfferShare,
+  LabOfferAcceptance,
   LabOrder,
   LabPurchaseDecision,
   LabPurchaseRequest,
@@ -17,8 +19,8 @@ import type {
 } from "./recipes.ts";
 import type { LabBrand } from "./brand.ts";
 
-export type PublishKind = "contact" | "offer" | "order" | "purchase-request" | "purchase-decision" | "assignment" | "stock";
-export type AudienceKind = "department" | "assignment" | "contact" | "offer" | "order" | "purchase-request" | "purchase-decision" | "stock";
+export type PublishKind = "contact" | "offer" | "order" | "purchase-request" | "purchase-decision" | "offer-acceptance" | "assignment" | "stock";
+export type AudienceKind = "department" | "assignment" | "contact" | "offer" | "order" | "purchase-request" | "purchase-decision" | "offer-acceptance" | "stock";
 
 export interface Rejection {
   type: string;
@@ -39,6 +41,10 @@ export interface DepartmentProjection {
    * orders instead of the global settlement.
    */
   orders: LabOrder[];
+  /** Intermediate IGM handoffs: no inventory deduction or money effect. */
+  offerAcceptances: OfferAcceptance[];
+  /** Visible IGM offers with an authorized upstream publication/share ready to accept. */
+  acceptableOffers: string[];
   /** Placed but unadmitted orders (`admittedAt === 0`), awaiting the seller. */
   pendingOrders: LabOrder[];
   /** Terminal automatic-purchase failures. Failed requests are no longer pending. */
@@ -53,6 +59,11 @@ export interface DepartmentProjection {
    */
   balances: Balance[];
   rejected: Rejection[];
+}
+
+export interface OfferAcceptance {
+  idempotencyKey: string; offer: string; offerIdHash: string; quantity: number;
+  acceptedBy: string; acceptedFrom: string; acceptedAt: number; unitAmount: number; currency: string;
 }
 
 export interface PurchaseFailure {
@@ -133,6 +144,7 @@ function canPublish(kind: string, { department, assignments, author, subject, at
   const staff = roles.has("admin") || roles.has("manager");
   if (kind === "contact") return author === subject || staff;
   if (kind === "offer") return staff;
+  if (kind === "offer-acceptance") return brand.id === "igm" && (roles.has("manager") || roles.has("seller")) && !roles.has("admin");
   // Stocking up is purchasing's job: the department admin — and only the
   // admin — receives goods into inventory.
   if (kind === "stock") return roles.has("admin");
@@ -149,13 +161,34 @@ function canPublish(kind: string, { department, assignments, author, subject, at
   throw new Error(`${brand.label}: unknown publish kind ${kind}.`);
 }
 
+function validSellerOfferShare({ department, assignments, share, recipient, offer, atTime }: {
+  department: LabDepartment; assignments: LabRoleAssignment[]; share: LabOfferShare;
+  recipient: string; offer: string; atTime: number;
+}): boolean {
+  const rolesAt = (subject: string, time: number) => rolesOf({ department, assignments, subject, atTime: time });
+  const upstream = (time: number) => {
+    const roles = rolesAt(share.sharedBy, time);
+    return roles.has("manager") || roles.has("admin");
+  };
+  return share.$type$ === types.OfferShare && share.offer === offer && share.recipient === recipient &&
+    share.recipientRole === "seller" && share.sharedAt <= atTime && upstream(share.sharedAt) && upstream(atTime) &&
+    rolesAt(recipient, share.sharedAt).has("seller") && rolesAt(recipient, atTime).has("seller");
+}
+
 function audience(kind: string, { department, assignments, row }: {
   department: LabDepartment;
   assignments: LabRoleAssignment[];
   row: LabObject;
 }): string[] {
   const people = new Set<string>([department.admin]);
-  if (kind === "order") {
+  if (kind === "offer-acceptance") {
+    const acceptance = row as LabOfferAcceptance;
+    people.add(acceptance.acceptedBy);
+    people.add(acceptance.acceptedFrom);
+    for (const entry of assignments) {
+      if (rolesOf({ department, assignments, subject: entry.subject, atTime: acceptance.acceptedAt }).has("manager")) people.add(entry.subject);
+    }
+  } else if (kind === "order") {
     // Placed orders stay between the two parties; the admitted purchase is
     // shared down with the customer and reported up to staff.
     if ("admittedAt" in row && (row.admittedAt as number) === 0) {
@@ -218,14 +251,21 @@ function audience(kind: string, { department, assignments, row }: {
 }
 
 
-function projectDepartment({ department, assignments, contacts, offers, orders, purchaseRequests = [], purchaseDecisions = [], stock, viewer, atTime }: {
+function projectDepartment({ department, deptIdHash, assignments, contacts, offers, orders, purchaseRequests = [], purchaseDecisions = [], offerAcceptances = [], offerShares = [], offerHandoffs = {}, offerVersions = {}, offerIdHashes = {}, stock, viewer, atTime }: {
   department: LabDepartment;
+  deptIdHash?: string;
   assignments: LabRoleAssignment[];
   contacts: LabContact[];
   offers: LabOffer[];
   orders: LabOrder[];
   purchaseRequests?: LabPurchaseRequest[];
   purchaseDecisions?: LabPurchaseDecision[];
+  offerAcceptances?: LabOfferAcceptance[];
+  offerShares?: LabOfferShare[];
+  offerHandoffs?: Record<string, LabOfferShare>;
+  offerIdHashes?: Record<string, string>;
+  /** Exact offer versions reached through acceptance's recipe reference. */
+  offerVersions?: Record<string, { offer: LabOffer; idHash: string }>;
   stock: LabStockReceipt[];
   viewer: string;
   atTime: number;
@@ -311,6 +351,41 @@ function projectDepartment({ department, assignments, contacts, offers, orders, 
       } satisfies PurchaseFailure];
     })
     .sort((a, b) => a.decidedAt - b.decidedAt || (a.idempotencyKey < b.idempotencyKey ? -1 : 1));
+  const acceptedOffers = offerAcceptances.filter(entry => {
+    const version = offerVersions[entry.offerVersion];
+    const offer = version?.offer;
+    const roleContext = { department, assignments, atTime: entry.acceptedAt };
+    const acceptorRoles = rolesOf({ ...roleContext, subject: entry.acceptedBy });
+    const sourceRoles = rolesOf({ ...roleContext, subject: entry.acceptedFrom });
+    const validOffer = entry.department === deptIdHash && offer && version.idHash === entry.offer && offer.$type$ === types.Offer && offer.department === entry.department && offer.offerId === entry.offerId &&
+      offer.publishedBy !== entry.acceptedBy && offer.unitAmount === entry.unitAmount && offer.currency === entry.currency &&
+      canPublish("offer", { ...roleContext, author: offer.publishedBy });
+    const fromPublication = acceptorRoles.has("manager") && entry.acceptedFrom === department.admin &&
+      offer?.publishedBy === department.admin && entry.handoff === entry.offerVersion;
+    const fromShare = acceptorRoles.has("seller") && (sourceRoles.has("manager") || sourceRoles.has("admin")) &&
+      (() => {
+        const share = offerHandoffs[entry.handoff];
+        return share && share.department === entry.department && share.sharedBy === entry.acceptedFrom &&
+          validSellerOfferShare({ department, assignments, share, recipient: entry.acceptedBy, offer: entry.offer, atTime: entry.acceptedAt });
+      })();
+    if (validOffer && (fromPublication || fromShare) && entry.acceptedAt <= atTime &&
+      canPublish("offer-acceptance", { ...roleContext, author: entry.acceptedBy }) &&
+      Number.isSafeInteger(entry.quantity) && entry.quantity > 0) return true;
+    rejected.push({ type: types.OfferAcceptance, id: entry.idempotencyKey, reason: "invalid-offer-handoff" });
+    return false;
+  }).filter(entry => audience("offer-acceptance", { department, assignments, row: entry }).includes(viewer))
+    .sort((a, b) => a.acceptedAt - b.acceptedAt || a.idempotencyKey.localeCompare(b.idempotencyKey))
+    .map(entry => ({ idempotencyKey: entry.idempotencyKey, offer: entry.offerId, offerIdHash: entry.offer,
+      quantity: entry.quantity, acceptedBy: entry.acceptedBy, acceptedFrom: entry.acceptedFrom,
+      acceptedAt: entry.acceptedAt, unitAmount: entry.unitAmount, currency: entry.currency }));
+  const acceptableOffers = canPublish("offer-acceptance", { department, assignments, author: viewer, atTime })
+    ? offers.filter(offer => {
+      if (offer.publishedBy === viewer || !canPublish("offer", { department, assignments, author: offer.publishedBy, atTime })) return false;
+      if (viewerRoles.has("manager")) return offer.publishedBy === department.admin;
+      return offerShares.some(share => share.department === offer.department && validSellerOfferShare({
+        department, assignments, share, recipient: viewer, offer: offerIdHashes[offer.offerId], atTime,
+      }));
+    }).map(offer => offer.offerId).sort() : [];
   const staffViewer = viewerRoles.has("admin") || viewerRoles.has("manager");
   const balancesByKey = new Map<string, Balance>();
   const addBalance = (party: string, role: Balance["role"], receivable: number, payable: number, currency: string): void => {
@@ -343,6 +418,8 @@ function projectDepartment({ department, assignments, contacts, offers, orders, 
     }),
     offers: offers.filter(entry => admit("offer", types.Offer, entry.offerId, entry.publishedBy)),
     orders: listedOrders,
+    offerAcceptances: acceptedOffers,
+    acceptableOffers,
     pendingOrders: scopeToViewer(pendingOrders),
     purchaseFailures,
     availability: staffViewer
@@ -352,5 +429,5 @@ function projectDepartment({ department, assignments, contacts, offers, orders, 
     rejected,
   };
 }
-  return { stock: stockIdentity, rolesOf, owningSellers, canPublish, audience, projectDepartment };
+  return { stock: stockIdentity, rolesOf, owningSellers, canPublish, audience, validSellerOfferShare, projectDepartment };
 }

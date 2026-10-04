@@ -4,11 +4,12 @@
  * id-object reverse map instead of any host-maintained index. Type names
  * come from the brand and are the stored ONE type names; never rename them.
  */
+import type { SHA256IdHash, SHA256Hash } from "../../../one/packages/one.core/lib/util/type-checks.js";
 import type { LabBrand } from "./brand.ts";
 
 export const LAB_ROLES = ["admin", "manager", "seller", "customer"] as const;
 export type LabRole = (typeof LAB_ROLES)[number];
-export const LAB_KINDS = ["Department", "RoleAssignment", "Contact", "Offer", "Order", "PurchaseRequest", "PurchaseDecision", "StockReceipt", "OfferShare"] as const;
+export const LAB_KINDS = ["Department", "RoleAssignment", "Contact", "Offer", "Order", "PurchaseRequest", "PurchaseDecision", "StockReceipt", "OfferShare", "OfferAcceptance"] as const;
 export type LabKind = (typeof LAB_KINDS)[number];
 
 interface RecipeRule {
@@ -44,6 +45,7 @@ export function createLabRecipes(brand: LabBrand) {
     { $type$: "Recipe", name: types.PurchaseDecision, rule: [departmentRef, text("idempotencyKey", true), person("customer"), person("seller"), text("outcome"), text("reason"), integer("decidedAt")] },
     { $type$: "Recipe", name: types.StockReceipt, rule: [departmentRef, text("receiptId", true), text("lot"), text("facility"), integer("quantity"), person("receivedBy"), integer("receivedAt")] },
     { $type$: "Recipe", name: types.OfferShare, rule: [departmentRef, { itemprop: "offer", isId: true, itemtype: { type: "referenceToId", allowedTypes: new Set([types.Offer]) } }, person("sharedBy", true), person("recipient", true), text("recipientRole"), integer("sharedAt")] },
+    { $type$: "Recipe", name: types.OfferAcceptance, rule: [departmentRef, text("idempotencyKey", true), { itemprop: "offer", itemtype: { type: "referenceToId", allowedTypes: new Set([types.Offer]) } }, { itemprop: "offerVersion", itemtype: { type: "referenceToObj", allowedTypes: new Set([types.Offer]) } }, { itemprop: "handoff", itemtype: { type: "referenceToObj", allowedTypes: new Set([types.Offer, types.OfferShare]) } }, text("offerId"), integer("quantity"), person("acceptedBy"), person("acceptedFrom"), integer("acceptedAt"), integer("unitAmount"), text("currency")] },
   ];
   const reverseMapsForIdObjects: [string, Set<string>][] = LAB_KINDS
     .filter(kind => kind !== "Department")
@@ -65,7 +67,13 @@ export interface LabStockReceipt { $type$: string; department: string; receiptId
 export interface LabPurchaseRequest { $type$: string; department: string; idempotencyKey: string; customer: string; seller: string; requestedAt: number }
 export interface LabPurchaseDecision { $type$: string; department: string; idempotencyKey: string; customer: string; seller: string; outcome: "rejected"; reason: "out-of-stock"; decidedAt: number }
 export interface LabOfferShare { $type$: string; department: string; offer: string; sharedBy: string; recipient: string; recipientRole: "seller" | "customer"; sharedAt: number }
-export type LabObject = LabDepartment | LabRoleAssignment | LabContact | LabOffer | LabOrder | LabPurchaseRequest | LabPurchaseDecision | LabStockReceipt | LabOfferShare;
+/** A handoff acknowledgement, independent of stock settlement and accounting. */
+export interface LabOfferAcceptance {
+  $type$: string; department: SHA256IdHash<never>; idempotencyKey: string;
+  offer: SHA256IdHash<never>; offerVersion: SHA256Hash<never>; handoff: SHA256Hash<never>; offerId: string;
+  quantity: number; acceptedBy: string; acceptedFrom: string; acceptedAt: number; unitAmount: number; currency: string;
+}
+export type LabObject = LabDepartment | LabRoleAssignment | LabContact | LabOffer | LabOrder | LabPurchaseRequest | LabPurchaseDecision | LabStockReceipt | LabOfferShare | LabOfferAcceptance;
 
 const HASH = /^[0-9a-f]{64}$/;
 
@@ -113,6 +121,17 @@ export function createLabObjects(brand: LabBrand) {
     } = {}): LabOffer {
       const amount = positive(unitAmount, "unitAmount must be a positive integer (minor units).");
       return { $type$: types.Offer, department: hash(department, "department"), offerId: nonEmpty(offerId, "offerId"), item: nonEmpty(item, "item"), priceList: nonEmpty(priceList, "priceList"), channel: nonEmpty(channel, "channel"), unitAmount: amount, currency: nonEmpty(currency, "currency"), publishedBy: hash(publishedBy, "publishedBy") };
+    },
+    createOfferAcceptance({ department, idempotencyKey, offer, offerVersion, handoff, offerId, quantity, acceptedBy, acceptedFrom, acceptedAt, unitAmount, currency }: {
+      department?: unknown; idempotencyKey?: unknown; offer?: unknown; offerVersion?: unknown; handoff?: unknown; offerId?: unknown;
+      quantity?: unknown; acceptedBy?: unknown; acceptedFrom?: unknown; acceptedAt?: unknown; unitAmount?: unknown; currency?: unknown;
+    } = {}): LabOfferAcceptance {
+      return { $type$: types.OfferAcceptance, department: hash(department, "department") as SHA256IdHash<never>,
+        idempotencyKey: nonEmpty(idempotencyKey, "idempotencyKey"), offer: hash(offer, "offer") as SHA256IdHash<never>,
+        offerVersion: hash(offerVersion, "offerVersion") as SHA256Hash<never>, handoff: hash(handoff, "handoff") as SHA256Hash<never>,
+        offerId: nonEmpty(offerId, "offerId"), quantity: positive(quantity, "quantity must be a positive integer."),
+        acceptedBy: hash(acceptedBy, "acceptedBy"), acceptedFrom: hash(acceptedFrom, "acceptedFrom"), acceptedAt: timestamp(acceptedAt, "acceptedAt"),
+        unitAmount: positive(unitAmount, "unitAmount must be a positive integer (minor units)."), currency: nonEmpty(currency, "currency") };
     },
     createOfferShare({ department, offer, sharedBy, recipient, recipientRole, sharedAt }: {
       department?: unknown; offer?: unknown; sharedBy?: unknown; recipient?: unknown; recipientRole?: unknown; sharedAt?: unknown;

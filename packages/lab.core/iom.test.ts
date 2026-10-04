@@ -262,6 +262,22 @@ test("IoM forwards received mesh content historically and live in both direction
   "second device receives historical department, assignments, offer and stock");
   assert.equal(historical.known, true);
 
+  if (brand.id === "igm") {
+    type AcceptanceView = DepartmentView & { acceptableOffers: string[]; offerAcceptances: { idempotencyKey: string; acceptedFrom: string; quantity: number }[] };
+    await departmentUntil(deviceB.client, view => (view as AcceptanceView).acceptableOffers?.includes(offer.offerId),
+      "second seller device receives share provenance required to accept");
+    const accepted = await deviceB.client.call<{ idempotencyKey: string }>("lab", "acceptOffer", { department, offerId: offer.offerId, quantity: 3 });
+    for (const [client, label] of [[seller, "original seller"], [manager, "upstream manager"], [admin, "admin"]] as const) {
+      const view = await departmentUntil(client, view => (view as AcceptanceView).offerAcceptances?.some(row => row.idempotencyKey === accepted.idempotencyKey),
+        `${label} receives second-device acceptance`);
+      const row = (view as AcceptanceView).offerAcceptances.find(row => row.idempotencyKey === accepted.idempotencyKey)!;
+      assert.equal(row.acceptedFrom, people.manager);
+      assert.equal(row.quantity, 3);
+    }
+    assert.deepEqual(await seller.call("lab", "acceptOffer", { department, offerId: offer.offerId, quantity: 3 }), accepted,
+      "retry from original device reuses the same persisted acceptance");
+  }
+
   // Manager edits received content after the IoM connection is live.
   await manager.call("lab", "publishOffer", { ...offer, unitAmount: 250 });
   await departmentUntil(deviceB.client, view => view.offers?.some(row => row.offerId === offer.offerId && row.unitAmount === 250),
