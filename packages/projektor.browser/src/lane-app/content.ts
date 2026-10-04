@@ -24,6 +24,7 @@ export interface LaneContent {
   shareWithSeller: (offerId: string) => string;
   buyOne: (offerId: string) => string;
   buying: string;
+  transaction: { confirmed: string; pending: string; failed: string; noneConfirmed: string };
   metrics: { contacts: string; offers: string; orders: string; purchases: string; availAdmin: string; stock: string };
   tabs: { overview: string; offers: string; orders: string; purchases: string; contacts: string; activity: string };
   catalogTitle: string;
@@ -81,6 +82,7 @@ export const AMWAY_CONTENT: LaneContent = {
   shareWithSeller: offerId => `Share ${offerId} with seller`,
   buyOne: offerId => `Buy 1x (${offerId})`,
   buying: "Processing purchase…",
+  transaction: { confirmed: "Confirmed", pending: "Processing purchase", failed: "Purchase could not be completed", noneConfirmed: "No purchase was confirmed." },
   metrics: { contacts: "Contacts", offers: "Offers", orders: "Orders", purchases: "Purchases", availAdmin: "Avail.", stock: "Stock" },
   tabs: { overview: "All Items", offers: "Offers", orders: "Orders", purchases: "Purchase history", contacts: "Contacts", activity: "CHUM Feed" },
   catalogTitle: "Catalog Offers",
@@ -158,6 +160,14 @@ export const IGM_CONTENT: LaneContent = {
   roleTitles: { admin: "Verwaltung", manager: "Bauleiter", seller: "Vorarbeiter", customer: "Monteur" },
   appoint: { manager: "Bauleiter zuweisen", seller: "Vorarbeiter zuweisen", customer: "Monteur zuweisen" },
   appointment: { pending: role => `${role} wird zugewiesen…`, assigned: role => `${role} zugewiesen`, waiting: "Noch nicht zugewiesen", active: "Rolle aktiv", success: role => `${role} zugewiesen. Berechtigungen sind freigeschaltet.` },
+  buyOne: offerId => `Accept 1x (${offerId})`,
+  buying: "Processing acceptance…",
+  transaction: { confirmed: "Accepted", pending: "Processing acceptance", failed: "Acceptance could not be completed", noneConfirmed: "No acceptance was confirmed." },
+  metrics: { ...EK_CONTENT.metrics, purchases: "Acceptances" },
+  tabs: { ...EK_CONTENT.tabs, purchases: "Acceptance history" },
+  purchaseHistoryTitle: "Acceptance history",
+  orderCount: (count, customer) => `${count} ${customer ? (count === 1 ? "acceptance" : "acceptances") : (count === 1 ? "order" : "orders")}`,
+  empty: { ...EK_CONTENT.empty, purchases: "No acceptances yet." },
   catalog: [
     { idPrefix: "offer-igm", item: "FASSADEN-ELEMENT@1", priceList: "igm-demo@2026-10", unitAmount: 10000, currency: "EUR", button: "+ Facade element (100.00€)" },
     { idPrefix: "offer-montage", item: "MONTAGE-SET@1", priceList: "igm-demo@2026-10", unitAmount: 4500, currency: "EUR", button: "+ Assembly kit (45.00€)" },

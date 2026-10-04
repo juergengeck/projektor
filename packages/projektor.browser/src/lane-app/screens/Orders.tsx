@@ -50,18 +50,18 @@ export function Orders({ orders, pendingOrders, failures, balances, contacts, fr
                       Qty: {entry.quantity} · {fmtMoney(entry.quantity * entry.unitAmount, entry.currency)}
                     </span>
                     <span className="lab-item-sub">{entry.idempotencyKey}</span>
-                    {confirmed && <span className="lab-item-sub">Confirmed {fmtDate(entry.admittedAt)}</span>}
+                    {confirmed && <span className="lab-item-sub">{content.transaction.confirmed} {fmtDate(entry.admittedAt)}</span>}
                   </div>
-                  <Badge text={confirmed ? "Confirmed" : "Processing purchase"} variant={confirmed ? "success" : "warning"} />
+                  <Badge text={confirmed ? content.transaction.confirmed : content.transaction.pending} variant={confirmed ? "success" : "warning"} />
                 </div>
               );
             })
           )}
           {failures.map(failure => (
             <div key={failure.idempotencyKey} className="state-denied lab-purchase-failure" role="status">
-              <strong>{failure.reason === "out-of-stock" ? "Out of stock" : "Purchase could not be completed"}</strong>
+              <strong>{failure.reason === "out-of-stock" ? "Out of stock" : content.transaction.failed}</strong>
               <div>{failure.offer} · Qty: {failure.quantity}</div>
-              <div>No purchase was confirmed.</div>
+              <div>{content.transaction.noneConfirmed}</div>
             </div>
           ))}
         </div>

@@ -51,10 +51,10 @@ export async function runLaneCeremony(page, lane, expect) {
   // the chosen seller first, the seller then with the customer.
   await manager.getByRole("button", { name: `Share ${lane.offerId} with ${lane.shareRecipient}` }).click();
   await seller.getByRole("button", { name: `Share ${lane.offerId} down` }).click();
-  await customer.getByRole("button", { name: /Buy 1x/ }).click();
+  await customer.getByRole("button", { name: new RegExp(`${lane.customerAction ?? "Buy"} 1x`) }).click();
 
   await expect(customer.getByRole("button", { name: `${lane.ordersTab} (1)` })).toBeVisible({ timeout: 60_000 });
-  await expect(customer.getByRole("region", { name: "Purchase history" }).getByText("Confirmed", { exact: true }))
+  await expect(customer.getByRole("region", { name: lane.ordersTab }).getByText(lane.confirmedState ?? "Confirmed", { exact: true }))
     .toBeVisible({ timeout: 60_000 });
 
   if (errors.length) {

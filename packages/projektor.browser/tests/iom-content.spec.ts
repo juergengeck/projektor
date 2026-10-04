@@ -43,9 +43,17 @@ for (const lane of LANES) {
     try {
       const joined = await context.newPage();
       await joined.goto(joinUrl.toString());
+      await expect(joined.locator(".lab-header")).toHaveCount(0);
       await joined.getByRole("button", { name: "Join", exact: true }).click();
-      await expect(joined.getByText("device paired ✓")).toBeVisible({ timeout: 120_000 });
+      await expect(joined.locator(".invited-role-app")).toHaveAttribute("data-paired", "true", { timeout: 120_000 });
+      await expect(joined.locator(".lab-header")).toHaveCount(0);
+      await expect(joined.getByRole("dialog")).toHaveCount(0);
+      await expect(joined.locator("iframe")).toHaveCount(1);
       const app = joined.frameLocator("iframe");
+      await expect(app.getByRole("heading", { name: lane.roleLabels.seller, exact: true })).toBeVisible();
+      const bounds = await joined.locator("iframe").boundingBox();
+      expect(bounds?.height).toBe(joined.viewportSize()!.height);
+      expect(bounds?.width).toBe(joined.viewportSize()!.width);
       // These rows were received from other mesh lanes, not created by the inviter.
       await expect(app.getByRole("button", { name: `Share ${lane.offerId} down`, exact: true })).toBeEnabled({ timeout: 60_000 });
       await expect(app.locator(".lab-purchase-card").first()).toBeVisible({ timeout: 60_000 });
@@ -75,9 +83,12 @@ for (const lane of LANES) {
         const customerDevice = await customerContext.newPage();
         await customerDevice.goto(customerUrl.toString());
         await customerDevice.getByRole("button", { name: "Join", exact: true }).click();
-        await expect(customerDevice.getByText("device paired ✓")).toBeVisible({ timeout: 120_000 });
+        await expect(customerDevice.locator(".invited-role-app")).toHaveAttribute("data-paired", "true", { timeout: 120_000 });
+        await expect(customerDevice.locator(".lab-header")).toHaveCount(0);
+        await expect(customerDevice.getByRole("dialog")).toHaveCount(0);
         const customerApp = customerDevice.frameLocator("iframe");
-        const buy = customerApp.getByRole("button", { name: /Buy 1x/ });
+        await expect(customerApp.getByRole("heading", { name: lane.roleLabels.customer, exact: true })).toBeVisible();
+        const buy = customerApp.getByRole("button", { name: new RegExp(`${lane.customerAction ?? "Buy"} 1x`) });
         await expect(buy).toBeEnabled({ timeout: 60_000 });
         await buy.click();
         await expect(customer.getByRole("button", { name: `${lane.ordersTab} (2)`, exact: true })).toBeVisible({ timeout: 60_000 });

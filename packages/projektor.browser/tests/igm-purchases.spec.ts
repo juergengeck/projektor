@@ -96,14 +96,14 @@ test("buy confirms automatically, decrements inventory, and refuses overselling"
   await expect(shareWithCustomer).toBeEnabled({ timeout: 90_000 });
   await shareWithCustomer.click();
 
-  const buy = customer.getByRole("button", { name: "Buy 1x (offer-igm-1)", exact: true });
+  const buy = customer.getByRole("button", { name: "Accept 1x (offer-igm-1)", exact: true });
   await expect(buy).toBeEnabled({ timeout: 90_000 });
-  const history = customer.getByRole("region", { name: "Purchase history", exact: true });
+  const history = customer.getByRole("region", { name: "Acceptance history", exact: true });
 
   // Buying needs no separate action from the seller. Every instance projects
   // the same confirmed purchase and both stock meters drop immediately.
   await buy.click();
-  await expect(history.getByText("Confirmed", { exact: true })).toHaveCount(1, { timeout: 90_000 });
+  await expect(history.getByText("Accepted", { exact: true })).toHaveCount(1, { timeout: 90_000 });
   await expect(admin.getByText("1 / 2 units", { exact: true })).toBeVisible({ timeout: 90_000 });
   await expect(manager.getByText("1 / 2 units", { exact: true })).toBeVisible({ timeout: 90_000 });
   await expect(seller.getByRole("button", { name: /^Admit / })).toHaveCount(0);
@@ -111,14 +111,14 @@ test("buy confirms automatically, decrements inventory, and refuses overselling"
   expect(firstIds).toHaveLength(1);
 
   await buy.click();
-  await expect(history.getByText("Confirmed", { exact: true })).toHaveCount(2, { timeout: 90_000 });
+  await expect(history.getByText("Accepted", { exact: true })).toHaveCount(2, { timeout: 90_000 });
   await expect(admin.getByText("0 / 2 units", { exact: true })).toBeVisible({ timeout: 90_000 });
   await expect(manager.getByText("0 / 2 units", { exact: true })).toBeVisible({ timeout: 90_000 });
   const cards = history.locator(".lab-purchase-card");
   await expect(cards).toHaveCount(2);
-  await expect(history.getByText("Processing purchase", { exact: true })).toHaveCount(0);
-  await expect(customer.getByRole("button", { name: "Purchase history (2)", exact: true })).toBeVisible();
-  const purchaseMetric = customer.locator(".lab-metric-mini").filter({ hasText: "Purchases" });
+  await expect(history.getByText("Processing acceptance", { exact: true })).toHaveCount(0);
+  await expect(customer.getByRole("button", { name: "Acceptance history (2)", exact: true })).toBeVisible();
+  const purchaseMetric = customer.locator(".lab-metric-mini").filter({ hasText: "Acceptances" });
   await expect(purchaseMetric.locator(".lab-metric-mini-val")).toHaveText("2");
   const confirmedIds = await purchaseIds(history);
   expect(new Set(confirmedIds).size).toBe(2);
@@ -127,8 +127,8 @@ test("buy confirms automatically, decrements inventory, and refuses overselling"
   await buy.click();
   await expect(history.getByText("Out of stock", { exact: true })).toBeVisible({ timeout: 90_000 });
   await expect(buy).toBeEnabled();
-  await expect(history.getByText("Processing purchase", { exact: true })).toHaveCount(0);
-  await expect(history.getByText("Confirmed", { exact: true })).toHaveCount(2);
+  await expect(history.getByText("Processing acceptance", { exact: true })).toHaveCount(0);
+  await expect(history.getByText("Accepted", { exact: true })).toHaveCount(2);
   await expect(admin.getByText("0 / 2 units", { exact: true })).toBeVisible();
   await expect(manager.getByText("0 / 2 units", { exact: true })).toBeVisible();
 
