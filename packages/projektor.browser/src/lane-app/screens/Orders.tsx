@@ -1,25 +1,34 @@
 // packages/projektor.browser/src/lane-app/screens/Orders.tsx
 /** Order/purchase history, failures and balances. */
 import { Badge, RoleBadge } from "../../components/ui";
-import type { Order } from "../feed.ts";
+import type { Order, OfferAcceptance } from "../feed.ts";
 import type { LaneContent } from "../content.ts";
 import { fmtDate, fmtMoney, nameOf } from "../format.ts";
 import type { Contact } from "../feed.ts";
 
-export function Orders({ orders, pendingOrders, failures, balances, contacts, fresh, isCustomer, content }: {
+export function Orders({ offerAcceptances, orders, pendingOrders, failures, balances, contacts, assignments, fresh, isCustomer, content }: {
+  offerAcceptances: OfferAcceptance[];
   orders: Order[];
   pendingOrders: Order[];
   failures: { idempotencyKey: string; offer: string; quantity: number; reason: string; decidedAt: number }[];
   balances: { party: string; role: string; receivable: number; payable: number; currency: string }[];
   contacts: Contact[];
+  assignments: { subject: string; role: string; issuer: string }[];
   fresh: Record<string, string>;
   isCustomer: boolean;
   content: LaneContent;
 }) {
   // Both stages belong to the history. Confirmation replaces the
   // pending version under the same idempotency key in the projection.
+  const partyLabel = (person: string) => {
+    const contact = contacts.find(entry => entry.person === person);
+    const role = contact?.role ?? assignments.find(entry => entry.subject === person)?.role
+      ?? (assignments.some(entry => entry.issuer === person) ? "admin" : undefined);
+    const title = role ? content.roleTitles[role] : undefined;
+    return title ? `${title} · ${nameOf(contacts, person)}` : nameOf(contacts, person);
+  };
   const orderHistory = [...pendingOrders, ...orders];
-  const purchaseCount = isCustomer ? orders.length : orderHistory.length;
+  const purchaseCount = isCustomer ? orders.length : orderHistory.length + offerAcceptances.length;
   return (
     <>
       <section className="lab-section" aria-label={isCustomer ? content.purchaseHistoryTitle : content.ordersTitle}>
@@ -30,7 +39,7 @@ export function Orders({ orders, pendingOrders, failures, balances, contacts, fr
           </span>
         </div>
         <div className="lab-items-list">
-          {orderHistory.length === 0 && failures.length === 0 ? (
+          {orderHistory.length === 0 && offerAcceptances.length === 0 && failures.length === 0 ? (
             <div className="state-empty" style={{ padding: "0.8rem", fontSize: "0.75rem" }}>
               {isCustomer ? content.empty.purchases : content.empty.orders}
             </div>
@@ -57,6 +66,17 @@ export function Orders({ orders, pendingOrders, failures, balances, contacts, fr
               );
             })
           )}
+          {offerAcceptances.map(entry => (
+            <div key={entry.idempotencyKey} data-acceptance-id={entry.idempotencyKey} className={`lab-item-card lab-handoff-card ${fresh[`offer-acceptance:${entry.idempotencyKey}`] ? "lab-fresh" : ""}`}>
+              <div className="lab-item-main">
+                <span className="lab-item-title">{entry.offer}</span>
+                <span className="lab-item-sub">Qty: {entry.quantity}</span>
+                <span className="lab-item-sub">{partyLabel(entry.acceptedBy)} accepted from {partyLabel(entry.acceptedFrom)}</span>
+                <span className="lab-item-sub">Accepted {fmtDate(entry.acceptedAt)}</span>
+              </div>
+              <Badge text="Accepted" variant="success" />
+            </div>
+          ))}
           {failures.map(failure => (
             <div key={failure.idempotencyKey} className="state-denied lab-purchase-failure" role="status">
               <strong>{failure.reason === "out-of-stock" ? "Out of stock" : content.transaction.failed}</strong>

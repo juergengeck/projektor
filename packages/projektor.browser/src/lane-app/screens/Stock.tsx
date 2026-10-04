@@ -32,7 +32,7 @@ export function Stock({ view, isAdmin, content }: {
       <div className="lab-stock-meter">
         <div className="lab-stock-header">
           <span>{content.telemetryTitle}</span>
-          <span>{content.ordersMembers(orderHistory.length, view.assignments.length)}</span>
+          <span>{content.ordersMembers(orderHistory.length + view.offerAcceptances.length, view.assignments.length)}</span>
         </div>
         {view.assignments.length === 0 ? (
           <div className="state-empty" style={{ padding: "0.8rem", fontSize: "0.75rem" }}>

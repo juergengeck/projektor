@@ -37,7 +37,7 @@ async function purchaseIds(history: Locator): Promise<string[]> {
   return history.locator(".lab-purchase-card").evaluateAll(cards => cards.map(card => card.getAttribute("data-order-id")!));
 }
 
-test("buy confirms automatically, decrements inventory, and refuses overselling", async ({ page }, testInfo) => {
+test("handoff acceptances reach upstream orders without consuming stock; Monteur acceptance settles inventory", async ({ page, browser }, testInfo) => {
   const errors: string[] = [];
   page.on("console", message => {
     if (message.type() === "error") errors.push(message.text());
@@ -87,11 +87,45 @@ test("buy confirms automatically, decrements inventory, and refuses overselling"
   await admin.getByRole("button", { name: "Receive stock", exact: true }).click();
   await expect(manager.getByText("2 / 2 units", { exact: true })).toBeVisible({ timeout: 90_000 });
 
-  // The offer traverses manager -> seller -> customer through the lane mesh.
-  await manager.getByRole("button", { name: "+ Facade element (100.00€)", exact: true }).click();
-  const shareWithSeller = manager.getByRole("button", { name: "Share offer-igm-1 with Vorarbeiter", exact: true });
-  await expect(shareWithSeller).toBeEnabled({ timeout: 90_000 });
-  await shareWithSeller.click();
+  // Verwaltung publishes; the Bauleiter explicitly accepts responsibility.
+  await admin.getByRole("button", { name: "+ Facade element (100.00€)", exact: true }).click();
+  const managerAccept = manager.getByRole("button", { name: "Accept (offer-igm-1)", exact: true });
+  await expect(managerAccept).toBeEnabled({ timeout: 90_000 });
+  const adminOrders = admin.getByRole("region", { name: "Orders & Reservations", exact: true });
+  const managerOrders = manager.getByRole("region", { name: "Orders & Reservations", exact: true });
+  const sellerAccept = seller.getByRole("button", { name: "Accept (offer-igm-1)", exact: true });
+  const invitedContext = await browser.newContext();
+  try {
+    const invitedManager = await invitedContext.newPage();
+    const invitation = await page.locator(".lab-device").nth(1).getByLabel("Device invitation URL").inputValue();
+    const joinUrl = new URL(invitation);
+    const commServer = new URL(page.url()).searchParams.get("commServer");
+    if (commServer) joinUrl.searchParams.set("commServer", commServer);
+    await invitedManager.goto(joinUrl.toString());
+    await invitedManager.getByRole("button", { name: "Join", exact: true }).click();
+    await expect(invitedManager.locator(".invited-role-app")).toHaveAttribute("data-paired", "true", { timeout: 120_000 });
+    const app = invitedManager.frameLocator("iframe");
+    await expect(app.getByRole("button", { name: "Accept (offer-igm-1)", exact: true })).toBeEnabled({ timeout: 90_000 });
+    await app.getByLabel("Acceptance quantity (offer-igm-1)", { exact: true }).fill("2");
+    await app.getByRole("button", { name: "Accept (offer-igm-1)", exact: true }).click();
+    await expect(manager.getByRole("button", { name: "Accepted (offer-igm-1)", exact: true })).toBeDisabled({ timeout: 90_000 });
+    await expect(adminOrders.locator(".lab-handoff-card")).toHaveCount(1, { timeout: 90_000 });
+    await expect(adminOrders.locator(".lab-handoff-card").getByText("Qty: 2", { exact: true })).toBeVisible();
+    await expect(admin.getByRole("button", { name: "Orders (1)", exact: true })).toBeVisible();
+    await expect(manager.getByText("2 / 2 units", { exact: true })).toBeVisible();
+    // Sharing exclusively on B must forward both offer and typed handoff via A.
+    await app.getByRole("button", { name: "Share offer-igm-1 with Vorarbeiter", exact: true }).click();
+    await expect(sellerAccept).toBeEnabled({ timeout: 90_000 });
+  } finally {
+    await invitedContext.close();
+  }
+  await seller.getByLabel("Acceptance quantity (offer-igm-1)", { exact: true }).fill("2");
+  await sellerAccept.click();
+  await expect(seller.getByRole("button", { name: "Accepted (offer-igm-1)", exact: true })).toBeDisabled({ timeout: 90_000 });
+  await expect(managerOrders.locator(".lab-handoff-card")).toHaveCount(2, { timeout: 90_000 });
+  await expect(adminOrders.locator(".lab-handoff-card")).toHaveCount(2, { timeout: 90_000 });
+  await expect(manager.getByRole("button", { name: "Orders (2)", exact: true })).toBeVisible();
+  await expect(manager.getByText("2 / 2 units", { exact: true })).toBeVisible();
   const shareWithCustomer = seller.getByRole("button", { name: "Share offer-igm-1 down", exact: true });
   await expect(shareWithCustomer).toBeEnabled({ timeout: 90_000 });
   await shareWithCustomer.click();

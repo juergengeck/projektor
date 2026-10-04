@@ -122,6 +122,34 @@ function StockUpField({ disabled, onSave, content }: {
   );
 }
 
+function OfferAcceptanceAction({ offerId, acceptedQuantity, disabled, onAccept }: {
+  offerId: string; acceptedQuantity?: number; disabled: boolean; onAccept: (quantity: number) => Promise<void>;
+}) {
+  const [quantity, setQuantity] = useState("1");
+  const accepted = acceptedQuantity !== undefined;
+  const [accepting, setAccepting] = useState(false);
+  const inFlight = useRef(false);
+  return (
+    <form className="lab-handoff-action" onSubmit={async event => {
+      event.preventDefault();
+      if (inFlight.current || accepted || disabled) return;
+      const count = Number(quantity);
+      if (!Number.isSafeInteger(count) || count <= 0) return;
+      inFlight.current = true;
+      setAccepting(true);
+      try { await onAccept(count); } finally { inFlight.current = false; setAccepting(false); }
+    }}>
+      <input type="number" min="1" step="1" required value={acceptedQuantity ?? quantity}
+        aria-label={`Acceptance quantity (${offerId})`}
+        style={{ width: "5rem" }} disabled={disabled || accepting || accepted}
+        onChange={event => setQuantity(event.target.value)} />
+      <button type="submit" disabled={disabled || accepting || accepted}>
+        {accepted ? `Accepted (${offerId})` : accepting ? `Accepting (${offerId})…` : `Accept (${offerId})`}
+      </button>
+    </form>
+  );
+}
+
 export function RoleApp({ brand, content, role, client, persons: hostPersons }: {
   brand: LabBrand;
   content: LaneContent;
@@ -232,7 +260,7 @@ export function RoleApp({ brand, content, role, client, persons: hostPersons }: 
   const seller = staff || view.roles.includes("seller");
   const isCustomer = role === "customer";
   const orderHistory = [...view.pendingOrders, ...view.orders];
-  const purchaseCount = isCustomer ? view.orders.length : orderHistory.length;
+  const purchaseCount = isCustomer ? view.orders.length : orderHistory.length + view.offerAcceptances.length;
   const activeTab = column.tab;
 
   const run = async (method: string, params: Record<string, unknown> = {}) => {
@@ -417,6 +445,17 @@ export function RoleApp({ brand, content, role, client, persons: hostPersons }: 
                   content={content.stockField}
                 />
               )}
+              {brand.id === "igm" && (role === "manager" || role === "seller") && view.offers
+                .filter(offer => offer.publishedBy !== me)
+                .map(offer => (
+                  <OfferAcceptanceAction key={`accept:${offer.offerId}`} offerId={offer.offerId}
+                    disabled={!live || !view.roles.includes(role) || !view.acceptableOffers.includes(offer.offerId)}
+                    acceptedQuantity={view.offerAcceptances.find(entry => entry.offer === offer.offerId && entry.acceptedBy === me)?.quantity}
+                    onAccept={async quantity => {
+                      await run("acceptOffer", { offerId: offer.offerId, quantity });
+                      await snapshot();
+                    }} />
+                ))}
               {role === "seller" && view.offers.map(offer => (
                 <button
                   key={offer.offerId}
@@ -485,11 +524,13 @@ export function RoleApp({ brand, content, role, client, persons: hostPersons }: 
           )}
           {(activeTab === "overview" || activeTab === "orders") && (
             <Orders
+              offerAcceptances={view.offerAcceptances}
               orders={view.orders}
               pendingOrders={view.pendingOrders}
               failures={view.purchaseFailures}
               balances={view.balances}
               contacts={view.contacts}
+              assignments={view.assignments}
               fresh={column.fresh}
               isCustomer={isCustomer}
               content={content}

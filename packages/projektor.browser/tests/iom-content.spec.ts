@@ -54,6 +54,19 @@ for (const lane of LANES) {
       const bounds = await joined.locator("iframe").boundingBox();
       expect(bounds?.height).toBe(joined.viewportSize()!.height);
       expect(bounds?.width).toBe(joined.viewportSize()!.width);
+      if (lane.id === "igm") {
+        // Accept on device B: the saved handoff must reach A and its upstream Bauleiter.
+        const accept = app.getByRole("button", { name: `Accept (${lane.offerId})`, exact: true });
+        await expect(accept).toBeEnabled({ timeout: 60_000 });
+        await app.getByLabel(`Acceptance quantity (${lane.offerId})`, { exact: true }).fill("3");
+        await accept.click();
+        await expect(app.getByRole("button", { name: `Accepted (${lane.offerId})`, exact: true })).toBeDisabled({ timeout: 60_000 });
+        const upstream = page.frameLocator("section.lab-column iframe").nth(1);
+        await expect(upstream.locator(".lab-handoff-card")).toHaveCount(1, { timeout: 60_000 });
+        await expect(upstream.locator(".lab-handoff-card").getByText("Qty: 3", { exact: true })).toBeVisible();
+        await expect(seller.locator(".lab-handoff-card")).toHaveCount(1, { timeout: 60_000 });
+        await expect(seller.getByRole("button", { name: `Accepted (${lane.offerId})`, exact: true })).toBeDisabled();
+      }
       // These rows were received from other mesh lanes, not created by the inviter.
       await expect(app.getByRole("button", { name: `Share ${lane.offerId} down`, exact: true })).toBeEnabled({ timeout: 60_000 });
       await expect(app.locator(".lab-purchase-card").first()).toBeVisible({ timeout: 60_000 });

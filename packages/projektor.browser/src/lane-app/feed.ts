@@ -19,7 +19,7 @@ export interface LaneClient {
 }
 
 /** Feed kinds that change the projection: re-snapshot after one arrives. */
-export const SNAPSHOT_TRIGGER_KINDS = ["assignment", "department", "offer", "contact", "order", "stock", "purchase-request", "purchase-decision"];
+export const SNAPSHOT_TRIGGER_KINDS = ["assignment", "department", "offer", "contact", "order", "stock", "purchase-request", "purchase-decision", "offer-acceptance", "offer-share"];
 
 export interface Offer {
   offerId: string;
@@ -48,6 +48,17 @@ export interface Order {
   admittedAt: number;
 }
 
+export interface OfferAcceptance {
+  idempotencyKey: string;
+  offer: string;
+  quantity: number;
+  acceptedBy: string;
+  acceptedFrom: string;
+  acceptedAt: number;
+  unitAmount: number;
+  currency: string;
+}
+
 export interface Balance {
   party: string;
   role: string;
@@ -64,6 +75,8 @@ export interface View {
   offers: Offer[];
   orders: Order[];
   pendingOrders: Order[];
+  offerAcceptances: OfferAcceptance[];
+  acceptableOffers: string[];
   purchaseFailures: { idempotencyKey: string; offer: string; quantity: number; reason: string; decidedAt: number }[];
   availability: { lot: string; facility: string; stocked: number; available: number } | null;
   balances: Balance[];
@@ -99,6 +112,8 @@ export const EMPTY_FEED_VIEW: View = {
   offers: [],
   orders: [],
   pendingOrders: [],
+  offerAcceptances: [],
+  acceptableOffers: [],
   purchaseFailures: [],
   availability: null,
   balances: [],
@@ -130,6 +145,9 @@ function formatFeedLabel(row: FeedRow): string {
   if (row.kind === "order") {
     const state = (obj.admittedAt as number) > 0 ? "admitted" : "placed";
     return `Order ${row.id} ${state} (${obj.offer} ×${obj.quantity})`;
+  }
+  if (row.kind === "offer-acceptance") {
+    return `Accepted ${obj.offer} ×${obj.quantity}`;
   }
   if (row.kind === "contact") {
     return `Contact ${obj.name || row.id} (${obj.role})`;
