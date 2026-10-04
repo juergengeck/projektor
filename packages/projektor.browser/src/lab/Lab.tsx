@@ -31,6 +31,7 @@ import { AMWAY_CONTENT, EK_CONTENT, IGM_CONTENT, displayRoleText } from "../lane
 import { SNAPSHOT_TRIGGER_KINDS } from "../lane-app/feed";
 import type { LaneContent } from "../lane-app/content";
 import { brandById, type LabBrand } from "@projektor/lab.core/brand.ts";
+import { decodeIoMInvite } from "@projektor/lab.core/iom.ts";
 import { callPlan, type PlanRegistry } from "@projektor/lab.core/shell/plan-client.ts";
 import { observeAppTransitions } from "@projektor/lab.core/shell/transitions.ts";
 import { laneFromHostPath } from "@projektor/lab.core/shell/urls.ts";
@@ -162,6 +163,8 @@ export default function Lab() {
   const mounts = useRef<Record<LabKey, HTMLDivElement | null>>({ admin: null, manager: null, seller: null, customer: null });
   const [joinInvite] = useState<string | null>(() => inviteLinkFromLocation());
   const [joinStatus, setJoinStatus] = useState("");
+  const [joining, setJoining] = useState(false);
+  const joinInFlight = useRef(false);
   const [joined, setJoined] = useState<{ key: LabKey; person: string } | null>(null);
   const joinHandle = useRef<{ stop(): void } | null>(null);
   const joinMount = useRef<HTMLDivElement | null>(null);
@@ -173,7 +176,8 @@ export default function Lab() {
   );
 
   useEffect(() => {
-    document.title = shell.pageTitle;
+    const invitedRole = new URLSearchParams(window.location.search).get("fe")?.split("@")[0] ?? "";
+    document.title = joinInvite ? `${shell.logoAlt} · ${content.roleTitles[invitedRole] ?? "App"}` : shell.pageTitle;
     let icon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
     if (!icon) {
       icon = document.createElement("link");
@@ -188,7 +192,7 @@ export default function Lab() {
       document.head.appendChild(meta);
     }
     meta.content = shell.themeColor;
-  }, [shell]);
+  }, [shell, joinInvite, content]);
 
   useEffect(() => {
     if (typeof matchMedia !== "function") return;
@@ -325,14 +329,11 @@ export default function Lab() {
 
   /** Join link opened from a QR invitation: boot a same-person device and pair it. */
   async function joinWithInviteLink(invitationUrl: string) {
-    if (joinHandle.current) {
-      setJoinStatus("A joined device is already active; leave it first.");
-      return;
-    }
+    if (joinInFlight.current || joinHandle.current) return;
     let key: LabKey | null = null;
     let email = "";
     try {
-      email = new URL(invitationUrl).searchParams.get("fe") ?? "";
+      email = decodeIoMInvite(invitationUrl, brand).email;
       const prefix = email.split("@")[0];
       key = (LAB_KEYS as readonly string[]).includes(prefix) ? (prefix as LabKey) : null;
     } catch {
@@ -343,6 +344,8 @@ export default function Lab() {
       return;
     }
     const role = key;
+    joinInFlight.current = true;
+    setJoining(true);
     setJoinStatus("booting device…");
     setJoined(null);
     try {
@@ -355,13 +358,18 @@ export default function Lab() {
         },
         onStage: setJoinStatus,
       });
+      client.iframe.style.height = "100dvh";
+      client.iframe.style.minHeight = "100dvh";
+      client.iframe.style.border = "0";
+      client.iframe.style.borderRadius = "0";
+      client.iframe.style.display = "block";
       joinHandle.current = { stop };
       // Same role credentials reproduce the invited Person; the invitation
       // authorizes this instance's additional keys through the commserver.
       await callPlan(client.registry, controller.signal, "session", "registerAndSetup", {
         email,
         secret: `lab-${role}`,
-        instanceName: role,
+        instanceName: content.roleTitles[role] ?? role,
       }, 125_000);
       const accepted = await callPlan<{ person: string }>(
         client.registry, controller.signal, "lab", "acceptIoMInvite", { invitationUrl }, 120_000,
@@ -377,25 +385,31 @@ export default function Lab() {
       joinHandle.current = null;
       setJoined(null);
       setJoinStatus(`join failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      joinInFlight.current = false;
+      setJoining(false);
     }
   }
 
-  async function leaveJoined() {
-    try {
-      joinHandle.current?.stop();
-    } catch {
-      // Removal is best-effort; the state below already reset.
-    }
-    joinHandle.current = null;
-    setJoined(null);
-    setJoinStatus("");
-    try {
-      const url = new URL(window.location.href);
-      url.searchParams.delete("invited");
-      window.history.replaceState(null, "", url.pathname + url.search);
-    } catch {
-      // Link cleanup is cosmetic; the join state above already reset.
-    }
+  // Invitations open one role app, matching UVC's single-device view.
+  // Keep its mount alive while the join card disappears after pairing.
+  if (joinInvite) {
+    const invitedRole = new URL(joinInvite).searchParams.get("fe")?.split("@")[0] ?? "";
+    const title = content.roleTitles[invitedRole] ?? "App";
+    return (
+      <main className={`invited-role-app ${shell.laneClass}`} data-paired={joined ? "true" : "false"} style={{ minHeight: "100dvh" }}>
+        {!joined && (
+          <section key="join" className="card" role="dialog" aria-label="Join with device invitation" style={{ maxWidth: "28rem", margin: "3rem auto", padding: "1.5rem" }}>
+            <img src={shell.logo} alt={shell.logoAlt} width={shell.logoWidth} height={shell.logoHeight} />
+            <h1>Open {title} app</h1>
+            <p>Join this device to open your app.</p>
+            <button type="button" disabled={joining} onClick={() => void joinWithInviteLink(joinInvite)}>{joining ? "Joining…" : "Join"}</button>
+            {joinStatus && <p role="status">{joinStatus}</p>}
+          </section>
+        )}
+        <div key="app" ref={joinMount} style={{ display: joined ? "block" : "none" }} />
+      </main>
+    );
   }
 
   return (
@@ -459,37 +473,6 @@ export default function Lab() {
           ) : (
             <p style={{ margin: 0, fontWeight: 600 }}>Boot Failure: {boot}</p>
           )}
-        </div>
-      )}
-
-      {joinInvite && (
-        <div className="card" role="dialog" aria-label="Join with device invitation" style={{ marginBottom: "1.25rem", fontSize: "0.8rem" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-            <strong>This device was invited to join the lane as a second device.</strong>
-            <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
-              <button type="button" className="secondary sm" onClick={() => void joinWithInviteLink(joinInvite)}>
-                Join
-              </button>
-              <button type="button" className="secondary sm" onClick={() => void leaveJoined()}>
-                Dismiss
-              </button>
-              {joinStatus && <span style={{ color: "var(--amway-muted)" }}>{joinStatus}</span>}
-            </div>
-            {joined && (
-              <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", fontSize: "0.72rem" }}>
-                <span style={{ color: "var(--amway-muted)" }}>Joined as {content.roleTitles[joined.key] ?? joined.key}:</span>
-                <span>{joined.person.slice(0, 10)}…{joined.person.slice(-4)}</span>
-                <button type="button" className="secondary sm" onClick={() => void leaveJoined()}>
-                  Leave
-                </button>
-              </div>
-            )}
-            <div
-              ref={element => {
-                joinMount.current = element;
-              }}
-            />
-          </div>
         </div>
       )}
 

@@ -91,7 +91,10 @@ test(`ek lane invitation from ${entry} pairs a second device`, async ({ page, br
   await joinPage.goto(joinUrl);
   await expect(joinPage.getByRole("dialog", { name: "Join with device invitation" })).toBeVisible({ timeout: 60_000 });
   await joinPage.getByRole("button", { name: "Join", exact: true }).click();
-  await expect(joinPage.getByText("device paired ✓")).toBeVisible({ timeout: 120_000 });
+  await expect(joinPage.locator(".invited-role-app")).toHaveAttribute("data-paired", "true", { timeout: 120_000 });
+  await expect(joinPage.locator(".lab-header")).toHaveCount(0);
+  await expect(joinPage.getByRole("dialog")).toHaveCount(0);
+  await expect(joinPage.locator("iframe")).toHaveCount(1);
   await expect(seller.getByText("device paired ✓")).toBeVisible({ timeout: 30_000 });
   await joinContext.close();
 
