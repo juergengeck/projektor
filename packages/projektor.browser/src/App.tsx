@@ -25,8 +25,9 @@ function screenFromHash(): Screen {
  * The lab lanes live in their own shell (`/lab/<lane>`); hash routes
  * only redirect there, preserving the query (notably `?commServer=`).
  */
-function laneFromHash(): "amway" | "ek" | null {
+function laneFromHash(): "amway" | "ek" | "igm" | null {
   const hash = window.location.hash.replace(/^#\/?/, "");
+  if (hash.startsWith("igmlab")) return "igm";
   if (hash.startsWith("eklab")) return "ek";
   if (hash.startsWith("lab")) return "amway";
   return null;

@@ -56,7 +56,7 @@ export function Directory({ contacts, fresh, chatPeer, chatUnread, personId, cli
                       {entry.person.slice(0, 10)}…{entry.person.slice(-4)}
                     </span>
                   </div>
-                  <RoleBadge role={entry.role} />
+                  <RoleBadge role={entry.role} label={content.roleTitles[entry.role] ?? entry.role} />
                   {entry.person !== personId && (
                     <button
                       type="button"

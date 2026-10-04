@@ -6,6 +6,7 @@ import { laneHostUrl } from "@projektor/lab.core/shell/urls.ts";
 import "../../../amway.app/ui/styles.css";
 import "../lane-app/themes/amway.css";
 import "../lane-app/themes/ek.css";
+import "../lane-app/themes/igm.css";
 
 // `/browser/lab/?lane=` is the former address: move to `/lab/<lane>`, keeping
 // the other query parameters (notably `?commServer=`) and an invitation hash.

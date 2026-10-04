@@ -15,9 +15,11 @@ import {
   timeNow,
 } from "./feed.ts";
 import type { FeedColumn, LaneClient, View } from "./feed.ts";
+import { displayRoleText } from "./content.ts";
 import type { CatalogItem, LaneContent } from "./content.ts";
 import amwayLogo from "../../../amway.app/assets/amway-logo-black.svg";
 import ekLogo from "./assets/ek/elektro-klein-logo.jpg";
+import igmLogo from "./assets/igm/igm-logo.svg";
 import { Directory } from "./screens/Directory";
 import { Offers } from "./screens/Offers";
 import { Orders } from "./screens/Orders";
@@ -120,7 +122,7 @@ function StockUpField({ disabled, onSave, content }: {
   );
 }
 
-export function RoleApp({ brand, content, role, client, persons }: {
+export function RoleApp({ brand, content, role, client, persons: hostPersons }: {
   brand: LabBrand;
   content: LaneContent;
   role: string;
@@ -128,9 +130,13 @@ export function RoleApp({ brand, content, role, client, persons }: {
   persons: Record<string, string>;
 }) {
   const department = brand.department.id;
-  const me = persons[role] ?? "";
+  const [owner, setOwner] = useState("");
+  const me = owner || hostPersons[role] || "";
   const [boot, setBoot] = useState<"booting" | "live" | string>("booting");
   const [buying, setBuying] = useState(false);
+  const [appointing, setAppointing] = useState<string | null>(null);
+  const [appointmentStatus, setAppointmentStatus] = useState("");
+  const appointmentInFlight = useRef(false);
   const [column, setColumn] = useState<RoleColumn>(() => ({
     view: EMPTY_FEED_VIEW,
     fresh: {},
@@ -142,9 +148,14 @@ export function RoleApp({ brand, content, role, client, persons }: {
     tab: "overview",
   }));
 
+  // A projection read can finish after a newer feed-triggered read. Only
+  // the latest request may replace the live view.
+  const snapshotSequence = useRef(0);
   const snapshot = useCallback(async () => {
+    const sequence = ++snapshotSequence.current;
     try {
       const raw = await client.call<View & { known: boolean }>("lab", "getDepartment", { department });
+      if (sequence !== snapshotSequence.current) return;
       const view = raw.known ? raw : { ...EMPTY_FEED_VIEW };
       setColumn(current => ({ ...current, view }));
     } catch {
@@ -160,6 +171,9 @@ export function RoleApp({ brand, content, role, client, persons }: {
           const state: LaneUiState = await client.call("session", "waitUntilReady", { timeoutMs: 5000 });
           if (cancelled) return;
           if (state.authState === "logged_in") {
+            const identity = await client.call<{ person: string }>("lab", "whoAmI");
+            if (cancelled) return;
+            setOwner(identity.person);
             setBoot("live");
             await snapshot();
             return;
@@ -191,6 +205,14 @@ export function RoleApp({ brand, content, role, client, persons }: {
 
   const live = boot === "live";
   const { view } = column;
+  // Joined devices have no host topology. Resolve their action recipients
+  // from the replicated, authority-checked assignments instead.
+  const persons = { ...hostPersons, [role]: me };
+  for (const target of ["admin", "manager", "seller", "customer"]) {
+    if (persons[target]) continue;
+    const subjects = [...new Set(view.assignments.filter(entry => entry.role === target).map(entry => entry.subject))];
+    if (subjects.length === 1) persons[target] = subjects[0];
+  }
 
   // Arm one chat subscription per known contact (except self), exactly like
   // the old host shell did: without it, incoming messages never notify
@@ -221,6 +243,33 @@ export function RoleApp({ brand, content, role, client, persons }: {
     }
   };
 
+  const appointed = (target: string) => view.assignments.some(entry => entry.subject === persons[target] && entry.role === target);
+  const appointRole = async (target: string) => {
+    if (appointmentInFlight.current || appointed(target)) return;
+    appointmentInFlight.current = true;
+    setAppointing(target);
+    setAppointmentStatus(content.appointment.pending(content.roleTitles[target] ?? target));
+    setColumn(current => ({ ...current, notice: null }));
+    try {
+      await client.call("lab", "assignRole", { department, subject: persons[target], role: target });
+      // Confirm against the saved projection, not an optimistic local role.
+      await snapshot();
+      setAppointmentStatus(content.appointment.success(content.roleTitles[target] ?? target));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setAppointmentStatus("");
+      setColumn(current => ({ ...current, notice: message }));
+    } finally {
+      appointmentInFlight.current = false;
+      setAppointing(null);
+    }
+  };
+  const appointmentLabel = (target: string) => appointing === target
+    ? content.appointment.pending(content.roleTitles[target] ?? target)
+    : appointed(target)
+      ? content.appointment.assigned(content.roleTitles[target] ?? target)
+      : content.appoint[target];
+
   const buy = async (offer: string) => {
     if (!offer || buying) return;
     setBuying(true);
@@ -246,7 +295,7 @@ export function RoleApp({ brand, content, role, client, persons }: {
       <div className={content.laneClass}>
         <div className="card" style={{ margin: "1.25rem", textAlign: "center" }}>
           <p style={{ margin: 0, fontWeight: 600 }}>
-            {boot === "booting" ? content.waitingForHost : `Boot Failure: ${boot}`}
+            {boot === "booting" ? content.waitingForHost : `Boot Failure: ${displayRoleText(boot, content)}`}
           </p>
         </div>
       </div>
@@ -254,8 +303,8 @@ export function RoleApp({ brand, content, role, client, persons }: {
   }
 
   const title = content.roleTitles[role] ?? role;
-  const logo = brand.id === "ek" ? ekLogo : amwayLogo;
-  const logoAlt = brand.id === "ek" ? "Elektro Klein AG" : "Amway";
+  const logo = brand.id === "igm" ? igmLogo : brand.id === "ek" ? ekLogo : amwayLogo;
+  const logoAlt = brand.id === "igm" ? "IGM" : brand.id === "ek" ? "Elektro Klein AG" : "Amway";
   return (
     <div className={content.laneClass}>
       <section aria-label={title} className="lane-app">
@@ -263,10 +312,12 @@ export function RoleApp({ brand, content, role, client, persons }: {
           <div className="lab-app-title">
             <img src={logo} alt={logoAlt} className="lab-app-logo" />
             <h2 className="lab-app-title-text">{title}</h2>
+            <span className={`badge badge-${view.roles.includes(role) ? "success" : "neutral"}`}>{view.roles.includes(role) ? content.appointment.active : content.appointment.waiting}</span>
           </div>
+          {appointmentStatus && <p role="status" className="lab-appointment-status">{appointmentStatus}</p>}
           {column.notice && (
             <div className="state-denied" style={{ padding: "0.5rem 0.75rem", fontSize: "0.75rem", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.5rem" }}>
-              <span style={{ userSelect: "text", flex: 1, minWidth: 0 }}>{column.notice}</span>
+              <span style={{ userSelect: "text", flex: 1, minWidth: 0 }}>{displayRoleText(column.notice, content)}</span>
               <button
                 type="button"
                 className="lab-copy-btn"
@@ -315,33 +366,38 @@ export function RoleApp({ brand, content, role, client, persons }: {
             <div className="lab-section-title lab-actions-heading">
               <span>{content.actionsTitle}</span>
               {role === "admin" && (
+                <>
+                  {(["manager", ...(brand.appointmentAuthority === "admin" ? ["seller", "customer"] : [])] as const).map(target => (
+                    <button
+                      key={target}
+                      type="button"
+                      className="btn-accent"
+                      disabled={!view.known || !live || !persons[target] || appointing !== null || appointed(target)}
+                      onClick={() => void appointRole(target)}
+                    >
+                      {appointmentLabel(target)}
+                    </button>
+                  ))}
+                </>
+              )}
+              {brand.appointmentAuthority === "chain" && role === "manager" && (
                 <button
                   type="button"
                   className="btn-accent"
-                  disabled={!view.known || !live}
-                  onClick={() => void run("assignRole", { subject: persons.manager, role: "manager" })}
+                  disabled={!staff || !live || !persons.seller || appointing !== null || appointed("seller")}
+                  onClick={() => void appointRole("seller")}
                 >
-                  {content.appoint.manager}
+                  {appointmentLabel("seller")}
                 </button>
               )}
-              {role === "manager" && (
+              {brand.appointmentAuthority === "chain" && role === "seller" && (
                 <button
                   type="button"
                   className="btn-accent"
-                  disabled={!staff || !live}
-                  onClick={() => void run("assignRole", { subject: persons.seller, role: "seller" })}
+                  disabled={!seller || !live || !persons.customer || appointing !== null || appointed("customer")}
+                  onClick={() => void appointRole("customer")}
                 >
-                  {content.appoint.seller}
-                </button>
-              )}
-              {role === "seller" && (
-                <button
-                  type="button"
-                  className="btn-accent"
-                  disabled={!seller || !live}
-                  onClick={() => void run("assignRole", { subject: persons.customer, role: "customer" })}
-                >
-                  {content.appoint.customer}
+                  {appointmentLabel("customer")}
                 </button>
               )}
             </div>
@@ -366,7 +422,7 @@ export function RoleApp({ brand, content, role, client, persons }: {
                   key={offer.offerId}
                   type="button"
                   className="secondary"
-                  disabled={!seller || !live || !view.assignments.some(a => a.role === "customer")}
+                  disabled={!seller || !live || !persons.customer || !view.assignments.some(a => a.role === "customer")}
                   onClick={() => void run("shareOffer", { offerId: offer.offerId, customer: persons.customer })}
                 >
                   {content.shareDown(offer.offerId)}
@@ -377,7 +433,7 @@ export function RoleApp({ brand, content, role, client, persons }: {
                   key={offer.offerId}
                   type="button"
                   className="secondary"
-                  disabled={!staff || !live || !view.assignments.some(a => a.role === "seller")}
+                  disabled={!staff || !live || !persons.seller || !view.assignments.some(a => a.role === "seller")}
                   onClick={() => void run("shareOfferWithSeller", { offerId: offer.offerId, seller: persons.seller })}
                 >
                   {content.shareWithSeller(offer.offerId)}

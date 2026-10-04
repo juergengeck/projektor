@@ -31,16 +31,16 @@ for (const lane of LANES) {
     const frames = page.frameLocator("section.lab-column iframe");
     const [admin, manager, seller] = [0, 1, 2].map(n => frames.nth(n));
 
-    await admin.getByRole("button", { name: `Appoint ${lane.roleLabels.manager}` }).click();
-    const appointSeller = manager.getByRole("button", { name: `Appoint ${lane.roleLabels.seller}` });
+    await admin.getByRole("button", { name: lane.appointmentButtons?.manager ?? `Appoint ${lane.roleLabels.manager}` }).click();
+    const appointSeller = (lane.appointmentAuthority === "admin" ? admin : manager).getByRole("button", { name: lane.appointmentButtons?.seller ?? `Appoint ${lane.roleLabels.seller}` });
     await expect(appointSeller).toBeEnabled({ timeout: 90_000 });
     await appointSeller.click();
-    const appointCustomer = seller.getByRole("button", { name: `Appoint ${lane.roleLabels.customer}` });
+    const appointCustomer = (lane.appointmentAuthority === "admin" ? admin : seller).getByRole("button", { name: lane.appointmentButtons?.customer ?? `Appoint ${lane.roleLabels.customer}` });
     await expect(appointCustomer).toBeEnabled({ timeout: 90_000 });
     await appointCustomer.click();
     await admin.getByLabel("Receipt ID").fill(`${lane.id}-reload-receipt-1`);
     await admin.getByRole("button", { name: "Receive stock" }).click();
-    await manager.getByRole("button", { name: "+ Offer (100.00€)" }).click();
+    await manager.getByRole("button", { name: lane.offerButton }).click();
     const share = manager.getByRole("button", { name: `Share ${lane.offerId} with ${lane.shareRecipient}` });
     await expect(share).toBeEnabled({ timeout: 90_000 });
     await share.click();

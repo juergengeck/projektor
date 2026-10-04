@@ -46,7 +46,7 @@ export function Stock({ view, isAdmin, content }: {
                   authorized by {nameOf(view.contacts, entry.issuer)} · since {fmtDate(entry.validFrom)}
                 </span>
               </span>
-              <RoleBadge role={entry.role} />
+              <RoleBadge role={entry.role} label={content.roleTitles[entry.role] ?? entry.role} />
             </div>
           ))
         )}

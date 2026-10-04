@@ -19,7 +19,7 @@ export interface LaneClient {
 }
 
 /** Feed kinds that change the projection: re-snapshot after one arrives. */
-export const SNAPSHOT_TRIGGER_KINDS = ["assignment", "department", "order", "stock", "purchase-request", "purchase-decision"];
+export const SNAPSHOT_TRIGGER_KINDS = ["assignment", "department", "offer", "contact", "order", "stock", "purchase-request", "purchase-decision"];
 
 export interface Offer {
   offerId: string;

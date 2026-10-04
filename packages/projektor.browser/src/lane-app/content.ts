@@ -18,6 +18,7 @@ export interface LaneContent {
   roleTitles: Record<string, string>;
   appoint: Record<string, string>;
   actionsTitle: string;
+  appointment: { pending: (role: string) => string; assigned: (role: string) => string; waiting: string; active: string; success: (role: string) => string };
   catalog: CatalogItem[];
   shareDown: (offerId: string) => string;
   shareWithSeller: (offerId: string) => string;
@@ -71,6 +72,7 @@ export const AMWAY_CONTENT: LaneContent = {
   roleTitles: { admin: "Organization", manager: "Manager", seller: "Seller", customer: "Customer" },
   appoint: { manager: "Appoint Manager", seller: "Appoint Seller", customer: "Appoint Customer" },
   actionsTitle: "Actions",
+  appointment: { pending: role => `Appointing ${role}…`, assigned: role => `${role} appointed`, waiting: "Not appointed", active: "Role active", success: role => `${role} appointed. Access is now enabled.` },
   catalog: [
     { idPrefix: "offer-glister", item: "GLISTER-100@1", priceList: "demo-retail@2026-09", unitAmount: 10000, currency: "EUR", button: "+ Offer (100.00€)" },
     { idPrefix: "offer-nutrilite", item: "NUTRILITE-DAILY@1", priceList: "demo-retail@2026-09", unitAmount: 4500, currency: "EUR", button: "+ Offer (45.00€)" },
@@ -140,7 +142,7 @@ export const AMWAY_CONTENT: LaneContent = {
 export const EK_CONTENT: LaneContent = {
   ...AMWAY_CONTENT,
   laneClass: "ek-lane",
-  roleTitles: { admin: "Klein", manager: "Bauleiter", seller: "Vorarbeiter", customer: "Werker" },
+  roleTitles: { admin: "AG", manager: "Bauleiter", seller: "Vorarbeiter", customer: "Werker" },
   appoint: { manager: "Appoint Bauleiter", seller: "Appoint Vorarbeiter", customer: "Appoint Werker" },
   catalog: [
     { idPrefix: "offer-ek", item: "BMA-WARTUNG@1", priceList: "demo-retail@2026-09", unitAmount: 10000, currency: "EUR", button: "+ Offer (100.00€)" },
@@ -148,3 +150,25 @@ export const EK_CONTENT: LaneContent = {
   ],
   shareWithSeller: offerId => `Share ${offerId} with Vorarbeiter`,
 };
+
+/** IGM facade-construction demo. Catalog prices are illustrative demo data. */
+export const IGM_CONTENT: LaneContent = {
+  ...EK_CONTENT,
+  laneClass: "igm-lane",
+  roleTitles: { admin: "Verwaltung", manager: "Bauleiter", seller: "Vorarbeiter", customer: "Monteur" },
+  appoint: { manager: "Bauleiter zuweisen", seller: "Vorarbeiter zuweisen", customer: "Monteur zuweisen" },
+  appointment: { pending: role => `${role} wird zugewiesen…`, assigned: role => `${role} zugewiesen`, waiting: "Noch nicht zugewiesen", active: "Rolle aktiv", success: role => `${role} zugewiesen. Berechtigungen sind freigeschaltet.` },
+  catalog: [
+    { idPrefix: "offer-igm", item: "FASSADEN-ELEMENT@1", priceList: "igm-demo@2026-10", unitAmount: 10000, currency: "EUR", button: "+ Facade element (100.00€)" },
+    { idPrefix: "offer-montage", item: "MONTAGE-SET@1", priceList: "igm-demo@2026-10", unitAmount: 4500, currency: "EUR", button: "+ Assembly kit (45.00€)" },
+  ],
+};
+
+export function contentForLane(lane: string): LaneContent {
+  return lane === "igm" ? IGM_CONTENT : lane === "ek" ? EK_CONTENT : AMWAY_CONTENT;
+}
+
+/** Translate stored role keys wherever they occur in diagnostic prose. */
+export function displayRoleText(text: string, content: LaneContent): string {
+  return text.replace(/\b(admin|manager|seller|customer)\b(?!@)/g, role => content.roleTitles[role] ?? role);
+}

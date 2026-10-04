@@ -85,7 +85,7 @@ export function Orders({ orders, pendingOrders, failures, balances, contacts, fr
                     Receivable {fmtMoney(entry.receivable, entry.currency)} · Payable {fmtMoney(entry.payable, entry.currency)}
                   </span>
                 </div>
-                <RoleBadge role={entry.role} />
+                <RoleBadge role={entry.role} label={content.roleTitles[entry.role] ?? entry.role} />
               </div>
             ))
           )}

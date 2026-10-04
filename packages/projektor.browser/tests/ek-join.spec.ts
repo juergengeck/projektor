@@ -54,7 +54,7 @@ test(`ek lane invitation from ${entry} pairs a second device`, async ({ page, br
   const seller = columns.nth(2);
 
   // Each role gets a real invite below its app frame.
-  for (const key of ["Klein", "Bauleiter", "Vorarbeiter", "Werker"]) {
+  for (const key of ["AG", "Bauleiter", "Vorarbeiter", "Werker"]) {
     await expect(page.getByRole("img", { name: `Device invitation QR for ${key}`, exact: true })).toBeVisible({ timeout: 60_000 });
   }
   await expect(page.locator(".lab-column-frame .lab-device-invite")).toHaveCount(0);

@@ -1,0 +1,203 @@
+@font-face {
+  font-family: "IGM Lexend Deca";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../assets/igm/lexend-deca-regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IGM Lexend Deca";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("../assets/igm/lexend-deca-600.woff2") format("woff2");
+}
+/* IGM's website palette, scoped to this entry point. Shared UI components
+ * consume the existing token names; other lanes retain their own theme. */
+.igm-lane .lab-purchase-card {
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.igm-lane .lab-purchase-card .lab-item-main {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+html:root[data-brand="igm"],
+html:root:has(.igm-lane) {
+  --igm-red: #8d1d2c;
+  --igm-charcoal: #353d3a;
+  --amway-surface: #fff;
+  --amway-surface-elevated: #fff;
+  --amway-surface-subtle: #f2f4f3;
+  --amway-surface-sunken: #e6ebe9;
+  --amway-neutral: #e6e6e6;
+  --amway-border: #d6d8da;
+  --amway-border-subtle: #e8e8e8;
+  --amway-border-focus: var(--igm-red);
+  --amway-ink: var(--igm-charcoal);
+  --amway-ink-secondary: #494949;
+  --amway-muted: #656565;
+  --amway-subtle: #757575;
+  /* Slightly deeper red keeps small white button labels readable. */
+  --amway-accent: #8d1d2c;
+  --amway-accent-hover: #5a0002;
+  --amway-accent-active: #5a0002;
+  --amway-accent-light: #f3e5e8;
+  --amway-accent-subtle: #faf4f5;
+  --radius-md: 3px;
+  --radius-lg: 4px;
+}
+
+html[data-theme="dark"]:root:has(.igm-lane) {
+  --amway-surface: #1d2024;
+  --amway-surface-elevated: #25292e;
+  --amway-surface-subtle: #25292e;
+  --amway-surface-sunken: #16181b;
+  --amway-neutral: #34383e;
+  --amway-border: #454a51;
+  --amway-border-subtle: #363b41;
+  --amway-ink: #f2f4f3;
+  --amway-ink-secondary: #d0d2d4;
+  --amway-muted: #b3b6ba;
+  --amway-subtle: #a3a7ac;
+  --amway-accent: #e3999f;
+  --amway-accent-hover: #f4b7bb;
+  --amway-accent-active: #fbd4d7;
+  --amway-accent-light: #492326;
+  --amway-accent-subtle: #352023;
+}
+
+.igm-lane a { color: var(--amway-accent); }
+.igm-lane a:hover { color: var(--amway-accent-hover); }
+.igm-lane .btn-accent { background: #8d1d2c; }
+.igm-lane .btn-accent:hover { background: #5a0002; }
+
+.igm-lane .lab-header {
+  position: relative;
+  overflow: hidden;
+  padding: 0;
+  gap: 0;
+  border-top: 4px solid var(--igm-red);
+}
+
+.igm-brand-heading {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  gap: 2rem;
+  padding: 1.5rem 2rem;
+}
+
+.igm-logo {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.igm-logo img {
+  display: block;
+  width: 178px;
+  height: auto;
+}
+
+.igm-eyebrow {
+  margin: 0 0 0.25rem;
+  color: var(--amway-accent);
+  font-size: 0.7rem;
+  font-weight: 750;
+  letter-spacing: 0.13em;
+}
+
+.igm-lane .lab-title-group h1 {
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
+.igm-project-art {
+  position: relative;
+  align-self: stretch;
+  width: 240px;
+  min-height: 160px;
+  overflow: hidden;
+  background: var(--igm-charcoal);
+}
+
+.igm-project-art img {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 40%;
+}
+
+.igm-project-art span {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 1.5rem 0.75rem 0.5rem;
+  background: linear-gradient(transparent, #353d3ae6);
+  color: #fff;
+  font-size: 0.65rem;
+}
+
+.igm-lane .lab-header-actions {
+  flex-basis: 100%;
+  padding: 0.75rem 1.25rem;
+  border-top: 1px solid var(--amway-border-subtle);
+  background: var(--amway-surface-subtle);
+}
+
+.igm-lane .lab-role-tags .badge-info,
+.igm-lane .lab-role-tags .badge-success {
+  color: var(--amway-ink);
+  background: var(--amway-surface-sunken);
+  border-color: var(--amway-border);
+}
+
+.igm-lane .lab-feed-IgmOffer,
+.igm-lane .lab-feed-IgmRoleAssignment {
+  border-left-color: var(--igm-red);
+}
+
+.igm-lane .lab-feed-IgmOrder,
+.igm-lane .lab-feed-IgmContact {
+  border-left-color: var(--igm-charcoal);
+}
+
+.igm-lane .lab-actions-heading {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 0.5rem;
+}
+
+.igm-lane .lab-actions-heading > span { flex-basis: 100%; }
+
+@media (max-width: 700px) {
+  .igm-lane { padding: 0.75rem; }
+  .igm-brand-heading { gap: 1rem; padding: 1.25rem; }
+  .igm-logo img { width: 130px; }
+  .igm-lane .lab-title-group h1 { font-size: 1.5rem; }
+  .igm-eyebrow { font-size: 0.6rem; letter-spacing: 0.06em; }
+  .igm-project-art { display: none; }
+  .igm-lane .lab-header-actions { gap: 0.5rem; padding: 0.75rem; }
+}
+
+.igm-lane { font-family: "IGM Lexend Deca", sans-serif; }
+.igm-lane button, .igm-lane input { font-family: inherit; }
+.igm-brand-heading { gap: 2.25rem; }
+.igm-logo { padding: 0.5rem 0.75rem; background: #fff; }
+.igm-lane .lab-app-logo { width: 66px; height: auto; padding: 5px; background: #fff; }
+.igm-lane .lab-role-tags .badge-info,
+.igm-lane .lab-role-tags .badge-success { border-left: 3px solid #98992b; }
+
+@media (max-width: 700px) {
+  .igm-brand-heading { flex-wrap: wrap; gap: 1rem; }
+  .igm-brand-heading .lab-title-group { min-width: 0; }
+}
+
+.igm-lane .lab-app-title { flex-wrap: wrap; }
+.igm-lane .lab-app-title > .badge { flex-basis: auto; margin-left: 0; }
+.lab-appointment-status { padding: 0.65rem; font-size: 0.75rem; background: var(--amway-accent-light); border-left: 3px solid var(--amway-accent); }

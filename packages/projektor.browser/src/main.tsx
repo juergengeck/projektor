@@ -4,6 +4,7 @@ import App from "./App";
 import "../../amway.app/ui/styles.css";
 import "./lane-app/themes/amway.css";
 import "./lane-app/themes/ek.css";
+import "./lane-app/themes/igm.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

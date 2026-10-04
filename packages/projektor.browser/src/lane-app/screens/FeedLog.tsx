@@ -1,6 +1,7 @@
 // packages/projektor.browser/src/lane-app/screens/FeedLog.tsx
 /** Real-time CHUM activity feed and the access-control rejection audit. */
 import type { FeedEntry, View } from "../feed.ts";
+import { displayRoleText } from "../content.ts";
 import type { LaneContent } from "../content.ts";
 
 export function FeedLog({ feedLog, content }: {
@@ -22,7 +23,7 @@ export function FeedLog({ feedLog, content }: {
           feedLog.map((item, idx) => (
             <div key={`${item.hash}-${idx}`} className={`lab-feed-item lab-feed-${item.type}`}>
               <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                <span style={{ fontWeight: 600 }}>{item.label}</span>
+                <span style={{ fontWeight: 600 }}>{displayRoleText(item.label, content)}</span>
                 <span style={{ fontSize: "0.65rem", color: "var(--amway-muted)" }}>
                   #{item.hash.slice(0, 12)}…
                 </span>
@@ -53,7 +54,7 @@ export function RejectedAudit({ view, content }: {
             className="state-denied"
             style={{ padding: "0.4rem 0.6rem", fontSize: "0.72rem" }}
           >
-            <strong>{rej.type}</strong> ({rej.id}): {rej.reason}
+            <strong>{rej.type}</strong> ({rej.id}): {displayRoleText(rej.reason, content)}
           </div>
         ))}
       </div>

@@ -20,7 +20,8 @@ import type { FeedRow } from "@projektor/lab.core/port-ipc.ts";
 import "../../../amway.app/ui/styles.css";
 import "./themes/amway.css";
 import "./themes/ek.css";
-import { AMWAY_CONTENT, EK_CONTENT } from "./content.ts";
+import "./themes/igm.css";
+import { AMWAY_CONTENT, EK_CONTENT, IGM_CONTENT } from "./content.ts";
 import type { LaneContent } from "./content.ts";
 import { RoleApp } from "./RoleApp";
 import type { LaneClient } from "./feed.ts";
@@ -56,7 +57,7 @@ function initialPersons(): Record<string, string> {
   return persons;
 }
 
-const content: LaneContent = brand.id === "ek" ? EK_CONTENT : AMWAY_CONTENT;
+const content: LaneContent = brand.id === "igm" ? IGM_CONTENT : brand.id === "ek" ? EK_CONTENT : AMWAY_CONTENT;
 document.documentElement.dataset.brand = brand.id;
 
 const origin = window.location.origin;

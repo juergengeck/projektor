@@ -6,8 +6,10 @@
  * the lab:// switch (Task 13) with the glue commserver for IoM discovery.
  *
  * Role appointments stay manual: the seed pairs the instances and creates
- * the department, and the admin and manager appoint through the UI.
+ * the department. EK's admin appoints all roles; Amway keeps its chain.
  */
+import { contentForLane } from "../lane-app/content.ts";
+import type { FeedRow } from "../../../lab.core/port-ipc.ts";
 import type { LabBrand } from "../../../lab.core/brand.ts";
 import { encodeMeshInviteUrl, labUrl } from "../../../lab.core/invite-url.ts";
 import { staleSessionDirectories } from "../../../lab.core/storage.ts";
@@ -31,12 +33,13 @@ export interface LabAccount {
   key: LabKey;
   email: string;
   secret: string;
+  displayName: string;
 }
 
 /** Deterministic accounts, never stored: the same email always reproduces
  * the same Person, so IoM pairing can find its counterpart by email. */
 export function labAccount(key: LabKey, brand: LabBrand): LabAccount {
-  return { key, email: `${key}@${brand.emailDomain}`, secret: `lab-${key}` };
+  return { key, email: `${key}@${brand.emailDomain}`, secret: `lab-${key}`, displayName: contentForLane(brand.id).roleTitles[key] ?? key };
 }
 
 export type DepartmentSnapshot =
@@ -54,6 +57,7 @@ export interface LabClient {
   registry: PlanRegistry;
   account: LabAccount;
   snapshot(signal: AbortSignal): Promise<LabSnapshot>;
+  onFeed?: (callback: (row: FeedRow) => void) => () => void;
 }
 
 /** Usable dimensions for the live-app frame (the browser default 300x150 hides the app UI). */
@@ -131,7 +135,7 @@ export async function ensureLabAccount(
     signal,
     "session",
     "registerAndSetup",
-    { email: client.account.email, secret: client.account.secret, instanceName: client.key, timeoutMs: 120_000 },
+    { email: client.account.email, secret: client.account.secret, instanceName: client.account.displayName, timeoutMs: 120_000 },
     125_000,
   );
   const ready = result.readyState;
@@ -263,14 +267,14 @@ export async function seedRole(
   const ownerId = await acceptRoleInvite(
     client,
     url,
-    { secret: client.account.secret, displayName: key, expectedEmail: email },
+    { secret: client.account.secret, displayName: client.account.displayName, expectedEmail: email },
     signal,
   );
   const personId = await waitForMeshPerson(admin, key, ownerId, signal, meshTimeoutMs);
   if (ownerId !== personId) {
     throw new Error(`Lab ${key}: account owner is not the exact invited Person.`);
   }
-  return `${key} paired as ${email}`;
+  return email.endsWith("@igm.local") ? `${client.account.displayName} verbunden` : `${key} paired as ${email}`;
 }
 
 /**
@@ -366,7 +370,7 @@ export async function bootLab(
       keys: [...LAB_KEYS],
       spawn: (key: LabKey) => {
         const iframe = options.document.createElement("iframe");
-        iframe.title = `${brand.label} Lab – ${key}`;
+        iframe.title = `${brand.label} – ${contentForLane(brand.id).roleTitles[key]}`;
         sizeLabFrame(iframe);
         options.mount(key).appendChild(iframe);
         frames[key] = iframe;
@@ -398,6 +402,14 @@ export async function bootLab(
       stage(`waiting for ${key} registry`);
       const registry = await waitForRegistry(app, controller.signal, 120_000);
       clients[key] = asLabClient(key, iframe, registry, labAccount(key, brand), brand);
+      clients[key].onFeed = callback => {
+        let cancelled = false;
+        let stop = () => {};
+        void hostPromise.then(host => {
+          if (!cancelled) stop = host.clients[key].onFeed(callback);
+        });
+        return () => { cancelled = true; stop(); };
+      };
       stage(key === "admin" ? "signing in admin" : `${key} pre-login`);
       if (key === "admin") await ensureLabAccount(clients[key], controller.signal);
     }
@@ -457,7 +469,7 @@ export async function bootJoinInstance(
     stage("booting join iframe");
     iframe = options.document.createElement("iframe");
     iframe.src = labAppUrl(options.document.location.href, brand, key, session);
-    iframe.title = `${brand.label} Lab – ${key} (join)`;
+    iframe.title = `${brand.label} – ${contentForLane(brand.id).roleTitles[key]} (join)`;
     sizeLabFrame(iframe);
     options.mount(key).appendChild(iframe);
     const app = iframe.contentWindow as unknown as InstrumentedWindow | null;

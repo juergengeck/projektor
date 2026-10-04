@@ -56,6 +56,7 @@ test("accounts are deterministic per role and brand", () => {
     key: "seller",
     email: "seller@lab.local",
     secret: "lab-seller",
+    displayName: "Seller",
   });
   assert.deepEqual(labAccount("seller", AMWAY), labAccount("seller", AMWAY));
   assert.equal(labAccount("manager", EK).email, "manager@ek.local");

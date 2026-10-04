@@ -11,6 +11,9 @@ import amwayLogo from "../../../amway.app/assets/amway-logo-black.svg";
 import ekLogo from "../lane-app/assets/ek/elektro-klein-logo.jpg";
 import ekFavicon from "../lane-app/assets/ek/favicon.png";
 import omniturm from "../lane-app/assets/ek/omniturm.jpg";
+import igmLogo from "../lane-app/assets/igm/igm-logo.svg";
+import igmFavicon from "../lane-app/assets/igm/favicon.svg";
+import porscheTower from "../lane-app/assets/igm/porsche-design-tower.jpg";
 import { LabDeviceInvite } from "../components/LabDeviceInvite";
 import { Badge, RoleBadge } from "../components/ui";
 import {
@@ -24,7 +27,8 @@ import {
   type LabKey,
   type LabSnapshot,
 } from "./transport";
-import { AMWAY_CONTENT, EK_CONTENT } from "../lane-app/content";
+import { AMWAY_CONTENT, EK_CONTENT, IGM_CONTENT, displayRoleText } from "../lane-app/content";
+import { SNAPSHOT_TRIGGER_KINDS } from "../lane-app/feed";
 import type { LaneContent } from "../lane-app/content";
 import { brandById, type LabBrand } from "@projektor/lab.core/brand.ts";
 import { callPlan, type PlanRegistry } from "@projektor/lab.core/shell/plan-client.ts";
@@ -49,6 +53,9 @@ interface ShellMeta {
   themeColor: string;
   laneClass: string;
   content: LaneContent;
+  website?: string;
+  eyebrow?: string;
+  artwork?: { src: string; alt: string; caption: string };
   /** Device name in the IoM invitation chrome (the forks disagreed; keep both). */
   deviceName(key: LabKey): string;
 }
@@ -80,7 +87,27 @@ const SHELL: Record<LabBrand["id"], ShellMeta> = {
     themeColor: "#ED1D1E",
     laneClass: "ek-lane",
     content: EK_CONTENT,
+    website: "https://www.e-k-ag.de/",
+    eyebrow: "ELEKTRO KLEIN AG",
+    artwork: { src: omniturm, alt: "Omniturm, an Elektro Klein project in Frankfurt", caption: "Omniturm · Frankfurt" },
     deviceName: key => EK_CONTENT.roleTitles[key] ?? key,
+  },
+  igm: {
+    pageTitle: "IGM · Facade Lab",
+    heading: "IGM lab",
+    subtitle: "Facade construction demo · Illustrative items & prices",
+    logo: igmLogo,
+    logoAlt: "IGM",
+    logoWidth: 178,
+    logoHeight: 61,
+    favicon: igmFavicon,
+    themeColor: "#8d1d2c",
+    laneClass: "igm-lane",
+    content: IGM_CONTENT,
+    website: "https://www.igmfassaden.de/",
+    eyebrow: "VISIONÄRE FASSADEN",
+    artwork: { src: porscheTower, alt: "Porsche Design Tower in Stuttgart, an IGM facade project", caption: "Porsche Design Tower · Stuttgart" },
+    deviceName: key => IGM_CONTENT.roleTitles[key] ?? key,
   },
 };
 
@@ -203,10 +230,12 @@ export default function Lab() {
     const log = (line: string) => {
       if (!cancelled) setSeedLog(current => [...current, line]);
     };
+    const snapshotSequence = Object.fromEntries(LAB_KEYS.map(key => [key, 0])) as Record<LabKey, number>;
     const snapshotColumn = async (client: LabClient) => {
+      const sequence = ++snapshotSequence[client.key];
       try {
         const snapshot = await client.snapshot(signal);
-        if (!cancelled) {
+        if (!cancelled && sequence === snapshotSequence[client.key]) {
           setColumns(current => ({ ...current, [client.key]: { ...current[client.key], snapshot, notice: "" } }));
         }
       } catch (error) {
@@ -239,8 +268,13 @@ export default function Lab() {
       handle.current = booted;
       setClients(booted.clients);
       const { clients: lane } = booted;
-      // Re-snapshot on visible app transitions instead of polling on a timer.
+      // Refresh from the instance's semantic feed. DOM transitions still
+      // cover sign-in and device state changes, without polling.
       for (const key of LAB_KEYS) {
+        const unsubscribe = lane[key].onFeed?.(row => {
+          if (SNAPSHOT_TRIGGER_KINDS.includes(row.kind ?? "")) void snapshotColumn(lane[key]);
+        });
+        if (unsubscribe) stops.push(unsubscribe);
         const root = lane[key].iframe.contentDocument?.documentElement;
         if (root) {
           stops.push(
@@ -367,21 +401,21 @@ export default function Lab() {
   return (
     <div className={`lab-container ${shell.laneClass}`}>
       <header className="lab-header">
-        {brand.id === "ek" ? (
+        {shell.website ? (
           <>
-            <div className="ek-brand-heading">
-              <a className="ek-logo" href="https://www.e-k-ag.de/" target="_blank" rel="noreferrer" aria-label="Elektro Klein AG website">
+            <div className={`${brand.id}-brand-heading`}>
+              <a className={`${brand.id}-logo`} href={shell.website} target="_blank" rel="noreferrer" aria-label={`${shell.logoAlt} website`}>
                 <img src={shell.logo} width={shell.logoWidth} height={shell.logoHeight} alt={shell.logoAlt} />
               </a>
               <div className="lab-title-group">
-                <p className="ek-eyebrow">ELEKTRO KLEIN AG</p>
+                <p className={`${brand.id}-eyebrow`}>{shell.eyebrow}</p>
                 <h1>{shell.heading}</h1>
                 <p className="lab-subtitle">{shell.subtitle}</p>
               </div>
             </div>
-            <div className="ek-project-art">
-              <img src={omniturm} alt="Omniturm, an Elektro Klein project in Frankfurt" />
-              <span>Omniturm · Frankfurt</span>
+            <div className={`${brand.id}-project-art`}>
+              <img src={shell.artwork!.src} alt={shell.artwork!.alt} />
+              <span>{shell.artwork!.caption}</span>
             </div>
           </>
         ) : (
@@ -420,7 +454,7 @@ export default function Lab() {
         <div className={`card ${boot === "booting" ? "" : "state-denied"}`} style={{ marginBottom: "1.25rem", textAlign: "center" }}>
           {boot === "booting" ? (
             <p style={{ margin: 0, fontWeight: 600 }}>
-              <span className="lab-pulse-online" /> Booting… {bootStage}
+              <span className="lab-pulse-online" /> Booting… {displayRoleText(bootStage, content)}
             </p>
           ) : (
             <p style={{ margin: 0, fontWeight: 600 }}>Boot Failure: {boot}</p>
@@ -501,17 +535,17 @@ export default function Lab() {
                       <div className="lab-role-tags">
                         <span style={{ fontSize: "0.72rem", color: "var(--amway-muted)", marginRight: "2px" }}>Roles:</span>
                         {roles.length > 0 ? (
-                          roles.map(role => <RoleBadge key={role} role={role} />)
+                          roles.map(role => <RoleBadge key={role} role={role} label={content.roleTitles[role] ?? role} />)
                         ) : (
-                          <Badge text="None" variant="neutral" />
+                          <Badge text={content.appointment.waiting} variant="neutral" />
                         )}
                       </div>
 
                       <div className="lab-role-tags">
                         <span style={{ fontSize: "0.72rem", color: "var(--amway-muted)", marginRight: "2px" }}>App:</span>
-                        <span style={{ fontSize: "0.72rem" }}>{appStateOf(column.snapshot)}</span>
+                        <span style={{ fontSize: "0.72rem" }}>{displayRoleText(appStateOf(column.snapshot), content)}</span>
                         {column.seed && (
-                          <span style={{ fontSize: "0.72rem", color: "var(--amway-muted)" }}> · {column.seed}</span>
+                          <span style={{ fontSize: "0.72rem", color: "var(--amway-muted)" }}> · {displayRoleText(column.seed, content)}</span>
                         )}
                       </div>
                     </div>
@@ -530,7 +564,7 @@ export default function Lab() {
             <section aria-label="Seed log" style={{ marginTop: "1.25rem", fontSize: "0.75rem" }}>
               <div className="lab-section-title">Seed log</div>
               <ul style={{ margin: "0.4rem 0", paddingLeft: "1.2rem" }}>
-                {seedLog.map((line, index) => <li key={`${index}-${line}`}>{line}</li>)}
+                {seedLog.map((line, index) => <li key={`${index}-${line}`}>{displayRoleText(line, content)}</li>)}
               </ul>
             </section>
           )}

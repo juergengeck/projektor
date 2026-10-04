@@ -73,16 +73,18 @@ test("ek lane contact chat icon opens 1:1 chat", async ({ page }) => {
   expect(lanePan).toEqual({ overflowX: "hidden", touchAction: "pan-y" });
 
   // Automatically generated IoM QRs remain below the app frames.
-  for (const key of ["Klein", "Bauleiter", "Vorarbeiter", "Werker"]) {
+  for (const key of ["AG", "Bauleiter", "Vorarbeiter", "Werker"]) {
     await expect(page.getByRole("img", { name: `Device invitation QR for ${key}`, exact: true })).toBeVisible({ timeout: 60_000 });
   }
   await expect(page.locator(".lab-column-frame .lab-device-invite")).toHaveCount(0);
 
   await admin.getByRole("button", { name: "Appoint Bauleiter" }).click();
   await expect(columns.nth(1).locator(".badge-accent").first()).toBeVisible({ timeout: 90_000 });
-  await manager.getByRole("button", { name: "Appoint Vorarbeiter" }).click();
+  await expect(manager.getByRole("button", { name: "Appoint Vorarbeiter" })).toHaveCount(0);
+  await admin.getByRole("button", { name: "Appoint Vorarbeiter" }).click();
   await expect(columns.nth(2).locator(".badge-info").first()).toBeVisible({ timeout: 90_000 });
-  await seller.getByRole("button", { name: "Appoint Werker" }).click();
+  await expect(seller.getByRole("button", { name: "Appoint Werker" })).toHaveCount(0);
+  await admin.getByRole("button", { name: "Appoint Werker" }).click();
 
   await seller.getByLabel("Display name").fill("Seller One");
   await seller.getByRole("button", { name: "Save name" }).click();
@@ -123,8 +125,7 @@ test("ek lane contact chat icon opens 1:1 chat", async ({ page }) => {
   await sellerChat.getByRole("button", { name: "Send" }).click();
   await expect(customer.locator(".lab-chat-badge")).toHaveText("1", { timeout: 60_000 });
 
-  // The seller's address book stays with the seller: staff never sees it,
-  // even after a full chat round-trip synced across the mesh.
+  // Customer contacts stay with the seller, even though AG appoints them.
   await expect(manager.getByText("Customer One")).toHaveCount(0);
   await expect(admin.getByText("Customer One")).toHaveCount(0);
 
