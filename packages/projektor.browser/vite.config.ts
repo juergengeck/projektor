@@ -9,7 +9,13 @@ const HERE = __dirname;
 /** `/lab/<lane>` is the lane host address. Dev and preview serve it the lab
  * entry, as the deployed static site does (deploy.sh writes lab/<lane>.html). */
 function laneHostRoute(): Plugin {
-  const rewrite: Connect.NextHandleFunction = (req, _res, next) => {
+  const rewrite: Connect.NextHandleFunction = (req, res, next) => {
+    const alias = /^\/(amway|ek|igm)\/lab\/?(\?.*)?$/.exec(req.url ?? "");
+    if (alias) {
+      res.writeHead(302, { Location: `/lab/${alias[1]}${alias[2] ?? ""}` });
+      res.end();
+      return;
+    }
     const match = /^\/lab\/[a-z]+\/?(\?.*)?$/.exec(req.url ?? "");
     if (match) req.url = `/browser/lab/index.html${match[1] ?? ""}`;
     next();

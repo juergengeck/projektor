@@ -173,6 +173,13 @@ export function createProjektorHttpServer({
         return;
       }
 
+      const laneAlias = /^\/(amway|ek|igm)\/lab\/?$/.exec(url.pathname);
+      if (req.method === "GET" && staticDir && laneAlias) {
+        res.writeHead(302, { Location: `/lab/${laneAlias[1]}${url.search}` });
+        res.end();
+        return;
+      }
+
       if (req.method === "GET" && staticDir && serveStatic(url.pathname, staticDir, res)) {
         return;
       }
@@ -226,7 +233,8 @@ function createProjectorOperation({ providerPersonId, registry }) {
 }
 
 function serveStatic(pathname, staticDir, res) {
-  const requestPath = pathname === "/" ? "/index.html" : pathname;
+  const lane = /^\/lab\/(amway|ek|igm)\/?$/.exec(pathname);
+  const requestPath = lane ? `/lab/${lane[1]}.html` : pathname === "/" ? "/index.html" : pathname;
   const relative = decodeURIComponent(requestPath).replace(/^\/+/, "");
   const resolvedRoot = path.resolve(staticDir);
   const resolvedPath = path.resolve(staticDir, relative);

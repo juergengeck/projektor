@@ -5,12 +5,14 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { LANES, REPO_ROOT, laneById } from "./lanes.mjs";
+import { LAB_BRANDS, brandById } from "../lab.core/brand.ts";
 
 test("every lane resolves to a real suite, route and entry", () => {
-  assert.ok(LANES.length >= 2, "lanes under test");
+  assert.equal(LANES.length, LAB_BRANDS.length, "every brand has a CI lane");
   assert.deepEqual(new Set(LANES.map(lane => lane.id)).size, LANES.length, "lane ids are unique");
   for (const lane of LANES) {
-    for (const field of ["title", "packageDir", "route", "entry", "hash", "offerId"]) {
+    assert.equal(lane.appointmentAuthority, brandById(lane.id).appointmentAuthority);
+    for (const field of ["title", "packageDir", "route", "entry", "hash", "offerId", "offerButton"]) {
       assert.ok(typeof lane[field] === "string" && lane[field].length > 0, `${lane.id}.${field}`);
     }
     const suite = fs.readdirSync(path.join(REPO_ROOT, lane.packageDir)).filter(file => file.endsWith(".test.ts"));

@@ -502,15 +502,15 @@ export function createAmwayServer({ directory, instanceDir, shop, journal } = {}
         return res.end(html);
       }
       // Former lane routes move to the lane host, preserving overrides like ?commServer=.
-      const formerLane = { "/amway/lab": "amway", "/ek/lab": "ek" }[url.pathname.replace(/\/$/, "")];
+      const formerLane = { "/amway/lab": "amway", "/ek/lab": "ek", "/igm/lab": "igm" }[url.pathname.replace(/\/$/, "")];
       if (req.method === "GET" && formerLane) {
         res.writeHead(302, { Location: `/lab/${formerLane}${url.search}` });
         return res.end();
       }
-      // One lane shell for both brands at /lab/<lane> (the path selects the
+      // One lane shell for all brands at /lab/<lane> (the path selects the
       // brand at runtime); the former /browser/lab/?lane= address redirects
       // client-side from the same shell.
-      if (req.method === "GET" && /^\/(lab\/(amway|ek)|browser\/lab)\/?$/.test(url.pathname)) {
+      if (req.method === "GET" && /^\/(lab\/(amway|ek|igm)|browser\/lab)\/?$/.test(url.pathname)) {
         const html = await readFile(path.join(BROWSER_DIR, "lab", "index.html"), "utf8");
         res.writeHead(200, { "Content-Type": MIME[".html"], "Cache-Control": "no-store" });
         return res.end(html);

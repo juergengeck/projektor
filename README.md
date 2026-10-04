@@ -60,8 +60,10 @@ npm run deploy
 
 The deploy also builds `packages/projektor.browser` and ships it under
 `/browser/`. The four-instance Amway lab is served at `/lab/amway`
-(live at `https://projektor.one/lab/amway`, EK at `/lab/ek`); the route is
-deliberately not linked from any page.
+(live at `https://projektor.one/lab/amway`, EK at `/lab/ek`, IGM at `/lab/igm`); the route is
+deliberately not linked from any page. `/igm/lab` opens the IGM lab, using the
+corporate identity assets from https://www.igmfassaden.de/. Its facade element
+and assembly kit catalog uses illustrative demo prices.
 
 ## Prototype Intent
 

@@ -49,17 +49,17 @@ npx --yes esbuild "$SCRIPT_DIR/app.js" \
     --outfile="$BUILD_DIR/app.js"
 cp "$SCRIPT_DIR/projektor_logo.svg" "$BUILD_DIR/projektor_logo.svg"
 
-echo -e "${BLUE}  Building Amway browser app (workspace + lab entries)...${NC}"
+echo -e "${BLUE}  Building browser app (workspace + lab entries)...${NC}"
 if [ ! -d "$SCRIPT_DIR/packages/projektor.browser/node_modules" ]; then
     (cd "$SCRIPT_DIR/packages/projektor.browser" && npm install --no-audit --no-fund)
 fi
 (cd "$SCRIPT_DIR/packages/projektor.browser" && npm run build)
 mkdir -p "$BUILD_DIR/browser"
 cp -R "$SCRIPT_DIR/packages/projektor.browser/dist/." "$BUILD_DIR/browser/"
-# One lane shell for both brands, served at /lab/<lane> (the path selects the
+# One lane shell for all brands, served at /lab/<lane> (the path selects the
 # brand at runtime). Pages serves lab/<lane>.html at /lab/<lane>; the shell's
 # assets are absolute (/browser/assets/), so the copy needs nothing else.
-for lane in amway ek; do
+for lane in amway ek igm; do
     mkdir -p "$BUILD_DIR/lab"
     cp "$BUILD_DIR/browser/lab/index.html" "$BUILD_DIR/lab/$lane.html"
 done
@@ -76,6 +76,7 @@ lane_stub() {
     <meta charset="utf-8" />
     <meta http-equiv="refresh" content="0;url=/lab/${lane}" />
     <link rel="canonical" href="/lab/${lane}" />
+    <script>window.location.replace("/lab/${lane}" + window.location.search + window.location.hash);</script>
     <title>Lab lane</title>
   </head>
   <body>
@@ -86,6 +87,7 @@ EOF
 }
 lane_stub "amway" "$BUILD_DIR/amway/lab"
 lane_stub "ek" "$BUILD_DIR/ek/lab"
+lane_stub "igm" "$BUILD_DIR/igm/lab"
 
 if [ -d "$SCRIPT_DIR/docs" ]; then
     cp -R "$SCRIPT_DIR/docs" "$BUILD_DIR/docs"
@@ -139,22 +141,23 @@ if [ ! -f "$BUILD_DIR/browser/lab/index.html" ]; then
     exit 1
 fi
 
-for lane in amway ek; do
+for lane in amway ek igm; do
     if ! grep -q 'id="lab-root"' "$BUILD_DIR/lab/$lane.html"; then
         echo -e "${RED}✗ Build verification failed: lab/$lane.html must be the lane shell${NC}"
         exit 1
     fi
 done
 
-if [ ! -f "$BUILD_DIR/ek/lab/index.html" ]; then
-    echo -e "${RED}✗ Build verification failed: ek/lab/index.html not found${NC}"
-    exit 1
-fi
-
-if ! grep -q "/lab/ek" "$BUILD_DIR/ek/lab/index.html"; then
-    echo -e "${RED}✗ Build verification failed: ek/lab must redirect to the ek lane${NC}"
-    exit 1
-fi
+for lane in ek igm; do
+    if [ ! -f "$BUILD_DIR/$lane/lab/index.html" ]; then
+        echo -e "${RED}✗ Build verification failed: $lane/lab/index.html not found${NC}"
+        exit 1
+    fi
+    if ! grep -q "/lab/$lane" "$BUILD_DIR/$lane/lab/index.html"; then
+        echo -e "${RED}✗ Build verification failed: $lane/lab must redirect to the $lane lane${NC}"
+        exit 1
+    fi
+done
 
 if [ ! -f "$BUILD_DIR/404.html" ]; then
     echo -e "${RED}✗ Build verification failed: 404.html not found${NC}"

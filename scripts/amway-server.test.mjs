@@ -105,6 +105,18 @@ test("EK lane entry redirects to the lane host at /lab/ek", async (t) => {
   assert.match(shell, /<div id="lab-root"><\/div>/);
 });
 
+test("IGM lane entry preserves overrides and serves the lane shell", async (t) => {
+  const { server, base } = await started();
+  t.after(() => close(server));
+  for (const entry of ["/igm/lab", "/igm/lab/"]) {
+    const response = await fetch(`${base}${entry}?commServer=ws%3A%2F%2F127.0.0.1%3A9`, { redirect: "manual" });
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.get("location"), "/lab/igm?commServer=ws%3A%2F%2F127.0.0.1%3A9");
+  }
+  const shell = await (await fetch(`${base}/lab/igm`)).text();
+  assert.match(shell, /<div id="lab-root"><\/div>/);
+});
+
 test("Lab pairing is not served by a Projektor relay", async (t) => {
   const { server, base } = await started();
   t.after(() => close(server));
